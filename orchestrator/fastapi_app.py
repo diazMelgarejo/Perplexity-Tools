@@ -210,12 +210,32 @@ def orchestrate(req: OrchestrateRequest) -> Dict[str, Any]:
             "online": selected.online,
         },
     )
-    tracker.update_status(agent.agent_id, "running")
+    running = tracker.update_status(agent.agent_id, "running")
+    if running is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Agent record missing after registration (e.g., concurrent deletion). "
+                "Retry orchestration or inspect GET /agents."
+            ),
+        )
+
+    idle = tracker.update_status(agent.agent_id, "idle")
+    if idle is None:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Agent record disappeared before idle transition (e.g., concurrent DELETE). "
+                "Retry orchestration or inspect GET /agents."
+            ),
+        )
+
+    # Charge only after both transitions succeeded (avoids recording spend if deleted mid-flight).
     cost_guard.record_spend(req.estimated_cost)
 
     response: Dict[str, Any] = {
         "status": "created",
-        "agent": asdict(tracker.update_status(agent.agent_id, "idle")),
+        "agent": asdict(idle),
         "selected_model": {
             "name": selected.name,
             "backend": selected.backend,
