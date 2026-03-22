@@ -1,0 +1,37 @@
+# Routing rules — maps task_type → ordered role list for ModelRegistry.route_task().
+# First matching model per role wins; fallback roles provide the chain.
+# Top-level agents on Mac+Win use this. Subagents use ECC default unless overridden.
+
+routes:
+
+  default:
+    description: General-purpose tasks
+    roles: [top-level, general, fallback]
+
+  coding:
+    description: Code generation, review, debugging
+    roles: [coding, top-level, fallback]
+
+  strategy:
+    description: Architecture, planning, system design
+    roles: [strategy, architecture, top-level, fallback]
+
+  finance:
+    description: Financial analysis, market data, real-time queries
+    roles: [finance, realtime, market, fallback]
+
+  research:
+    description: Web research, synthesis, long-context analysis
+    roles: [research, top-level, fallback]
+
+  critic:
+    description: Refinement, quality review, elegance scoring
+    roles: [critic, refiner, fallback]
+
+  subagent:
+    description: Subagent tasks delegated by top-level orchestrator
+    roles: [subagent, general, fallback]
+
+  realtime:
+    description: Live data, current events, monitoring
+    roles: [realtime, market, research, fallback]
