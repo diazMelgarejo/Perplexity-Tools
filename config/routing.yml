@@ -35,3 +35,31 @@ routes:
   realtime:
     description: Live data, current events, monitoring
     roles: [realtime, market, research, fallback]
+
+
+  # ── AUTORESEARCH: karpathy/autoresearch foot-soldier swarm ─────────────────
+  # Called by orchestrator/autoresearch_bridge.py only.
+  # Coder runs on win-rtx3080 (CUDA); Evaluator + Orchestrator run on mac.
+  autoresearch:
+    description: ML experiment loop via karpathy/autoresearch on GPU runner
+    roles: [autoresearch-coder, autoresearch-critic, strategy, fallback]
+    notes: sync_autoresearch_idempotent() must succeed before any agent spawns
+
+  autoresearch-coder:
+    description: Edits train.py, deploys to GPU via scp, dispatches run via ssh
+    roles: [autoresearch-coder, coding, fallback]
+    device_affinity: win-rtx3080
+
+  autoresearch-evaluator:
+    description: Reads log.txt, parses val_bpb, writes findings to swarm_state.md
+    roles: [autoresearch-critic, critic, refiner, fallback]
+    device_affinity: mac
+
+  autoresearch-orchestrator:
+    description: Reads swarm_state.md + git log, proposes next hypothesis
+    roles: [strategy, architecture, top-level, fallback]
+    device_affinity: mac
+
+  ml-experiment:
+    description: Alias for autoresearch; routes identically
+    roles: [autoresearch-coder, autoresearch-critic, strategy, fallback]
