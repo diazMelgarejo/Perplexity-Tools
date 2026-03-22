@@ -1,17 +1,27 @@
 # SKILL.md — Perplexity-Tools Model Selection Skill
-# Version: v0.9.0.0 | Updated: 2026-03-22
-# Repo: https://github.com/diazMelgarejo/Perplexity-Tools
-# Compatible with: ultrathink-system (v0.9.4.0), ECC-tools
+
+**Version:** `v0.9.0.0` (standardized from here onward) · **Updated:** 2026-03-22  
+**Repo:** https://github.com/diazMelgarejo/Perplexity-Tools · **Branch:** `v0.9.0.0`
+
+**Layering (all interoperable and independently configurable):**
+
+| Layer | Repo | Role |
+|-------|------|------|
+| **Orchestrator & instance manager** | **Perplexity-Tools** (this repo) | Top-level agent lifecycle, `ModelRegistry` / `config/*.yml`, FastAPI `/orchestrate`, idempotency |
+| **Reasoning & routing methodology** | **ultrathink-system** | `single-agent/SKILL.md`, CIDF / process; multi-agent registry is **separately installable** and **not** required to run this orchestrator |
+| **Subagent auto-selection (ECC-style)** | **ECC Tools** | Default subagent routing unless the top-level orchestrator overrides roles |
+
+**Selection order:** Top-level model routing follows **this `SKILL.md` → `orchestrator/model_registry.py` + `config/models.yml` / `routing.yml`** first. Subagents use **ECC-tools** defaults unless overridden. **ultrathink-system** remains the methodology layer for reasoning execution, not a hard dependency of the YAML registry.
 
 ## Overview
 
 This skill defines top-level model selection and routing logic for all agents
 in the Perplexity-Tools orchestration system. It governs:
 
-1. **Top-level agents** (Mac M2 + Dell RTX 3080): Follow THIS file first
-2. **Sub-agents**: Follow ECC-tools default logic, then this file for overrides
-3. **Interoperability**: Compatible with ultrathink-system and ECC-tools
-4. **Fallback chain**: Cloud → Local Qwen3-30B → Local Qwen3-14B → Local Qwen3-8B
+1. **Top-level agents** (Mac M2 + Dell RTX 3080): Follow **THIS file first**, then `ModelRegistry` / config (see `README.md`).
+2. **Sub-agents**: Follow **ECC-tools default logic** (ECC-style auto-selection), then this file for overrides when the parent orchestrator assigns roles.
+3. **Interoperability**: **Perplexity-Tools** is the top-level orchestrator; **ultrathink-system** provides reasoning methodology via its own `SKILL.md`; **ECC Tools** handles default subagent selection.
+4. **Fallback chain**: Defined concretely in `config/routing.yml` and `config/models.yml` (local → shared → cloud by priority), not only the shorthand tree below.
 
 ---
 
@@ -222,22 +232,21 @@ mlx_models:
 
 ## Idempotent Orchestrator Rules
 
-This repo (#1 Perplexity-Tools) is the **top-level controller**:
+This repo (**Perplexity-Tools**) is the **top-level orchestrator and instance manager**:
 
-1. **Check before creating**: Always check Redis for running agents before spawning new ones
-2. **Reuse existing**: If agent found running → reattach and synchronize
-3. **Conflict resolution**: If ambiguous state detected → ASK USER before proceeding
-4. **Destroy on completion**: Clean up agent instances when tasks complete
-5. **State persistence**: All agent states stored in Redis with TTL=86400s
+1. **Check before creating**: Before spawning a new top-level agent, consult persisted state (`.state/agents.json` via `AgentTracker`) **and** the `POST /orchestrate` idempotency check (`task_type` + task content hash). Strategy docs may also use Redis/Postgres in larger deployments; the reference runtime in this branch uses **file-backed** tracking first.
+2. **Reuse existing**: If a matching **running** agent exists for the same role and task hash → **do not** silently duplicate; return a **conflict** and **ask the user** whether to proceed (API: `force=true` only after explicit user approval).
+3. **Conflict resolution**: Duplicate-role conflicts → `GET /agents/conflicts` or human review; **ask the user** before overriding idempotency.
+4. **Destroy on completion**: Remove or mark agents stopped when tasks complete; optional `DELETE /agents/gc/stopped`.
+5. **State persistence**: Default: `.state/agents.json` (and `.state/budget.json` for `CostGuard`). Add Redis/Postgres for distributed coordination when you wire the full strategy stack.
 
 ```python
 IDEMPOTENT_RULES = {
-    "check_redis_before_spawn": True,
+    "check_registry_before_spawn": True,   # AgentTracker + /orchestrate task_hash
     "reuse_existing_agents": True,
-    "ask_on_conflict": True,
+    "ask_user_when_matching_running_agent": True,  # conflict response unless force=true
     "auto_destroy_on_complete": True,
-    "state_ttl_seconds": 86400,
-    "conflict_threshold": "any_ambiguity"
+    "state_store_default": ".state/agents.json",
 }
 ```
 
@@ -247,9 +256,9 @@ IDEMPOTENT_RULES = {
 
 | Repo | Role | Interface |
 |------|------|-----------|
-| **Perplexity-Tools** (this) | Top-level orchestrator | `/orchestrate` FastAPI endpoint |
-| **ultrathink-system** | Deep reasoning subsystem | Called via skill invocation |
-| **ECC-tools** | Sub-agent model auto-selection | Default logic for sub-agents |
+| **Perplexity-Tools** (this) | Top-level orchestrator & instance manager | `python -m orchestrator.fastapi_app` → `/orchestrate`, `/health`, `/models`, `/agents` |
+| **ultrathink-system** | Reasoning methodology; `single-agent/SKILL.md`; multi-agent registry optional | Skill / HTTP per that repo — **independently configurable** |
+| **ECC-tools** | Sub-agent ECC-style auto-selection | Default logic for sub-agents unless overridden |
 
 ### Cross-repo calls:
 ```python

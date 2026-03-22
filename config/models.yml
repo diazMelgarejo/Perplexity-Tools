@@ -1,0 +1,78 @@
+# Model registry — per-device and per-backend configuration.
+# Top-level agents (Mac + Win) select via SKILL.md → ModelRegistry first.
+# Subagents use ECC-tools default logic unless parent overrides role assignment.
+# priority: lower number = preferred. Local models before online models.
+
+models:
+
+  # ── LOCAL: Shared Ollama (Mac or Win or dedicated server) ─────────────────
+  - name: qwen3:30b-a3b-instruct-q4_K_M
+    backend: ollama
+    device: shared-ollama-host
+    host: "${OLLAMA_HOST:-http://127.0.0.1}"
+    port: 11434
+    context_window: 32768
+    roles: [general, critic, refiner, fallback, subagent]
+    priority: 10
+    online: false
+    reasoning: local-default
+
+  # ── LOCAL: Mac MLX ────────────────────────────────────────────────────────
+  - name: qwen3-30b-a3b-mlx
+    backend: mlx
+    device: mac-studio
+    host: "http://127.0.0.1"
+    port: 8081
+    context_window: 32768
+    roles: [general, top-level, coding, subagent]
+    priority: 20
+    online: false
+    reasoning: mac-local
+
+  # ── LOCAL: Windows LM Studio ─────────────────────────────────────────────
+  - name: qwen3-30b-a3b-lmstudio
+    backend: lm-studio
+    device: win-rtx3080
+    host: "http://127.0.0.1"
+    port: 1234
+    context_window: 32768
+    roles: [general, coding, subagent, fallback]
+    priority: 30
+    online: false
+    reasoning: windows-local
+
+  # ── ONLINE: Perplexity sonar-reasoning-pro ───────────────────────────────
+  - name: sonar-reasoning-pro
+    backend: perplexity
+    device: cloud
+    host: "https://api.perplexity.ai"
+    port: 443
+    context_window: 128000
+    roles: [research, top-level, realtime]
+    priority: 40
+    online: true
+    reasoning: online-research
+
+  # ── ONLINE: Claude 4.5 Thinking ──────────────────────────────────────────
+  - name: claude-4-5-thinking
+    backend: anthropic
+    device: cloud
+    host: "https://api.anthropic.com"
+    port: 443
+    context_window: 200000
+    roles: [strategy, architecture, top-level]
+    priority: 50
+    online: true
+    reasoning: high-depth
+
+  # ── ONLINE: Grok 4.1 Thinking ────────────────────────────────────────────
+  - name: grok-4-1-thinking
+    backend: xai
+    device: cloud
+    host: "https://api.x.ai"
+    port: 443
+    context_window: 131072
+    roles: [finance, realtime, market, top-level]
+    priority: 60
+    online: true
+    reasoning: realtime-specialist
