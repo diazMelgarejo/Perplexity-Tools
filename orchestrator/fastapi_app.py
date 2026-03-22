@@ -12,6 +12,7 @@ from orchestrator.agent_tracker import AgentTracker
 from orchestrator.connectivity import backend_health_map
 from orchestrator.cost_guard import CostGuard
 from orchestrator.model_registry import ModelRegistry
+from orchestrator import autoresearch_bridge
 
 
 # ── app ───────────────────────────────────────────────────────────────────────
@@ -258,6 +259,43 @@ def orchestrate(req: OrchestrateRequest) -> Dict[str, Any]:
     if budget_warning:
         response["budget_warning"] = budget_warning
     return response
+
+
+# ── autoresearch (karpathy/autoresearch foot-soldier swarm) ──────────────
+
+@app.post("/autoresearch/sync", tags=["autoresearch"])
+def autoresearch_sync(run_tag: Optional[str] = Query(None)) -> Dict[str, Any]:
+    """
+    Idempotent sync of karpathy/autoresearch on the Windows GPU runner.
+    Calls autoresearch_bridge.preflight() — bootstraps + syncs the repo,
+    and optionally initialises swarm_state.md if run_tag is supplied.
+    """
+    result = autoresearch_bridge.preflight(run_tag=run_tag)
+    if not result["sync_ok"]:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Autoresearch sync failed: {result['error']}",
+        )
+    return result
+
+
+@app.get("/autoresearch/gpu_status", tags=["autoresearch"])
+def autoresearch_gpu_status() -> Dict[str, Any]:
+    """
+    Query the GPU lock status from swarm_state.md.
+    Returns {"gpu_idle": bool, "swarm_state": SwarmState} for orchestrator.
+    """
+    state = autoresearch_bridge.read_swarm_state()
+    return {
+        "gpu_idle": state.gpu_status.upper() == "IDLE",
+        "swarm_state": {
+            "gpu_status": state.gpu_status,
+            "baseline_val_bpb": state.baseline_val_bpb,
+            "baseline_sha": state.baseline_sha,
+            "orchestrator_directive": state.orchestrator_directive,
+            "evaluator_findings": state.evaluator_findings,
+        },
+    }
 
 
 # ── entry ─────────────────────────────────────────────────────────────────────
