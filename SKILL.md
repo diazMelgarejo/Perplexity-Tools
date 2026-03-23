@@ -10,6 +10,7 @@
 | **Orchestrator & instance manager** | **Perplexity-Tools** (this repo) | Top-level agent lifecycle, `ModelRegistry` / `config/*.yml`, FastAPI `/orchestrate`, idempotency |
 | **Reasoning & routing methodology** | **ultrathink-system** | `single-agent/SKILL.md`, CIDF / process; multi-agent registry is **separately installable** and **not** required to run this orchestrator |
 | **Subagent auto-selection (ECC-style)** | **ECC Tools** | Default subagent routing unless the top-level orchestrator overrides roles |
+| **Karpathy AutoResearch sync** | [karpathy/autoresearch](https://github.com/karpathy/autoresearch) | Idempotent sync of the automated ML research loop; integrated via `/autoresearch/*` endpoints and `orchestrator/autoresearch_bridge.py` |
 
 **Selection order:** Top-level model routing follows **this `SKILL.md` → `orchestrator/model_registry.py` + `config/models.yml` / `routing.yml`** first. Subagents use **ECC-tools** defaults unless overridden. **ultrathink-system** remains the methodology layer for reasoning execution, not a hard dependency of the YAML registry.
 
@@ -252,6 +253,31 @@ IDEMPOTENT_RULES = {
 
 ---
 
+## autoresearch Tasks
+
+When `task_type == "autoresearch"` or `"ml-experiment"`:
+
+1. **FIRST**: Call `POST /autoresearch/sync?run_tag=mar22` (or current date tag) → abort if `sync_ok == false`.
+2. **THEN**: Route top-level model via `ModelRegistry.route_task("strategy")` → picks Claude or Qwen3-30B per budget.
+3. **SPAWN**:
+   - One **Coder** agent (`role=autoresearch-coder`, `device=win-rtx3080`) — edits `train.py`, deploys via `autoresearch_bridge.deploy_train_py()`, runs via `run_experiment_on_gpu()`.
+   - One **Evaluator** agent (`role=autoresearch-evaluator`, `device=mac`) — reads `log.txt` via `fetch_run_log()`, parses `val_bpb`, writes to `swarm_state.md`.
+   - One **Orchestrator** agent (`role=autoresearch-orchestrator`, `device=mac`) — reads `swarm_state.md` + `git log`, proposes next hypothesis.
+4. **IDEMPOTENCY**: Before spawning any agent, call `AgentTracker.find_existing(role, task_hash)`.
+   - If found → ask user before creating another.
+   - If not found → register and proceed.
+5. **GPU LOCK**: `swarm_state.md` **Status: IDLE / BUSY** is the only synchronization primitive.
+   - Only the **Coder** agent may flip `IDLE → BUSY` before dispatching a run.
+   - Only the **Coder** agent may flip `BUSY → IDLE` after `fetch_run_log()` completes.
+6. **NEVER** route autoresearch tasks to cloud models without explicit `--override-cloud` flag.
+
+Local autoresearch clone: keep private env in a gitignored file; document machine-specific paths in `~/cogntiv/autoresearch/LOCAL_SETUP.md` (create locally, not committed).
+
+ECC install example for parallel subagent swarms (per main swarm):  
+`ecc-install --skills coding-standards,configure-ecc,continuous-learning,continuous-learning-v2,deep-research,eval-harness,exa-search,iterative-retrieval,market-research,plan,search-first,strategic-compact,verification-loop,verify`
+
+---
+
 ## Interoperability
 
 | Repo | Role | Interface |
@@ -268,6 +294,117 @@ ultrathink_endpoint = "http://localhost:8001/ultrathink"
 # Delegate sub-agent selection to ECC-tools
 ecc_tools_endpoint = "http://localhost:8002/select-model"
 ```
+
+---
+
+## AutoResearch Integration (Karpathy ML Loop)
+
+**Repo**: [https://github.com/karpathy/autoresearch](https://github.com/karpathy/autoresearch)  
+**Bridge Module**: `orchestrator/autoresearch_bridge.py`  
+**Routing**: `config/routing.yml` (autoresearch routes, e.g. `autoresearch`, `ml-experiment`, `autoresearch-coder`, …)  
+**Models**: `config/models.yml` (e.g. `qwen3-coder-14b`, `qwen3-30b-autoresearch-critic`, plus shared defaults)
+
+### Purpose
+
+Perplexity-Tools can drive an **idempotent sync** of Karpathy’s AutoResearch-style loop for automated ML research workflows:
+
+1. **Remote GPU execution** (e.g. Windows RTX 3080) from a Mac controller
+2. **Automated experiment loop** (program → training script → iterative edits → metrics)
+3. **ECC Tools Stage 4**-style executor selection for parallel coding subagents (see `.claude/ecc-tools.json` in your environment)
+
+### Architecture
+
+```
+User/Orchestrator
+      ↓
+POST /autoresearch/sync  →  preflight / bootstrap
+      ↓
+orchestrator/autoresearch_bridge.py
+      ↓
+[Mac: prepare artifacts] → [scp to Windows] → [Windows: python train.py]
+      ↓
+Feedback loop: metrics → code edits → retrain (idempotent via run tracking)
+```
+
+### FastAPI Endpoints (representative)
+
+| Method | Path | Notes |
+|--------|------|--------|
+| `POST` | `/autoresearch/sync` | Git sync + preflight; query `run_tag` optional |
+| `GET` | `/autoresearch/gpu_status` | Reads `swarm_state.md` GPU lock |
+
+Additional endpoints (`/autoresearch/start`, `/status/{run_id}`, …) may be added in `autoresearch_bridge` as the integration matures; align with `fastapi_app.py`.
+
+### Key Models (typical)
+
+| Task | Model | Device | Rationale |
+|------|-------|--------|-----------|
+| Code generation | `qwen3-coder-14b` (or `qwen3-coder:14b` on Ollama) | Windows RTX 3080 | Primary coder for `train.py` edits |
+| Critic / evaluator | `qwen3-30b-autoresearch-critic` | Windows (shared Ollama) | Review + orchestration support |
+| Light coordination | local Qwen3 8B / MLX | Mac | Optional lightweight loop steps |
+
+### Idempotency Contract
+
+```python
+AUTORESEARCH_IDEMPOTENCY = {
+    "run_id_format": "nanoid or uuid",  # Unique per experiment
+    "state_file": ".state/autoresearch_runs.json",  # if implemented by bridge
+    "duplicate_check": "program.md hash + model + hyperparams",
+    "reuse_existing": True,
+    "force_new": False,  # force=true to override duplicate check
+}
+```
+
+### LAN Setup (Mac ↔ Windows)
+
+- **SSH key auth** only; scope `sshd` to LAN if possible.
+- Secrets: **session exports** or a **gitignored** `.env` — do not commit keys.
+- **File transfer**: prefer **`scp`** (rsync not guaranteed on Windows OpenSSH).
+
+### Integration with ECC Tools (Stage 4 parallel executors)
+
+Optional parallel executors (up to 5) via ECC configuration — see `vendor/ecc-tools/` after `POST /ecc/sync` and local `.claude/ecc-tools.json`.
+
+Layering:
+
+1. **Perplexity-Tools** — orchestrator + `/autoresearch/*`
+2. **ultrathink-system** — CIDF / multi-step planning
+3. **ECC Tools** — subagent / executor selection
+4. **Karpathy AutoResearch** — experiment execution on GPU
+
+### Notes
+
+- `program.md` should use **explicit** host/path values where required (avoid unresolved shell variables in markdown).
+- **prepare** / heavy data prep runs on the **GPU runner** when that’s the contract.
+- **Never** route autoresearch to cloud models without an explicit override flag (see **autoresearch Tasks** above).
+
+---
+
+## ECC Tools Runtime Sync
+
+**Module**: `orchestrator/ecc_tools_sync.py`  
+**Vendor Dir**: `vendor/ecc-tools/` (gitignored; populated at startup or via `POST /ecc/sync`)  
+**State File**: `.state/ecc_sync.json`  
+**Source Repo**: [affaan-m/everything-claude-code](https://github.com/affaan-m/everything-claude-code)
+
+### How It Works
+
+At FastAPI startup (and on demand):
+
+1. **Clone or pull** `everything-claude-code` into `vendor/ecc-tools/` (shallow clone on first run).
+2. **Read** `vendor/ecc-tools/.claude/ecc-tools.json` for `managedFiles` when present.
+3. **Hash-gated copy**: SHA-256 compare source vs destination; copy only when content differs (unless `force=true`).
+4. **Persist** commit hash and per-file hashes in `.state/ecc_sync.json`.
+5. **Fast path**: if upstream commit unchanged since last sync, skip redundant copies (`status: up_to_date`).
+
+### API
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/ecc/status` | Last sync metadata (no network) |
+| `POST` | `/ecc/sync?force=false` | Run sync; `force=true` recopies all managed files |
+
+Managed paths and destinations are defined in `DESTINATION_OVERRIDES` inside `ecc_tools_sync.py` (skills, `.codex/`, `.claude/identity.json`, `ecc-tools.json`, etc.).
 
 ---
 
@@ -305,3 +442,8 @@ python orchestrator.py
 - Added 4 runtime modes (Mac-only, Dell-only, LAN-full, LM-Studio-MLX)
 - Added budget guard ($5/month hard cap)
 - Integrated with ultrathink-system and ECC-tools
+
+### v0.9.0.0 follow-up (autoresearch + ECC sync)
+- Documented **autoresearch Tasks**, **AutoResearch Integration**, and **ECC Tools Runtime Sync** in `SKILL.md`
+- Added `orchestrator/ecc_tools_sync.py`, `GET /ecc/status`, `POST /ecc/sync`, startup sync via FastAPI lifespan
+- Added `docs/ULTRATHINK_v0.9.4.0_SKILL_autoresearch_subsection.md` for paste into ultrathink-system `v0.9.4.0`

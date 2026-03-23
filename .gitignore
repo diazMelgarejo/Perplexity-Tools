@@ -3,3 +3,7 @@
 .venv/
 __pycache__/
 *.py[cod]
+
+# ECC Tools vendor clone (orchestrator/ecc_tools_sync.py)
+vendor/ecc-tools/
+.state/ecc_sync.json
