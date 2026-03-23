@@ -16,7 +16,7 @@ Design rules (from approved interoperability contract)
    may call sync_autoresearch_idempotent().  Layers 2-4 treat autoresearch as
    read-only from a lifecycle perspective.
 2. The autoresearch clone lives in ONE canonical path on the Windows GPU runner:
-       C:/Users/<WINUSER>/cogntiv/autoresearch/
+       C:/Users/<WINUSER>/autoresearch/
    Never duplicate it.
 3. File transfer uses scp only (rsync not guaranteed on Windows SSH sessions).
 4. API keys are NEVER written to files; they are injected as session env vars.
@@ -35,7 +35,7 @@ from typing import Optional
 # ── configuration (resolved from environment, never hard-coded secrets) ────────
 
 GPU_BOX: str = os.environ.get("GPU_BOX", "WINUSER@192.168.1.100")
-GPU_REPO_PATH: str = os.environ.get("GPU_REPO_PATH", "cogntiv/autoresearch")
+GPU_REPO_PATH: str = os.environ.get("GPU_REPO_PATH", "autoresearch")
 AUTORESEARCH_REMOTE: str = "https://github.com/karpathy/autoresearch.git"
 SSH_TIMEOUT: int = int(os.environ.get("SSH_TIMEOUT", "90"))
 
