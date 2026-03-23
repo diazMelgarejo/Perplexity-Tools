@@ -39,6 +39,15 @@ GPU_REPO_PATH: str = os.environ.get("GPU_REPO_PATH", "cogntiv/autoresearch")
 AUTORESEARCH_REMOTE: str = "https://github.com/karpathy/autoresearch.git"
 SSH_TIMEOUT: int = int(os.environ.get("SSH_TIMEOUT", "90"))
 
+# SSH identity key — set DELL_SSH_KEY in .env.local (session-only, gitignored).
+# Falls back to the default SSH agent / ~/.ssh/config if unset.
+_SSH_KEY: str = os.environ.get("DELL_SSH_KEY", "")
+_SSH_OPTS: list[str] = (
+    ["-i", _SSH_KEY, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new"]
+    if _SSH_KEY else
+    ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new"]
+)
+
 # Local Mac path — used only for git history, SKILL.md edits, swarm_state.md.
 LOCAL_REPO_PATH: Path = Path(
     os.environ.get("LOCAL_AUTORESEARCH_PATH", str(Path.home() / "cogntiv" / "autoresearch"))
@@ -83,7 +92,7 @@ def sync_autoresearch_idempotent() -> SyncResult:
     )
     try:
         result = subprocess.run(
-            ["ssh", GPU_BOX, cmd],
+            ["ssh", *_SSH_OPTS, GPU_BOX, cmd],
             capture_output=True,
             text=True,
             timeout=SSH_TIMEOUT,
@@ -108,7 +117,7 @@ def bootstrap_autoresearch_on_runner() -> SyncResult:
     check_cmd = f"if not exist {GPU_REPO_PATH} git clone {AUTORESEARCH_REMOTE} {GPU_REPO_PATH}"
     try:
         subprocess.run(
-            ["ssh", GPU_BOX, check_cmd],
+            ["ssh", *_SSH_OPTS, GPU_BOX, check_cmd],
             capture_output=True,
             text=True,
             timeout=SSH_TIMEOUT,
@@ -161,7 +170,7 @@ def deploy_train_py() -> bool:
     if not local_train.exists():
         return False
     result = subprocess.run(
-        ["scp", str(local_train), f"{GPU_BOX}:{GPU_REPO_PATH}/train.py"],
+        ["scp", *_SSH_OPTS, str(local_train), f"{GPU_BOX}:{GPU_REPO_PATH}/train.py"],
         capture_output=True,
         text=True,
         timeout=SSH_TIMEOUT,
@@ -183,7 +192,7 @@ def run_experiment_on_gpu() -> bool:
         "conda run -n cogntiv312 uv run train.py > run.log 2>&1"
     )
     result = subprocess.run(
-        ["ssh", GPU_BOX, cmd],
+        ["ssh", *_SSH_OPTS, GPU_BOX, cmd],
         capture_output=True,
         text=True,
         timeout=400,  # 5 min budget + startup headroom
@@ -201,7 +210,7 @@ def fetch_run_log() -> bool:
     """
     result = subprocess.run(
         [
-            "scp",
+            "scp", *_SSH_OPTS,
             f"{GPU_BOX}:{GPU_REPO_PATH}/run.log",
             str(LOCAL_REPO_PATH / "log.txt"),
         ],
