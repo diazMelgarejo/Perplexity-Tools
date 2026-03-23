@@ -1,4 +1,6 @@
 .env
+.env.local
+.env
 .state/
 .venv/
 __pycache__/
