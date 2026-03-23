@@ -1,0 +1,35 @@
+# Per-device hardware configuration
+# Supports: Mac (Apple Silicon), Windows (NVIDIA GPU), or shared Ollama endpoint.
+# All three interoperable; each independently configurable.
+
+devices:
+  mac-studio:
+    os: macos
+    chip: apple-silicon
+    runtimes:
+      - ollama         # shared with Windows if OLLAMA_HOST set in .env
+      - mlx            # Mac-only; mlx-lm serve on port 8081
+      - lm-studio      # optional alternative to MLX
+    default_backend: mlx
+    notes: >
+      Primary Mac device. Run MLX for best local performance.
+      Can alternatively point to shared Ollama on Windows via OLLAMA_HOST env var.
+
+  win-rtx3080:
+    os: windows
+    gpu: rtx-3080
+    runtimes:
+      - ollama         # shared with Mac if OLLAMA_HOST set in .env
+      - lm-studio
+    default_backend: ollama
+    notes: >
+      Primary Windows device. Ollama recommended; LM Studio as alternative.
+      Can host shared Ollama endpoint for Mac to consume.
+
+  shared-ollama-host:
+    os: mixed
+    runtimes:
+      - ollama
+    notes: >
+      Optional dedicated Ollama server (local network or same machine).
+      Set OLLAMA_HOST=http://<ip>:11434 in .env on both Mac and Win.
