@@ -1,25 +1,27 @@
 # Perplexity-Tools v0.9.4.1
 
-> **Top-level idempotent multi-agent orchestrator for Mac + Windows**  
+> **Top-level idempotent multi-agent orchestrator for Mac + Windows**
 > Standardized first on `v0.9.0.0` — branch `v0.9.0.0` of [`diazMelgarejo/Perplexity-Tools`](https://github.com/diazMelgarejo/Perplexity-Tools); *`main` branch is ahead now ahead at v0.9.4.1*
 
 ---
 
 ## Architecture Overview
 
-Three interoperable, independently configurable layers:
+Four interoperable, independently configurable layers:
 
 | Repo | Role | Config |
 |------|------|--------|
 | **Perplexity-Tools** (this repo) | Top-level orchestrator, agent lifecycle, fallback routing, idempotency | `config/devices.yml`, `config/models.yml`, `config/routing.yml` |
 | **[ultrathink-system](https://github.com/diazMelgarejo/ultrathink-system)** | Reasoning methodology, 5-stage process, CIDF; routing methodology via `single-agent/SKILL.md`; multi-agent registry is separately installable | `single-agent/SKILL.md`, `multi-agent/config/` |
-| **ECC Tools** | Subagent auto-selection default logic | Per ECC Tools standard |
+| **[ECC Tools](https://github.com/affaan-m/everything-claude-code)** | Subagent auto-selection default logic for up to 5 Stage4 parallel Masterful Executor Agents (especially coders) | `.claude/ecc-tools.json` |
+| **[karpathy/autoresearch](https://github.com/karpathy/autoresearch)** | Latest idempotent sync; research automation workflows and AI-driven research tools | Per autoresearch standard |
 
 **Priority rule:**
 
-- Top-level agents on Mac + Windows: **this repo’s `SKILL.md` → `ModelRegistry` → fallback chain** (top-level model selection runs first).
-- Subagents: **ECC-tools default logic** for ECC-style auto-selection (unless the top-level orchestrator overrides role assignment).
-- **ultrathink-system** supplies reasoning and routing methodology; keep it **independently configurable** from this orchestrator’s device/model YAML.
+- Top-level agents on Mac + Windows: **this repo's `SKILL.md` → `ModelRegistry` → fallback chain** (top-level model selection runs first).
+- Subagents: **ECC-tools default logic** for ECC-style auto-selection (unless the top-level orchestrator overrides role assignment); supports up to 5 Stage4 parallel Masterful Executor Agents, especially coders.
+- **ultrathink-system** supplies reasoning and routing methodology; keep it **independently configurable** from this orchestrator's device/model YAML.
+- **autoresearch** provides latest research automation workflows with idempotent sync.
 
 ---
 
@@ -29,7 +31,7 @@ Three interoperable, independently configurable layers:
 - **Fallback logic**: local → online, device-preferred → shared → cloud.
 - **Per-device**: Mac (MLX / shared Ollama), Windows (Ollama / LM Studio), or both on one shared Ollama.
 - **Cost-guarded**: daily budget cap + 80% alert threshold.
-- **Interoperable**: all three layers compatible via shared config contracts; **Perplexity-Tools** remains the top-level orchestrator and instance manager.
+- **Interoperable**: all four layers compatible via shared config contracts; **Perplexity-Tools** remains the top-level orchestrator and instance manager.
 
 ---
 
@@ -54,7 +56,7 @@ Perplexity-Tools/
 ├── .env.example
 ├── requirements.txt
 ├── multi_agent_labs_strategy.json    ← v1.0.0 strategy (inherited from main)
-└── implementation_templates.json    ← v1.0.0 templates (inherited from main)
+└── implementation_templates.json     ← v1.0.0 templates (inherited from main)
 ```
 
 ---
@@ -80,8 +82,8 @@ python -m orchestrator.fastapi_app
 curl "http://localhost:8000/health"
 
 # 5. Orchestrate a task (idempotent — safe to call twice)
-curl -X POST http://localhost:8000/orchestrate \
-  -H "Content-Type: application/json" \
+curl -X POST http://localhost:8000/orchestrate \\
+  -H "Content-Type: application/json" \\
   -d '{"task": "Refactor auth module", "task_type": "coding", "preferred_device": "mac-studio"}'
 ```
 
@@ -91,7 +93,7 @@ curl -X POST http://localhost:8000/orchestrate \
 
 | Mode | Mac | Windows | Config |
 |------|-----|---------|--------|
-| **Shared Ollama** | client | server (or vice versa) | `OLLAMA_HOST=http://<win-ip>:11434` |
+| **Shared Ollama** | client | server (or vice versa) | `OLLAMA_HOST=http://<ip>:11434` |
 | **MLX on Mac only** | MLX server on :8081 | LM Studio on :1234 | default |
 | **Independent** | MLX or Ollama | Ollama or LM Studio | no shared host needed |
 
@@ -101,28 +103,28 @@ curl -X POST http://localhost:8000/orchestrate \
 
 ```
 POST /orchestrate
-       │
-       ▼
-  compute task_hash
-       │
-       ▼
-  find_existing(role, task_hash)
-       │
-  found? ──yes──► return conflict prompt → ask user
-       │                                      │
-       │                              force=true?
-       │                                │
-       no                              yes
-       │                                │
-       └──────────┬─────────────────────┘
-                  ▼
-          check budget
-                  │
-                  ▼
-          route_task() → fallback chain
-                  │
-                  ▼
-          register agent → return agent + chain
+      │
+      ▼
+   compute task_hash
+      │
+      ▼
+   find_existing(role, task_hash)
+      │
+   found? ──yes──► return conflict prompt → ask user
+      │                        │
+      │                 force=true?
+      │                        │
+     no                    yes
+      │                        │
+      └──────────┬─────────────────────┘
+                 ▼
+            check budget
+                 │
+                 ▼
+            route_task() → fallback chain
+                 │
+                 ▼
+            register agent → return agent + chain
 ```
 
 ---
@@ -130,7 +132,8 @@ POST /orchestrate
 ## Compatible Repos
 
 - **ultrathink-system**: install per that repo; provides reasoning layer (`single-agent/SKILL.md`) and optional multi-agent registry — **separately configurable** from this repo.
-- **ECC Tools**: subagents use ECC auto-selection by default.
+- **ECC Tools** ([affaan-m/everything-claude-code](https://github.com/affaan-m/everything-claude-code)): subagents use ECC auto-selection by default for up to 5 Stage4 parallel Masterful Executor Agents (especially coders); configured via `.claude/ecc-tools.json`.
+- **autoresearch** ([karpathy/autoresearch](https://github.com/karpathy/autoresearch)): latest idempotent sync for research automation workflows.
 - All configs live in `config/` — prefer YAML + env (e.g. `OLLAMA_HOST`) over hardcoded hosts.
 
 ---
@@ -141,6 +144,6 @@ POST /orchestrate
 |-------|-------|
 | Version | `0.9.4.1` |
 | Branch | `main` |
-| Compatible with | ultrathink-system (reasoning layer; version per that repo), ECC Tools standard |
+| Compatible with | ultrathink-system (reasoning layer; version per that repo), ECC Tools standard, karpathy/autoresearch (research automation) |
 | Python | `3.11+` |
 | Framework | FastAPI + httpx + PyYAML |
