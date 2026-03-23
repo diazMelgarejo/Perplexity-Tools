@@ -1,7 +1,8 @@
-# Perplexity-Tools v0.9.0.0
+# Perplexity-Tools v0.9.4.1
 
 > **Top-level idempotent multi-agent orchestrator for Mac + Windows**  
-> Standardized on `v0.9.0.0` — branch `v0.9.0.0` of [`diazMelgarejo/Perplexity-Tools`](https://github.com/diazMelgarejo/Perplexity-Tools)
+> Standardized was first standardized on `v0.9.0.0` — branch `v0.9.0.0` of [`diazMelgarejo/Perplexity-Tools`](https://github.com/diazMelgarejo/Perplexity-Tools)
+> `main` branch is ahead now ahead at v0.9.4.1
 
 ---
 
@@ -65,7 +66,7 @@ Perplexity-Tools/
 # 1. Clone and install
 git clone https://github.com/diazMelgarejo/Perplexity-Tools
 cd Perplexity-Tools
-git checkout v0.9.0.0
+git checkout
 pip install -r requirements.txt
 
 # 2. Configure
@@ -139,8 +140,8 @@ POST /orchestrate
 
 | Field | Value |
 |-------|-------|
-| Version | `0.9.0.0` |
-| Branch | `v0.9.0.0` |
+| Version | `0.9.4.1` |
+| Branch | `main` |
 | Compatible with | ultrathink-system (reasoning layer; version per that repo), ECC Tools standard |
 | Python | `3.11+` |
 | Framework | FastAPI + httpx + PyYAML |
