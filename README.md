@@ -12,7 +12,7 @@ Four interoperable, independently configurable layers:
 | Repo | Role | Config |
 |------|------|--------|
 | **Perplexity-Tools** (this repo) | Top-level orchestrator, agent lifecycle, fallback routing, idempotency | `config/devices.yml`, `config/models.yml`, `config/routing.yml` |
-| **[ultrathink-system](https://github.com/diazMelgarejo/ultrathink-system)** | Reasoning methodology, 5-stage process, CIDF; routing methodology via `single-agent/SKILL.md`; multi-agent registry is separately installable | `single-agent/SKILL.md`, `multi-agent/config/` |
+| **[ultrathink-system](https://github.com/diazMelgarejo/ultrathink-system)** | Reasoning methodology, 5-stage process, CIDF; routing methodology via `single_agent/SKILL.md`; multi-agent registry is separately installable | `single_agent/SKILL.md`, `multi_agent/config/` |
 | **[ECC Tools](https://github.com/affaan-m/everything-claude-code)** | Subagent auto-selection default logic for up to 5 Stage4 parallel Masterful Executor Agents (especially coders) | `.claude/ecc-tools.json` |
 | **[karpathy/autoresearch](https://github.com/karpathy/autoresearch)** | Latest idempotent sync; research automation workflows and AI-driven research tools | Per autoresearch standard |
 
@@ -131,7 +131,7 @@ POST /orchestrate
 
 ## Compatible Repos
 
-- **ultrathink-system**: install per that repo; provides reasoning layer (`single-agent/SKILL.md`) and optional multi-agent registry — **separately configurable** from this repo.
+- **ultrathink-system**: install per that repo; provides reasoning layer (`single_agent/SKILL.md`) and optional multi-agent registry — **separately configurable** from this repo.
 - **ECC Tools** ([affaan-m/everything-claude-code](https://github.com/affaan-m/everything-claude-code)): subagents use ECC auto-selection by default for up to 5x Stage-4 parallel Masterful Executor Agents (especially coders); configured via `.claude/ecc-tools.json`.
 - **autoresearch** ([karpathy/autoresearch](https://github.com/karpathy/autoresearch)): latest idempotent sync for research automation workflows.
 - All configs live in `config/` — prefer YAML + env (e.g. `OLLAMA_HOST`) over hardcoded hosts.

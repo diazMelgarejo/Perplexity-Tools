@@ -8,7 +8,7 @@
 | Layer | Repo | Role |
 |-------|------|------|
 | **Orchestrator & instance manager** | **Perplexity-Tools** (this repo) | Top-level agent lifecycle, `ModelRegistry` / `config/*.yml`, FastAPI `/orchestrate`, idempotency |
-| **Reasoning & routing methodology** | **ultrathink-system** | `single-agent/SKILL.md`, CIDF / process; multi-agent registry is **separately installable** and **not** required to run this orchestrator |
+| **Reasoning & routing methodology** | **ultrathink-system** | `single_agent/SKILL.md`, CIDF / process; multi-agent registry is **separately installable** and **not** required to run this orchestrator |
 | **Subagent auto-selection (ECC-style)** | **ECC Tools** | Default subagent routing unless the top-level orchestrator overrides roles |
 | **Karpathy AutoResearch sync** | [karpathy/autoresearch](https://github.com/karpathy/autoresearch) | Idempotent sync of the automated ML research loop; integrated via `/autoresearch/*` endpoints and `orchestrator/autoresearch_bridge.py` |
 
@@ -283,7 +283,7 @@ ECC install example for parallel subagent swarms (per main swarm):
 | Repo | Role | Interface |
 |------|------|-----------|
 | **Perplexity-Tools** (this) | Top-level orchestrator & instance manager | `python -m orchestrator.fastapi_app` → `/orchestrate`, `/health`, `/models`, `/agents` |
-| **ultrathink-system** | Reasoning methodology; `single-agent/SKILL.md`; multi-agent registry optional | Skill / HTTP per that repo — **independently configurable** |
+| **ultrathink-system** | Reasoning methodology; `single_agent/SKILL.md`; multi-agent registry optional | Skill / HTTP per that repo — **independently configurable** |
 | **ECC-tools** | Sub-agent ECC-style auto-selection | Default logic for sub-agents unless overridden |
 
 ### Cross-repo calls:
