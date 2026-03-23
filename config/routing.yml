@@ -1,0 +1,65 @@
+# Routing rules — maps task_type → ordered role list for ModelRegistry.route_task().
+# First matching model per role wins; fallback roles provide the chain.
+# Top-level agents on Mac+Win use this. Subagents use ECC default unless overridden.
+
+routes:
+
+  default:
+    description: General-purpose tasks
+    roles: [top-level, general, fallback]
+
+  coding:
+    description: Code generation, review, debugging
+    roles: [coding, top-level, fallback]
+
+  strategy:
+    description: Architecture, planning, system design
+    roles: [strategy, architecture, top-level, fallback]
+
+  finance:
+    description: Financial analysis, market data, real-time queries
+    roles: [finance, realtime, market, fallback]
+
+  research:
+    description: Web research, synthesis, long-context analysis
+    roles: [research, top-level, fallback]
+
+  critic:
+    description: Refinement, quality review, elegance scoring
+    roles: [critic, refiner, fallback]
+
+  subagent:
+    description: Subagent tasks delegated by top-level orchestrator
+    roles: [subagent, general, fallback]
+
+  realtime:
+    description: Live data, current events, monitoring
+    roles: [realtime, market, research, fallback]
+
+
+  # ── AUTORESEARCH: karpathy/autoresearch foot-soldier swarm ─────────────────
+  # Called by orchestrator/autoresearch_bridge.py only.
+  # Coder runs on win-rtx3080 (CUDA); Evaluator + Orchestrator run on mac.
+  autoresearch:
+    description: ML experiment loop via karpathy/autoresearch on GPU runner
+    roles: [autoresearch-coder, autoresearch-critic, strategy, fallback]
+    notes: sync_autoresearch_idempotent() must succeed before any agent spawns
+
+  autoresearch-coder:
+    description: Edits train.py, deploys to GPU via scp, dispatches run via ssh
+    roles: [autoresearch-coder, coding, fallback]
+    device_affinity: win-rtx3080
+
+  autoresearch-evaluator:
+    description: Reads log.txt, parses val_bpb, writes findings to swarm_state.md
+    roles: [autoresearch-critic, critic, refiner, fallback]
+    device_affinity: mac
+
+  autoresearch-orchestrator:
+    description: Reads swarm_state.md + git log, proposes next hypothesis
+    roles: [strategy, architecture, top-level, fallback]
+    device_affinity: mac
+
+  ml-experiment:
+    description: Alias for autoresearch; routes identically
+    roles: [autoresearch-coder, autoresearch-critic, strategy, fallback]
