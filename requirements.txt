@@ -1,0 +1,38 @@
+# Perplexity-Tools v0.9.0.0 Dependencies
+# Updated: 2026-03-22
+
+# Core frameworks
+crewai==1.9.0
+crewai-tools>=0.14.0
+perplexity-ai>=0.3.0
+
+# FastAPI web framework
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+websockets>=12.0
+
+# Async and networking
+aiohttp>=3.9.3
+asyncio>=3.4.3
+httpx>=0.26.0
+
+# Database and caching
+redis>=5.0.1
+python-multipart>=0.0.9
+sqlalchemy>=2.0.25
+
+# Data validation
+pydantic>=2.6.0
+
+# Config
+PyYAML>=6.0.1
+
+# Utilities
+python-dotenv>=1.0.1
+loguru>=0.7.2
+rich>=13.7.0
+
+# Optional: MLX backend support (macOS only)
+# mlx-lm>=0.9.0  # Uncomment if using LM Studio MLX mode
+# transformers>=4.37.0  # Uncomment if using HuggingFace models
+# huggingface-hub>=0.20.0  # Uncomment for model downloading
