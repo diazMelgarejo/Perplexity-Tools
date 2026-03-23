@@ -112,11 +112,11 @@ POST /orchestrate
       │
    found? ──yes──► return conflict prompt → ask user
       │                        │
-      │                 force=true?
+      │                   force=true?
       │                        │
-     no                    yes
+     no                       yes
       │                        │
-      └──────────┬─────────────────────┘
+      └──────────┬─────────────┘
                  ▼
             check budget
                  │
@@ -132,7 +132,7 @@ POST /orchestrate
 ## Compatible Repos
 
 - **ultrathink-system**: install per that repo; provides reasoning layer (`single-agent/SKILL.md`) and optional multi-agent registry — **separately configurable** from this repo.
-- **ECC Tools** ([affaan-m/everything-claude-code](https://github.com/affaan-m/everything-claude-code)): subagents use ECC auto-selection by default for up to 5 Stage4 parallel Masterful Executor Agents (especially coders); configured via `.claude/ecc-tools.json`.
+- **ECC Tools** ([affaan-m/everything-claude-code](https://github.com/affaan-m/everything-claude-code)): subagents use ECC auto-selection by default for up to 5x Stage-4 parallel Masterful Executor Agents (especially coders); configured via `.claude/ecc-tools.json`.
 - **autoresearch** ([karpathy/autoresearch](https://github.com/karpathy/autoresearch)): latest idempotent sync for research automation workflows.
 - All configs live in `config/` — prefer YAML + env (e.g. `OLLAMA_HOST`) over hardcoded hosts.
 
