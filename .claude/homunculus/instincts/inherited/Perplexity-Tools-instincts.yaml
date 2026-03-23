@@ -1,0 +1,204 @@
+# Instincts generated from https://github.com/diazMelgarejo/Perplexity-Tools
+# Generated: 2026-03-23T00:53:51.288Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: Perplexity-Tools-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/diazMelgarejo/Perplexity-Tools
+---
+
+# Perplexity Tools Commit Length
+
+## Action
+
+Write moderate-length commit messages (~64 characters)
+
+## Evidence
+
+- Average commit message length: 64 chars
+- Based on 16 commits
+
+---
+id: Perplexity-Tools-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/diazMelgarejo/Perplexity-Tools
+---
+
+# Perplexity Tools Naming Files
+
+## Action
+
+Use snake_case naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: snake_case
+
+---
+id: Perplexity-Tools-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/diazMelgarejo/Perplexity-Tools
+---
+
+# Perplexity Tools Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: Perplexity-Tools-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/diazMelgarejo/Perplexity-Tools
+---
+
+# Perplexity Tools Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: Perplexity-Tools-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/diazMelgarejo/Perplexity-Tools
+---
+
+# Perplexity Tools Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: Perplexity-Tools-workflow-feature-development
+trigger: "when implementing a new feature"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/diazMelgarejo/Perplexity-Tools
+---
+
+# Perplexity Tools Workflow Feature Development
+
+## Action
+
+Follow the feature-development workflow:
+1. Add feature implementation
+2. Add tests for feature
+3. Update documentation
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~21x per month
+- Files: **/*.test.*, **/api/**
+
+---
+id: Perplexity-Tools-workflow-add-new-api-endpoint
+trigger: "when doing add new api endpoint"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/diazMelgarejo/Perplexity-Tools
+---
+
+# Perplexity Tools Workflow Add New Api Endpoint
+
+## Action
+
+Follow the add-new-api-endpoint workflow:
+1. Edit or create endpoint in orchestrator/fastapi_app.py
+2. Update config/routing.yml to include new route (if needed)
+3. Optionally, update SKILL.md or docs to document the endpoint
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: orchestrator/fastapi_app.py, config/routing.yml, SKILL.md
+
+---
+id: Perplexity-Tools-workflow-integrate-new-agent-or-model
+trigger: "when doing integrate new agent or model"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/diazMelgarejo/Perplexity-Tools
+---
+
+# Perplexity Tools Workflow Integrate New Agent Or Model
+
+## Action
+
+Follow the integrate-new-agent-or-model workflow:
+1. Add or update entry in config/models.yml
+2. Update orchestrator/model_registry.py or related orchestrator files
+3. Document in SKILL.md and/or README
+4. Optionally, update config/routing.yml if new routes are needed
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: config/models.yml, orchestrator/model_registry.py, SKILL.md
+
+---
+id: Perplexity-Tools-workflow-feature-development-with-documentation
+trigger: "when doing feature development with documentation"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/diazMelgarejo/Perplexity-Tools
+---
+
+# Perplexity Tools Workflow Feature Development With Documentation
+
+## Action
+
+Follow the feature-development-with-documentation workflow:
+1. Implement feature in orchestrator/*.py (e.g., new bridge, sync, or tracker modules)
+2. Add or update tests (e.g., orchestrator/ecc_tools_sync_test.py)
+3. Update documentation (SKILL.md, docs/*.md)
+4. Update .gitignore or vendor/.gitkeep if new directories/files are added
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: orchestrator/*.py, orchestrator/*_test.py, SKILL.md
+
