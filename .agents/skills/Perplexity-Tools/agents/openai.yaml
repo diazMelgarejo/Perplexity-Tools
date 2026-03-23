@@ -1,0 +1,6 @@
+interface:
+  display_name: "Perplexity Tools"
+  short_description: "Repo-specific patterns and workflows for Perplexity-Tools"
+  default_prompt: "Use the Perplexity-Tools repo skill to follow existing architecture, testing, and workflow conventions."
+policy:
+  allow_implicit_invocation: true
