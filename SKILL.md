@@ -271,7 +271,7 @@ When `task_type == "autoresearch"` or `"ml-experiment"`:
    - Only the **Coder** agent may flip `BUSY → IDLE` after `fetch_run_log()` completes.
 6. **NEVER** route autoresearch tasks to cloud models without explicit `--override-cloud` flag.
 
-Local autoresearch clone: keep private env in a gitignored file; document machine-specific paths in `~/cogntiv/autoresearch/LOCAL_SETUP.md` (create locally, not committed).
+Local autoresearch clone: keep private env in a gitignored file; document machine-specific paths in `~/autoresearch/LOCAL_SETUP.md` (create locally, not committed).
 
 ECC install example for parallel subagent swarms (per main swarm):  
 `ecc-install --skills coding-standards,configure-ecc,continuous-learning,continuous-learning-v2,deep-research,eval-harness,exa-search,iterative-retrieval,market-research,plan,search-first,strategic-compact,verification-loop,verify`
