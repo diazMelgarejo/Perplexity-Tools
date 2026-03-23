@@ -1,8 +1,7 @@
 # Perplexity-Tools v0.9.4.1
 
 > **Top-level idempotent multi-agent orchestrator for Mac + Windows**  
-> Standardized was first standardized on `v0.9.0.0` — branch `v0.9.0.0` of [`diazMelgarejo/Perplexity-Tools`](https://github.com/diazMelgarejo/Perplexity-Tools)
-> `main` branch is ahead now ahead at v0.9.4.1
+> Standardized first on `v0.9.0.0` — branch `v0.9.0.0` of [`diazMelgarejo/Perplexity-Tools`](https://github.com/diazMelgarejo/Perplexity-Tools); *`main` branch is ahead now ahead at v0.9.4.1*
 
 ---
 
