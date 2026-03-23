@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+from contextlib import asynccontextmanager
 from dataclasses import asdict
 from hashlib import sha256
 from typing import Any, Dict, List, Optional
@@ -13,6 +15,23 @@ from orchestrator.connectivity import backend_health_map
 from orchestrator.cost_guard import CostGuard
 from orchestrator.model_registry import ModelRegistry
 from orchestrator import autoresearch_bridge
+from orchestrator.ecc_tools_sync import get_sync_status, sync_ecc_tools
+
+_startup_log = logging.getLogger("orchestrator.fastapi_app")
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    try:
+        ecc_result = sync_ecc_tools(force=False)
+        _startup_log.info(
+            "ECC Tools sync: %s — %s",
+            ecc_result.get("status"),
+            ecc_result.get("message", ""),
+        )
+    except Exception as exc:
+        _startup_log.warning("ECC Tools sync failed (non-fatal): %s", exc)
+    yield
 
 
 # ── app ───────────────────────────────────────────────────────────────────────
@@ -25,6 +44,7 @@ app = FastAPI(
         "Repo #1 — complements ultrathink-system (Repo #2) "
         "with per-device model selection and fallback logic."
     ),
+    lifespan=_lifespan,
 )
 
 app.add_middleware(
@@ -58,6 +78,24 @@ class ConflictResponse(BaseModel):
 
 
 # ── health ─────────────────────────────────────────────────────────────────────
+
+@app.get("/ecc/status", tags=["ecc"])
+def ecc_status() -> Dict[str, Any]:
+    """Return the last ECC Tools sync status without running a new sync."""
+    return get_sync_status()
+
+
+@app.post("/ecc/sync", tags=["ecc"])
+def ecc_sync(force: bool = Query(False)) -> Dict[str, Any]:
+    """
+    Trigger an idempotent ECC Tools sync. Pass force=true to copy all managed files.
+    """
+    try:
+        return sync_ecc_tools(force=force)
+    except Exception as exc:
+        _startup_log.exception("ECC sync endpoint error")
+        return {"status": "error", "message": str(exc)}
+
 
 @app.get("/health", tags=["system"])
 def health(
