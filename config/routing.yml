@@ -1,7 +1,6 @@
 # Routing rules — maps task_type → ordered role list for ModelRegistry.route_task().
 # First matching model per role wins; fallback roles provide the chain.
 # Top-level agents on Mac+Win use this. Subagents use ECC default unless overridden.
-
 routes:
 
   default:
@@ -36,6 +35,26 @@ routes:
     description: Live data, current events, monitoring
     roles: [realtime, market, research, fallback]
 
+  # ── ULTRATHINK: deep reasoning via ultrathink-system (port 8001) ────────────
+  # Called when reasoning_depth=ultra or privacy_critical=True.
+  # ultrathink is stateless — PT owns dedup via .state/agents.json.
+  # Fallback: local qwen3:30b if ultrathink endpoint unreachable.
+  deep_reasoning:
+    description: Complex multi-step reasoning, privacy-critical tasks
+    endpoint: "${ULTRATHINK_ENDPOINT}"
+    timeout: "${ULTRATHINK_TIMEOUT}"
+    requires: [ultrathink_available]
+    fallback: local_qwen30b
+    roles: [ultrathink, strategy, top-level, fallback]
+
+  code_analysis:
+    description: Deep code analysis requiring extended reasoning
+    endpoint: "${ULTRATHINK_ENDPOINT}"
+    timeout: "${ULTRATHINK_TIMEOUT}"
+    requires: [ultrathink_available]
+    model: qwen3-coder:14b
+    fallback: local_qwen30b
+    roles: [ultrathink, coding, top-level, fallback]
 
   # ── AUTORESEARCH: karpathy/autoresearch foot-soldier swarm ─────────────────
   # Called by orchestrator/autoresearch_bridge.py only.
