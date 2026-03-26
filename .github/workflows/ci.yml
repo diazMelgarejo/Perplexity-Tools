@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov pyyaml
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Lint with flake8 (warnings only)
+        run: |
+          pip install flake8
+          flake8 . --count --max-line-length=120 --statistics --exit-zero
+        continue-on-error: true
+
+      - name: Run tests
+        run: |
+          pytest tests/ -v --tb=short
+        env:
+          ULTRATHINK_ENDPOINT: http://localhost:8001/ultrathink
+          ULTRATHINK_TIMEOUT: "120"
+          ULTRATHINK_ENABLED: "false"
+
+      - name: Check routing.yml validity
+        run: |
+          python -c "
+import yaml
+with open('config/routing.yml') as f:
+    cfg = yaml.safe_load(f)
+assert 'routes' in cfg, 'routes key missing'
+assert 'deep_reasoning' in cfg['routes'], 'deep_reasoning route missing'
+assert 'code_analysis' in cfg['routes'], 'code_analysis route missing'
+print('routing.yml OK - all required routes present')
+"
