@@ -447,3 +447,36 @@ python orchestrator.py
 - Documented **autoresearch Tasks**, **AutoResearch Integration**, and **ECC Tools Runtime Sync** in `SKILL.md`
 - Added `orchestrator/ecc_tools_sync.py`, `GET /ecc/status`, `POST /ecc/sync`, startup sync via FastAPI lifespan
 - Added `docs/ULTRATHINK_v0.9.4.0_SKILL_autoresearch_subsection.md` for paste into ultrathink-system `v0.9.4.0`
+
+
+---
+
+## ultrathink-system Integration
+
+**When routing to ultrathink-system, the following rules govern PT behavior.**
+
+### When PT Calls ultrathink
+
+ultrathink-system is invoked via `config/routing.yml` routes `deep_reasoning` and `code_analysis` when:
+- `task_type` is `deep_reasoning` (complex multi-step reasoning, privacy-critical tasks)
+- `task_type` is `code_analysis` (deep code analysis requiring extended reasoning)
+- `privacy_critical=True` is set in the task payload
+- `reasoning_depth=ultra` is explicitly requested by user
+
+### PT Behavior When Calling ultrathink
+
+| Rule | Detail |
+|---|---|
+| PT runs first | PT model selection always executes before calling ultrathink |
+| Stateful dedup | PT checks `.state/agents.json` before calling ultrathink (ultrathink is stateless) |
+| Endpoint | `${ULTRATHINK_ENDPOINT}` (default: `http://localhost:8001/ultrathink`) |
+| Timeout | `${ULTRATHINK_TIMEOUT}` seconds (default: 120) |
+| Fallback | If `ULTRATHINK_ENABLED=false` or endpoint unreachable, use local qwen3:30b |
+| Privacy | ultrathink stays local — no cloud calls from Layer 2 downward |
+
+### Integration References
+
+- ultrathink SKILL.md: `https://github.com/diazMelgarejo/ultrathink-system/blob/main/single_agent/SKILL.md`
+- Bridge spec: `https://github.com/diazMelgarejo/ultrathink-system/blob/main/docs/PERPLEXITY_BRIDGE.md`
+- Routing config: `config/routing.yml` (deep_reasoning + code_analysis routes)
+- Health check: `./check-stack.sh` (in ultrathink-system repo)
