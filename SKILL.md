@@ -1,7 +1,7 @@
 # SKILL.md — Perplexity-Tools Model Selection Skill
 
-**Version:** `v0.9.0.0` (standardized from here onward) · **Updated:** 2026-03-22  
-**Repo:** https://github.com/diazMelgarejo/Perplexity-Tools · **Branch:** `v0.9.0.0`
+**Version:** `v0.9.4.3` (standardized from v0.9.0.0 onward) · **Updated:** 2026-03-26  
+**Repo:** https://github.com/diazMelgarejo/Perplexity-Tools · **Branch:** `main`
 
 **Layering (all interoperable and independently configurable):**
 
@@ -434,7 +434,7 @@ python orchestrator.py
 
 ## Changelog
 
-### v0.9.0.0 (2026-03-22)
+### v0.9.1.0 (2026-03-22)
 - Added SKILL.md with complete model selection logic
 - Added Qwen3-30B-A3B as critic, refiner, and offline fallback
 - Added Perplexity API integration (Claude Sonnet 4.5 + Grok 4.1)
@@ -443,7 +443,7 @@ python orchestrator.py
 - Added budget guard ($5/month hard cap)
 - Integrated with ultrathink-system and ECC-tools
 
-### v0.9.0.0 follow-up (autoresearch + ECC sync)
+### v0.9.4.1 (autoresearch + ECC sync)
 - Documented **autoresearch Tasks**, **AutoResearch Integration**, and **ECC Tools Runtime Sync** in `SKILL.md`
 - Added `orchestrator/ecc_tools_sync.py`, `GET /ecc/status`, `POST /ecc/sync`, startup sync via FastAPI lifespan
 - Added `docs/ULTRATHINK_v0.9.4.0_SKILL_autoresearch_subsection.md` for paste into ultrathink-system `v0.9.4.0`
