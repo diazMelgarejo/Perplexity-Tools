@@ -1,0 +1,42 @@
+# Modelfile.win-rtx3080
+# Hardware Profile: Dell Precision 3660 | Intel i9-12900K | 32GB RAM | RTX 3080 10GB VRAM
+# Usage: ollama create qwen3.5-35b-a3b-win -f hardware/Modelfile.win-rtx3080
+
+FROM frob/qwen3.5:35b-a3b-instruct-ud-q4_K_M
+
+# ── VRAM / GPU tuning ──────────────────────────────────────────────────────
+# RTX 3080 has 10GB VRAM; 35B A3B MoE layers stay within budget at num_gpu 32
+PARAMETER num_gpu 32
+
+# Keep context modest to avoid OOM on 10GB VRAM (35B MoE safe at 8192)
+PARAMETER num_ctx 8192
+
+# ── Performance env vars (set in shell BEFORE starting ollama serve) ───────
+# OLLAMA_FLASH_ATTENTION=1     — required for speed on Ampere arch (RTX 30xx)
+# OLLAMA_KV_CACHE_TYPE=q8_0   — compresses KV cache ~1.5-2GB savings
+# OLLAMA_NUM_PARALLEL=1       — RTX 3080 cannot handle concurrent requests
+#
+# Add to your shell profile or Windows environment variables:
+#   set OLLAMA_FLASH_ATTENTION=1
+#   set OLLAMA_KV_CACHE_TYPE=q8_0
+#   set OLLAMA_NUM_PARALLEL=1
+
+# ── System prompt for coding/heavy-reasoning role ──────────────────────────
+SYSTEM """
+You are an expert software engineer and deep reasoning assistant running on a
+Dell Precision 3660 workstation (Intel i9-12900K, 32GB RAM, RTX 3080 10GB VRAM).
+You are optimized for complex coding tasks, code review, architecture design,
+and multi-step reasoning. You are the 'coder_agent' in the distributed AI
+orchestration stack. Respond with precision, clarity, and production-ready code.
+"""
+
+# ── Recommended sampling parameters ───────────────────────────────────────
+PARAMETER temperature 0.6
+PARAMETER top_p 0.9
+PARAMETER top_k 20
+PARAMETER repeat_penalty 1.1
+
+# ── Hard ceiling (do not load models > 9.5GB weights on this profile) ──────
+# Reference: hardware/SKILL.md profile_id: win-rtx3080
+# Max safe model size: ~9.5GB quantized weights
+# Role in stack: coding, critic, autoresearch-coder
