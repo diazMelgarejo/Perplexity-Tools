@@ -4,7 +4,7 @@
 # Core frameworks
 crewai==1.9.0
 crewai-tools>=0.14.0
-perplexity-ai>=0.3.0
+perplexityai>=0.3.0
 
 # FastAPI web framework
 fastapi>=0.109.0
