@@ -14,25 +14,21 @@
 
 **Selection order:** Top-level model routing follows **this `SKILL.md` → `orchestrator/model_registry.py` + `config/models.yml` / `routing.yml`** first. Subagents use **ECC-tools** defaults unless overridden. **ultrathink-system** remains the methodology layer for reasoning execution, not a hard dependency of the YAML registry.
 
-## Overview
-
-This skill defines top-level model selection and routing logic for all agents in the Perplexity-Tools orchestration system. It governs:
-
-1. **Top-level agents** (Mac M2 + Dell RTX 3080): Follow **THIS file first**, then `ModelRegistry` / config (see `README.md`).
-2. **Sub-agents**: Follow **ECC-tools default logic** (ECC-style auto-selection), then this file for overrides when the parent orchestrator assigns roles.
-3. **Interoperability**: **Perplexity-Tools** is the top-level orchestrator; **ultrathink-system** provides reasoning methodology via its own `SKILL.md`; **ECC Tools** handles default subagent selection.
-4. **Fallback chain**: Defined concretely in `config/routing.yml` and `config/models.yml` (local → shared → cloud by priority), not only the shorthand tree below.
-
 ---
 
 ## Multi-Computer Orchestration (Hardware-Aware)
 
 This orchestrator is designed for **full hardware profile awareness** [web:40] across a distributed LAN environment. It adapts standard multi-agent orchestration strategies [web:23][web:25] (sequential, concurrent, routing) to physical hardware constraints.
 
-### Hardware Strategy Adaptation
-- **Durable Workflow Architecture**: Multi-agent sessions are persistent across reloads via `.state/agents.json`.
-- **Intelligent Routing (Hardware-Bound)**: Instead of routing by cost alone, the orchestrator routes by **VRAM/RAM availability** [web:40] and **compute specialization**.
-- **Role-Based Provisioning**: Agents are dynamically assigned to the hardware profile that best matches their role's compute profile.
+### LAN Resume & Distributed Discovery
+- **Automatic Resume (LAN Detect)**: On startup, the system scans the LAN for existing instances (Redis: `agent:registry:*` or local `.state/agents.json`).
+- **Session Continuity**: Resume from the last known state by re-attaching to running agent processes or resuming from the **Short Persistence Log** (`.state/session.log`).
+- **Discovery Strategy**: Attempt to connect to `REDIS_HOST`. If unreachable, fallback to the local state file for standalone operations.
+
+### Spawn Reconciliation (Pre-Model Spawning)
+- **Centralized Registry Check**: Before spawning any agent, the orchestrator MUST check the `AgentTracker` (global registry) for an existing agent with the same `role` and `task_hash`.
+- **Proper Session Planning**: Reconcile spawns *before* model assignment to prevent dual-task GPU contention or redundant model loading.
+- **Model Assignment**: Once a spawn is reconciled, assign the model based on the hardware profile's VRAM/RAM ceiling (see [hardware/SKILL.md](https://github.com/diazMelgarejo/Perplexity-Tools/blob/main/hardware/SKILL.md)).
 
 ### Profile Deployment Logic
 | Profile ID | Architecture | Core Specialization | Primary Use Case |
@@ -217,7 +213,10 @@ This repo (**Perplexity-Tools**) is the **top-level orchestrator and instance ma
 ## Changelog
 
 ### v0.9.6.0 (2026-03-27)
+- **LAN Continuity**: Implemented **LAN Detect & Resume** for seamless multi-computer operation.
 - **Orchestration**: Full hardware profile awareness implemented [web:40].
+- **Pre-Flight Reconciliation**: Added spawn detection and reconciliation *before* model spawning for efficiency.
+- **Logging**: Added **Short Persistence Log** (`.state/session.log`) for low-overhead session tracking.
 - **Strategies**: Adapted durable workflow and intelligent routing for multi-computer LAN.
 - **Models**: Updated primaries to Qwen 3.5 series (9B MLX on Mac, 35B MoE on Dell).
 - **Hardening**: Reinforced VRAM safety rules and hardware-bound routing.
