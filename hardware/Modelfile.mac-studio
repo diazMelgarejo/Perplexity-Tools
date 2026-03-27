@@ -1,0 +1,58 @@
+# Modelfile.mac-studio
+# Hardware Profile: Apple Silicon Mac Mini / Mac Studio (Unified Memory)
+# Note: MLX is the preferred backend for Apple Silicon — this Modelfile is for
+#       Ollama fallback only. Primary path: use mlx-lm or LM Studio directly.
+# Usage: ollama create qwen3.5-9b-mac -f hardware/Modelfile.mac-studio
+
+FROM qwen3.5:9b-instruct
+
+# ── Unified Memory tuning ─────────────────────────────────────────────────────
+# Apple Silicon: no discrete VRAM — model size limited by total RAM only
+# 16GB RAM  → 7B-13B 4-bit models for comfortable inference
+# 24-32GB RAM → 30B models run comfortably
+# 64GB+ RAM   → 70B+ models feasible
+#
+# Ollama on Apple Silicon uses Metal automatically; no extra PARAMETER needed.
+# GPU layers are handled by the Metal backend — all layers are on-chip.
+PARAMETER num_gpu 99
+
+# Context window: larger ctx is safe on 16GB+ unified memory for 9B models
+PARAMETER num_ctx 16384
+
+# ── Performance notes ──────────────────────────────────────────────────────
+# Expected throughput:
+#   M2 Pro (Mac Mini): ~60-80 tok/s for 7B-8B 4-bit
+#   M4 Pro (Mac Mini): ~80-120+ tok/s for 7B-8B 4-bit
+#   M2 Ultra (Mac Studio): ~120-160+ tok/s for 7B-8B 4-bit
+#
+# For best performance on Apple Silicon, prefer MLX path:
+#   brew install uv && uv pip install mlx-lm
+#   mlx_lm.generate --model mlx-community/Qwen2.5-9B-Instruct-4bit --prompt "..."
+#
+# LM Studio is the easiest GUI option for 95% of Mac users.
+
+# ── System prompt for manager/orchestrator role ────────────────────────
+SYSTEM """
+You are an intelligent task manager and orchestration agent running on Apple
+Silicon (Mac Mini / Mac Studio) with unified memory. You are the 'manager_agent'
+in the distributed AI orchestration stack. Your role is to:
+- Decompose complex tasks into subtasks
+- Route coding and heavy compute tasks to the Windows coder agent when available
+- Handle synthesis, summarization, planning, and lightweight reasoning locally
+- Gracefully degrade to full local processing when the remote Windows node is offline
+
+Respond concisely and structure your outputs for easy downstream consumption.
+"""
+
+# ── Recommended sampling parameters ───────────────────────────────────────
+PARAMETER temperature 0.7
+PARAMETER top_p 0.9
+PARAMETER top_k 40
+PARAMETER repeat_penalty 1.05
+
+# ── Reference ──────────────────────────────────────────────────────────────
+# hardware/SKILL.md profile_id: mac-studio
+# Role in stack: manager, synthesis, standard, realtime
+# Preferred MLX model: mlx-community/Qwen2.5-9B-Instruct-4bit
+# Preferred Ollama model: qwen3:8b-instruct
+# Heavy model (32GB+ RAM): mlx-community/Qwen2.5-30B-Instruct-4bit
