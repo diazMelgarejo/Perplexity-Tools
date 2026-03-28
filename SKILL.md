@@ -1,6 +1,6 @@
 # SKILL.md — Perplexity-Tools Model Selection Skill
 
-**Version:** `v0.9.6.0` (standardized from v0.9.0.0 onward) · **Updated:** 2026-03-27
+**Version:** `v0.9.7.0` (standardized from v0.9.0.0 onward) · **Updated:** 2026-03-28
 **Repo:** https://github.com/diazMelgarejo/Perplexity-Tools · **Branch:** `main`
 
 **Layering (all interoperable and independently configurable):**
@@ -211,6 +211,11 @@ This repo (**Perplexity-Tools**) is the **top-level orchestrator and instance ma
 ---
 
 ## Changelog
+
+### v0.9.7.0 (2026-03-28)
+- **AFRP cross-reference**: ultrathink-system layer now documents AFRP (pre-router gate) in 4-layer architecture table [SYNC]
+- **Fixes**: orchestrator.py syntax errors, confidential folder references removed, FastAPI version aligned
+- **Sync**: Both repos synchronized to v0.9.7.0 [SYNC]
 
 ### v0.9.6.0 (2026-03-27)
 - **LAN Continuity**: Implemented **LAN Detect & Resume** for seamless multi-computer operation.

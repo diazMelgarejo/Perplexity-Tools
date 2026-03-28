@@ -8,6 +8,24 @@ Cross-repo changes affecting ultrathink-system are marked with `[SYNC]`.
 
 ---
 
+## [0.9.7.0] - 2026-03-28
+
+### Added
+- **AFRP cross-reference**: ultrathink-system layer now documents AFRP (pre-router gate) in 4-layer architecture table [SYNC]
+
+### Fixed
+- **orchestrator.py**: Removed git commit message fragment appended to REDIS_HOST line (syntax error)
+- **orchestrator.py**: Replaced bare IP `192.168.1.100` with `OLLAMA_WINDOWS_ENDPOINT` env var
+- **orchestrator/fastapi_app.py**: Updated stale version `0.9.0.0` → `0.9.7.0`
+- **orchestrator/autoresearch_bridge.py**: Removed 3x confidential folder references
+- **requirements.txt**: Updated header comment version
+
+### Synced with ultrathink-system
+- Both repos synchronized to v0.9.7.0 [SYNC]
+- ultrathink-system introduces AFRP as mandatory pre-router gate [SYNC]
+
+---
+
 ## [0.9.6.0] - 2026-03-27
 
 ### Added
