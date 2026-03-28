@@ -8,7 +8,7 @@
 | Layer | Repo | Role |
 |-------|------|------|
 | **Orchestrator & instance manager** | **Perplexity-Tools** (this repo) | Top-level agent lifecycle, `ModelRegistry` / `config/*.yml`, FastAPI `/orchestrate`, idempotency |
-| **Reasoning & routing methodology** | **ultrathink-system** | `single_agent/SKILL.md`, CIDF / process; multi-agent registry is **separately installable** and **not** required to run this orchestrator |
+| **Reasoning & routing methodology** | **ultrathink-system** | `single_agent/SKILL.md`, AFRP (pre-router gate) / CIDF / process; multi-agent registry is **separately installable** and **not** required to run this orchestrator |
 | **Subagent auto-selection (ECC-style)** | **ECC Tools** | Default subagent routing unless the top-level orchestrator overrides roles |
 | **Karpathy AutoResearch sync** | [karpathy/autoresearch](https://github.com/karpathy/autoresearch) | Idempotent sync of the automated ML research loop; integrated via `/autoresearch/*` endpoints and `orchestrator/autoresearch_bridge.py` |
 
