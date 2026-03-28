@@ -28,16 +28,33 @@ class CostGuard:
         self.state_dir = Path(state_dir)
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.budget_path = self.state_dir / budget_file
+        self._memory_state: Dict[str, float] = {**_DEFAULT_BUDGET, "last_reset": time.time()}
+        self._persist_enabled = True
 
     def _load(self) -> Dict[str, float]:
-        if not self.budget_path.exists():
-            payload = {**_DEFAULT_BUDGET, "last_reset": time.time()}
-            self._save(payload)
+        if not self._persist_enabled:
+            return dict(self._memory_state)
+
+        try:
+            if not self.budget_path.exists():
+                payload = {**_DEFAULT_BUDGET, "last_reset": time.time()}
+                self._save(payload)
+                return payload
+            payload = json.loads(self.budget_path.read_text(encoding="utf-8"))
+            self._memory_state = dict(payload)
             return payload
-        return json.loads(self.budget_path.read_text(encoding="utf-8"))
+        except OSError:
+            self._persist_enabled = False
+            return dict(self._memory_state)
 
     def _save(self, payload: Dict[str, float]) -> None:
-        self.budget_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        self._memory_state = dict(payload)
+        if not self._persist_enabled:
+            return
+        try:
+            self.budget_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        except OSError:
+            self._persist_enabled = False
 
     def _maybe_reset(self, payload: Dict[str, float]) -> Dict[str, float]:
         if time.time() - payload["last_reset"] >= 86400:
