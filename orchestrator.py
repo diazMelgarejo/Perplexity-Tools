@@ -15,7 +15,7 @@ load_dotenv()
 PERPLEXITY_API_KEY = os.getenv("PERPLEXITY_API_KEY")
 OLLAMA_MAC_ENDPOINT = os.getenv("OLLAMA_MAC_ENDPOINT", "http://localhost:11434")
 OLLAMA_WINDOWS_ENDPOINT = os.getenv("OLLAMA_WINDOWS_ENDPOINT", "http://192.168.1.100:11434")
-REDIS_HOST = os.getenv("REDIS_HOST", "localhost")feat(orchestration): synchronize Windows endpoint with api_server.py default (192.168.1.100)
+REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
 MAX_DAILY_SPEND = float(os.getenv("MAX_DAILY_SPEND", 0.17))
 MAX_PERPLEXITY_CALLS_DAY = int(os.getenv("MAX_PERPLEXITY_CALLS_DAY", 5))
@@ -148,7 +148,7 @@ async def orchestrate(req: OrchestrationRequest):
         result = await call_perplexity(req.task_description, model="grok-beta")
         if not result:
             routing_log.append("Cloud failed, falling back to local Qwen3-30B research")
-            result = await call_ollama(req.task_description, "qwen3:30b-a3b-instruct-q4_K_M", 192.168.1.100)
+            result = await call_ollama(req.task_description, "qwen3:30b-a3b-instruct-q4_K_M", OLLAMA_WINDOWS_ENDPOINT)
     
     elif req.privacy_critical:
         routing_log.append("Privacy critical task detected. Routing to UltraThink system.")

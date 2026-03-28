@@ -50,7 +50,7 @@ _SSH_OPTS: list[str] = (
 
 # Local Mac path — used only for git history, SKILL.md edits, swarm_state.md.
 LOCAL_REPO_PATH: Path = Path(
-    os.environ.get("LOCAL_AUTORESEARCH_PATH", str(Path.home() / "cogntiv" / "autoresearch"))
+    os.environ.get("LOCAL_AUTORESEARCH_PATH", str(Path.home() / "autoresearch"))
 )
 SWARM_STATE_FILE: Path = LOCAL_REPO_PATH / "swarm_state.md"
 
@@ -181,7 +181,7 @@ def deploy_train_py() -> bool:
 # ── dispatch training run on GPU runner ───────────────────────────────────────
 
 def run_experiment_on_gpu() -> bool:
-    """SSH into Windows runner and execute train.py inside the cogntiv312 conda env.
+    """SSH into Windows runner and execute train.py inside the autoresearch conda env.
 
     Uses CMD syntax over SSH (Windows default shell).
     stdout/stderr are redirected to run.log on the runner.
@@ -189,7 +189,7 @@ def run_experiment_on_gpu() -> bool:
     """
     cmd = (
         f"cd {GPU_REPO_PATH} && "
-        "conda run -n cogntiv312 uv run train.py > run.log 2>&1"
+        "conda run -n autoresearch uv run train.py > run.log 2>&1"
     )
     result = subprocess.run(
         ["ssh", *_SSH_OPTS, GPU_BOX, cmd],
