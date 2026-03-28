@@ -1,4 +1,4 @@
-# Perplexity-Tools v0.9.0.0 Dependencies
+# Perplexity-Tools v0.9.6.0 Dependencies
 # Updated: 2026-03-22
 
 # Core frameworks
