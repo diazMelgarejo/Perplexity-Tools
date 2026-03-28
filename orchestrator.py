@@ -21,8 +21,8 @@ MAX_DAILY_SPEND = float(os.getenv("MAX_DAILY_SPEND", 0.17))
 MAX_PERPLEXITY_CALLS_DAY = int(os.getenv("MAX_PERPLEXITY_CALLS_DAY", 5))
 ULTRATHINK_ENDPOINT = os.getenv("ULTRATHINK_ENDPOINT")
 
-# v0.9.6.0 Hardening: Version consistency with ultrathink-system
-VERSION = "0.9.6.0"
+# v0.9.7.0 Hardening: Version consistency with ultrathink-system
+VERSION = "0.9.7.0"
 
 app = FastAPI(title="Perplexity-Tools Orchestrator", version=VERSION)
 r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
@@ -39,7 +39,7 @@ class OrchestrationResponse(BaseModel):
     routing_log: List[str]
     cost_estimate: float
 
-# v0.9.6.0: Layer 2 Spawn Reconciliation
+# v0.9.7.0: Layer 2 Spawn Reconciliation
 class ReconcileRequest(BaseModel):
     session_id: str
     model_id: str
@@ -121,7 +121,7 @@ async def call_ultrathink(task: str):
 @app.post("/reconcile", response_model=ReconcileResponse)
 async def reconcile(req: ReconcileRequest):
     """
-    v0.9.6.0: Prevent GPU contention and enforce hardware limits.
+    v0.9.7.0: Prevent GPU contention and enforce hardware limits.
     """
     # Check for existing sessions on the hardware in Redis
     active_sessions = await r.keys(f"ultrathink:session:active:{req.hardware_profile}:*")
