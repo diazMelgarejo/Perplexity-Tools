@@ -8,7 +8,28 @@ Cross-repo changes affecting ultrathink-system are marked with `[SYNC]`.
 
 ---
 
-## [0.9.5.0] - 2025-03-26
+## [0.9.6.0] - 2026-03-27
+
+### Added
+- **LAN Continuity**: LAN Detect & Resume for seamless multi-computer operation [SYNC]
+- **Spawn Reconciliation**: Pre-flight spawn detection and reconciliation before model spawning [SYNC]
+- **Short Persistence Log**: `.state/session.log` for low-overhead session tracking
+- `orchestrator/lan_discovery.py` — LAN-wide AI model discovery
+- `orchestrator/spawn_reconciliation.py` — ECC and autoresearch spawn reconciliation registry
+- `tests/test_lan_discovery.py` — LAN discovery test coverage
+
+### Changed
+- SKILL.md updated to v0.9.6.0 with hardware-aware multi-computer orchestration
+- Models updated to Qwen 3.5 series (9B MLX on Mac, 35B MoE on Dell)
+- `orchestrator.py` hardened with VRAM safety rules and hardware-bound routing
+- Adapted durable workflow and intelligent routing for multi-computer LAN [SYNC]
+
+### Synced with ultrathink-system
+- Both repos synchronized to v0.9.6.0
+- ultrathink `api_server.py` updated to v0.9.6.0 with GPU reconciliation
+- Cross-repo SKILL.md references established for recursive sub-skill loading
+
+## [0.9.5.0] - 2026-03-27
 
 ### Added
 
