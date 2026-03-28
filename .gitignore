@@ -5,6 +5,10 @@
 .venv/
 __pycache__/
 *.py[cod]
+*.DS_Store
+.claude/.DS_Store
+.claude/launch.json
+.claude/worktrees/
 
 # ECC Tools vendor clone (orchestrator/ecc_tools_sync.py)
 vendor/ecc-tools/

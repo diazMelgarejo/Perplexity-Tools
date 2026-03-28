@@ -19,13 +19,17 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from loguru import logger
+try:
+    from loguru import logger
+except ImportError:  # pragma: no cover - fallback for minimal environments
+    logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -158,7 +162,7 @@ def _ensure_cloned() -> bool:
         )
         if result.returncode != 0:
             logger.error(f"[ECC Sync] Clone failed: {result.stderr}")
-            raise RuntimeError(f"ECC Tools clone failed: {result.stderr}")
+            return False
         logger.info("[ECC Sync] Clone complete.")
         return True
     return False
@@ -252,6 +256,20 @@ def sync_ecc_tools(force: bool = False) -> dict[str, Any]:
     state = _load_state()
     prev_commit = state.get("commit_hash", "")
     just_cloned = _ensure_cloned()
+    if not (VENDOR_DIR / ".git").exists():
+        message = "ECC Tools vendor clone unavailable; sync skipped."
+        logger.warning(f"[ECC Sync] {message}")
+        return {
+            "status": "error",
+            "message": message,
+            "vendor_dir": str(VENDOR_DIR),
+            "commit_hash": "",
+            "previous_commit_hash": prev_commit,
+            "copied": [],
+            "skipped_count": 0,
+            "missing_source": [],
+            "errors": [{"path": str(VENDOR_DIR), "error": "vendor clone unavailable"}],
+        }
     old_hash, new_hash = _pull_latest()
     commit_unchanged = (new_hash == prev_commit) and not just_cloned
 

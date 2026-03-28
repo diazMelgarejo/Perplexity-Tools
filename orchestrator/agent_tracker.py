@@ -38,18 +38,34 @@ class AgentTracker:
         self.state_dir = Path(state_dir)
         self.state_dir.mkdir(parents=True, exist_ok=True)
         self.registry_path = self.state_dir / "agents.json"
+        self._memory_agents: Dict[str, AgentRecord] = {}
+        self._persist_enabled = True
 
     # ── persistence ──────────────────────────────────────────────────────────
 
     def _load(self) -> Dict[str, AgentRecord]:
-        if not self.registry_path.exists():
-            return {}
-        raw = json.loads(self.registry_path.read_text(encoding="utf-8"))
-        return {k: AgentRecord(**v) for k, v in raw.items()}
+        if not self._persist_enabled:
+            return dict(self._memory_agents)
+        try:
+            if not self.registry_path.exists():
+                return {}
+            raw = json.loads(self.registry_path.read_text(encoding="utf-8"))
+            agents = {k: AgentRecord(**v) for k, v in raw.items()}
+            self._memory_agents = dict(agents)
+            return agents
+        except OSError:
+            self._persist_enabled = False
+            return dict(self._memory_agents)
 
     def _save(self, agents: Dict[str, AgentRecord]) -> None:
+        self._memory_agents = dict(agents)
+        if not self._persist_enabled:
+            return
         payload = {k: asdict(v) for k, v in agents.items()}
-        self.registry_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        try:
+            self.registry_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        except OSError:
+            self._persist_enabled = False
 
     # ── queries ───────────────────────────────────────────────────────────────
 
