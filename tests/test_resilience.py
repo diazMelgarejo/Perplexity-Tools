@@ -51,10 +51,29 @@ def test_sync_returns_structured_error_when_vendor_clone_unavailable(monkeypatch
     assert "vendor clone unavailable" in result["message"]
 
 
-
 # ---------------------------------------------------------------------------
 # Regression tests for bugs fixed in orchestrator.py (v0.9.7.0 hardening)
+#
+# NOTE: 'orchestrator' resolves to the orchestrator/ *package* on the sys.path,
+# not the top-level orchestrator.py module. Load the .py file explicitly via
+# importlib so monkeypatching targets the right module object.
 # ---------------------------------------------------------------------------
+
+def _load_orchestrator_module():
+    """Load the top-level orchestrator.py by absolute path, bypassing the
+    orchestrator/ package that shadows it on sys.path."""
+    import importlib.util
+    import sys
+    from pathlib import Path as _Path
+
+    py_file = _Path(__file__).parent.parent / "orchestrator.py"
+    spec = importlib.util.spec_from_file_location("orchestrator_module", py_file)
+    mod = importlib.util.module_from_spec(spec)
+    # Register under a unique name so re-use within a session is consistent
+    sys.modules.setdefault("orchestrator_module", mod)
+    spec.loader.exec_module(mod)
+    return mod
+
 
 def test_call_ultrathink_appends_ultrathink_path(monkeypatch):
     """Bug fix: call_ultrathink must POST to <base>/ultrathink, not bare base URL.
@@ -63,8 +82,9 @@ def test_call_ultrathink_appends_ultrathink_path(monkeypatch):
     After the fix:  session.post(ULTRATHINK_ENDPOINT.rstrip('/') + '/ultrathink', ...)
     """
     import asyncio
-    import sys
-    import types
+    import aiohttp
+
+    orch_mod = _load_orchestrator_module()
 
     captured_urls = []
 
@@ -85,10 +105,7 @@ def test_call_ultrathink_appends_ultrathink_path(monkeypatch):
         async def __aexit__(self, *a):
             pass
 
-    # Patch aiohttp.ClientSession inside orchestrator module
-    import orchestrator as orch_mod
     monkeypatch.setattr(orch_mod, "ULTRATHINK_ENDPOINT", "http://localhost:8001")
-    import aiohttp
     monkeypatch.setattr(aiohttp, "ClientSession", _FakeSession)
 
     asyncio.run(orch_mod.call_ultrathink("test task"))
@@ -106,9 +123,9 @@ def test_orchestrate_returns_empty_string_when_all_backends_fail(monkeypatch):
     After the fix:  status='success', result='' returned cleanly.
     """
     import asyncio
-    import orchestrator as orch_mod
 
-    # Make every backend return None
+    orch_mod = _load_orchestrator_module()
+
     async def _none(*a, **kw):
         return None
 
@@ -116,7 +133,6 @@ def test_orchestrate_returns_empty_string_when_all_backends_fail(monkeypatch):
     monkeypatch.setattr(orch_mod, "call_ollama", _none)
     monkeypatch.setattr(orch_mod, "call_ultrathink", _none)
 
-    # Stub Redis so check_budget / spend reads don't hit a real server
     class _FakeRedis:
         async def get(self, *a): return None
         async def incr(self, *a): pass
@@ -126,8 +142,7 @@ def test_orchestrate_returns_empty_string_when_all_backends_fail(monkeypatch):
 
     monkeypatch.setattr(orch_mod, "r", _FakeRedis())
 
-    from orchestrator import OrchestrationRequest
-    req = OrchestrationRequest(
+    req = orch_mod.OrchestrationRequest(
         task_description="test",
         is_finance_realtime=False,
         privacy_critical=False,
