@@ -7,6 +7,26 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Cross-repo changes affecting ultrathink-system are marked with `[SYNC]`.
 
 ---
+## [0.9.8.0] - 2026-04-24
+
+### Security
+
+- **orchestrator.py**: Rate limiting added via `slowapi` (OWASP API4) [SYNC]
+- **orchestrator.py**: Input validation — bounded `task_description` with `max_length=8000` (OWASP API3+API4) [SYNC]
+- **orchestrator.py**: `ALLOWED_HOSTS` middleware support via env var [SYNC]
+- **orchestrator.py**: API key startup validation with warning log [SYNC]
+
+### Fixed
+
+- **orchestrator.py**: Migrated `@validator` to Pydantic V2 `@field_validator` + `@classmethod` (deprecation fix) [SYNC]
+
+### Synced with ultrathink-system
+
+- Both repos synchronized to v0.9.8.0 [SYNC]
+- `api_server.py` receives same Pydantic V2 migration [SYNC]
+
+---
+
 
 ## [0.9.7.0] - 2026-03-28
 
