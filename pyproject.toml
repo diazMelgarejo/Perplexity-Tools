@@ -1,0 +1,111 @@
+# pyproject.toml — Perplexity-Tools
+# Makes PT pip-installable for consistent versioning + dependency pinning
+# Mirrors ultrathink-system's pyproject.toml structure (PEP 517/518)
+# NO version bump — rolling changes until v1.0 RC
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "perplexity-tools"
+dynamic = ["version"]
+description = "Top-level idempotent multi-agent orchestrator: per-device model selection, fallback routing, cost guard, and ultrathink-system integration."
+readme = "README.md"
+license = { text = "AGPL-3.0" }
+requires-python = ">=3.11"
+keywords = [
+    "multi-agent", "orchestrator", "llm", "ollama", "mlx",
+    "fastapi", "ultrathink", "perplexity", "ai"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Framework :: FastAPI",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    # Core frameworks
+    "crewai==1.9.0",
+    "crewai-tools>=0.14.0",
+    "perplexityai>=0.3.0",
+    # FastAPI web framework
+    "fastapi>=0.109.0",
+    "uvicorn[standard]>=0.27.0",
+    "websockets>=12.0",
+    # Async and networking
+    "aiohttp>=3.9.3",
+    "asyncio>=3.4.3",
+    "httpx>=0.26.0",
+    # Database and caching
+    "redis>=5.0.1",
+    "python-multipart>=0.0.9",
+    "sqlalchemy>=2.0.25",
+    # Data validation
+    "pydantic>=2.6.0",
+    # Config
+    "PyYAML>=6.0.1",
+    # Utilities
+    "python-dotenv>=1.0.1",
+    "loguru>=0.7.2",
+    "rich>=13.7.0",
+    # Security: rate limiting (OWASP API4)
+    "slowapi>=0.1.9",
+]
+
+[project.optional-dependencies]
+mlx = [
+    # Uncomment for MLX backend on macOS
+    # "mlx-lm>=0.9.0",
+    "transformers>=4.37.0",
+    "huggingface-hub>=0.20.0",
+]
+dev = [
+    "pytest>=7.4",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=4.1",
+    "httpx>=0.26.0",   # TestClient transport
+    "flake8>=7.0",
+    "mypy>=1.8",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/diazMelgarejo/Perplexity-Tools"
+"Bug Tracker" = "https://github.com/diazMelgarejo/Perplexity-Tools/issues"
+"ultrathink-system" = "https://github.com/diazMelgarejo/ultrathink-system"
+"Changelog" = "https://github.com/diazMelgarejo/Perplexity-Tools/blob/main/CHANGELOG.md"
+
+[project.scripts]
+pt-orchestrator = "orchestrator.fastapi_app:app"
+pt-setup = "setup_wizard:main"
+pt-launch = "agent_launcher:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "orchestrator.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["orchestrator*"]
+exclude = ["tests*", "vendor*", ".state*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+
+[tool.flake8]
+max-line-length = 120
+extend-ignore = ["E203", "W503"]
+exclude = [".git", "__pycache__", "vendor", ".state"]
