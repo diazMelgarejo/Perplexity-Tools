@@ -73,26 +73,6 @@ def _load_orchestrator_module():
     return mod
 
 
-def _make_mock_request():
-    """Return a minimal mock of starlette.requests.Request that satisfies
-    slowapi's get_remote_address key_func (needs request.client.host).
-
-    fix(tests): slowapi @limiter.limit decorator requires a Request object in
-    the function signature. Tests that call the handler directly must supply
-    one; this helper avoids pulling in starlette's full Request machinery.
-    """
-    class _Client:
-        host = "127.0.0.1"
-
-    class _MockRequest:
-        client = _Client()
-        # slowapi also reads scope/headers in some paths; provide safe stubs.
-        headers: dict = {}
-        scope: dict = {"type": "http"}
-
-    return _MockRequest()
-
-
 def test_call_ultrathink_appends_ultrathink_path(monkeypatch):
     """Bug fix: call_ultrathink must POST to /ultrathink, not bare base URL.
 
@@ -134,9 +114,11 @@ def test_orchestrate_returns_empty_string_when_all_backends_fail(monkeypatch):
     Before the fix: Pydantic raises ValidationError because result:str got None.
     After the fix:  status='success', result='' returned cleanly.
 
-    fix(tests): orchestrate() is decorated with @limiter.limit which requires a
-    starlette Request as the second positional argument. Pass a mock Request so
-    slowapi's async_wrapper can extract the client IP without IndexError.
+    fix(tests): slowapi's @limiter.limit decorator does a strict isinstance check
+    against starlette.requests.Request — a plain mock object won't pass.
+    Call the unwrapped handler via __wrapped__ to bypass the rate-limit layer
+    entirely. The `request` param is only consumed by the decorator; the
+    function body never references it, so passing None is safe.
     """
     import asyncio
 
@@ -164,9 +146,11 @@ def test_orchestrate_returns_empty_string_when_all_backends_fail(monkeypatch):
         privacy_critical=False,
         enable_critic=False,
     )
-    # fix(tests): pass mock Request as second positional arg to satisfy slowapi
-    mock_request = _make_mock_request()
-    resp = asyncio.run(orch_mod.orchestrate(req, mock_request))
+    # fix(tests): call __wrapped__ to skip slowapi's isinstance(request, Request)
+    # check. The decorator is only needed for live HTTP traffic; unit tests
+    # exercise the handler logic directly.
+    handler = getattr(orch_mod.orchestrate, "__wrapped__", orch_mod.orchestrate)
+    resp = asyncio.run(handler(req, None))
 
     assert resp.result == "", f"Expected empty string, got: {resp.result!r}"
     assert resp.status == "success"
