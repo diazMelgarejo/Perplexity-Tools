@@ -1,4 +1,4 @@
-# Perplexity-Tools v0.9.7.0 Dependencies
+# Perplexity-Tools v0.9.8.0 Dependencies
 # Updated: 2026-03-22
 
 # Core frameworks
@@ -31,6 +31,9 @@ PyYAML>=6.0.1
 python-dotenv>=1.0.1
 loguru>=0.7.2
 rich>=13.7.0
+
+# Security: rate limiting (OWASP API4)
+slowapi>=0.1.9
 
 # Optional: MLX backend support (macOS only)
 # mlx-lm>=0.9.0  # Uncomment if using LM Studio MLX mode
