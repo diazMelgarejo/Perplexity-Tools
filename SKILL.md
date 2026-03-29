@@ -16,6 +16,18 @@
 
 ---
 
+## State Ownership & Redis Strategy
+
+> **Canonical MVP wording:** For MVP/v1.0, ultrathink remains stateless and has no Redis requirement. PT is the sole orchestration layer and owns agent instantiation, tracking, queueing, budget enforcement, and file-based runtime state. Redis-backed coordination is a future PT-only enhancement planned for multi-instance distributed deployments in v1.1 and above.
+
+**Rules:**
+- Single PT instance or LAN MVP per machine: file-based state only (`.state/agents.json`, `.state/budget.json`)
+- No Redis mentions in ultrathink install/runtime requirements
+- Any future queue/cache/distributed lock support belongs to PT
+- Redis only activates when PT supports multi-instance distributed operation (v1.1+), not before
+
+---
+
 ## Multi-Computer Orchestration (Hardware-Aware)
 
 This orchestrator is designed for **full hardware profile awareness** [web:40] across a distributed LAN environment. It adapts standard multi-agent orchestration strategies [web:23][web:25] (sequential, concurrent, routing) to physical hardware constraints.

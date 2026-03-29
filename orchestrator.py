@@ -2,6 +2,9 @@ import os
 import json
 import asyncio
 import aiohttp
+# Redis: Optional for MVP. PT uses file-based state (.state/agents.json) by default.
+# Redis enables distributed coordination for multi-instance deployments (v1.1+).
+# If Redis is unreachable, operations continue with local file-based state.
 import redis.asyncio as redis
 from typing import List, Dict, Optional, Any
 from fastapi import FastAPI, HTTPException
