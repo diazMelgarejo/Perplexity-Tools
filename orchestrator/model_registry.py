@@ -82,7 +82,7 @@ class ModelRegistry:
         self, role: str, preferred_device: Optional[str] = None
     ) -> List[ModelTarget]:
         candidates = [
-            m for m in self.list_models() if role in m.roles or "general" in m.roles
+            m for m in self.list_models() if role in m.roles
         ]
         if preferred_device:
             device_first = [m for m in candidates if m.device == preferred_device]
