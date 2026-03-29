@@ -27,7 +27,6 @@ def test_agent_tracker_falls_back_to_memory(monkeypatch, tmp_path):
 
     monkeypatch.setattr(Path, "write_text", raise_permission_error)
     tracker = AgentTracker(state_dir=str(tmp_path))
-
     record = tracker.register(
         role="orchestrator",
         model="test-model",
@@ -44,7 +43,6 @@ def test_sync_returns_structured_error_when_vendor_clone_unavailable(monkeypatch
     import orchestrator.ecc_tools_sync as sync_mod
 
     monkeypatch.setattr(sync_mod, "_ensure_cloned", lambda: False)
-
     result = sync_mod.sync_ecc_tools(force=False)
 
     assert result["status"] == "error"
@@ -75,8 +73,28 @@ def _load_orchestrator_module():
     return mod
 
 
+def _make_mock_request():
+    """Return a minimal mock of starlette.requests.Request that satisfies
+    slowapi's get_remote_address key_func (needs request.client.host).
+
+    fix(tests): slowapi @limiter.limit decorator requires a Request object in
+    the function signature. Tests that call the handler directly must supply
+    one; this helper avoids pulling in starlette's full Request machinery.
+    """
+    class _Client:
+        host = "127.0.0.1"
+
+    class _MockRequest:
+        client = _Client()
+        # slowapi also reads scope/headers in some paths; provide safe stubs.
+        headers: dict = {}
+        scope: dict = {"type": "http"}
+
+    return _MockRequest()
+
+
 def test_call_ultrathink_appends_ultrathink_path(monkeypatch):
-    """Bug fix: call_ultrathink must POST to <base>/ultrathink, not bare base URL.
+    """Bug fix: call_ultrathink must POST to /ultrathink, not bare base URL.
 
     Before the fix: session.post(ULTRATHINK_ENDPOINT, ...)
     After the fix:  session.post(ULTRATHINK_ENDPOINT.rstrip('/') + '/ultrathink', ...)
@@ -85,25 +103,19 @@ def test_call_ultrathink_appends_ultrathink_path(monkeypatch):
     import aiohttp
 
     orch_mod = _load_orchestrator_module()
-
     captured_urls = []
 
     class _FakeResp:
-        async def __aenter__(self):
-            return self
-        async def __aexit__(self, *a):
-            pass
-        async def json(self):
-            return {"result": "ok"}
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
+        async def json(self): return {"result": "ok"}
 
     class _FakeSession:
         def post(self, url, **kwargs):
             captured_urls.append(url)
             return _FakeResp()
-        async def __aenter__(self):
-            return self
-        async def __aexit__(self, *a):
-            pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): pass
 
     monkeypatch.setattr(orch_mod, "ULTRATHINK_ENDPOINT", "http://localhost:8001")
     monkeypatch.setattr(aiohttp, "ClientSession", _FakeSession)
@@ -121,6 +133,10 @@ def test_orchestrate_returns_empty_string_when_all_backends_fail(monkeypatch):
 
     Before the fix: Pydantic raises ValidationError because result:str got None.
     After the fix:  status='success', result='' returned cleanly.
+
+    fix(tests): orchestrate() is decorated with @limiter.limit which requires a
+    starlette Request as the second positional argument. Pass a mock Request so
+    slowapi's async_wrapper can extract the client IP without IndexError.
     """
     import asyncio
 
@@ -148,7 +164,9 @@ def test_orchestrate_returns_empty_string_when_all_backends_fail(monkeypatch):
         privacy_critical=False,
         enable_critic=False,
     )
-    resp = asyncio.run(orch_mod.orchestrate(req))
+    # fix(tests): pass mock Request as second positional arg to satisfy slowapi
+    mock_request = _make_mock_request()
+    resp = asyncio.run(orch_mod.orchestrate(req, mock_request))
 
     assert resp.result == "", f"Expected empty string, got: {resp.result!r}"
     assert resp.status == "success"
