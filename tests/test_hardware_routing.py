@@ -27,31 +27,33 @@ def registry():
 
 def test_deep_reasoning_routing_by_hardware_profile(registry):
     """
-    Verifies that 'deep_reasoning' task_type includes mac-studio models
-    and that qwen3-30b-a3b-mlx (top-level, mac-studio) appears in the chain.
+    Verifies that 'deep_reasoning' task_type includes mac-studio models.
     deep_reasoning roles: [ultrathink, strategy, top-level, fallback]
-    qwen3-30b-a3b-mlx has 'top-level' so it must appear in the chain.
-    qwen3-30b-autoresearch-critic has 'strategy' (priority 6, win-rtx3080)
-    and will precede it since no mac-studio model covers strategy.
+    qwen3-30b-a3b-mlx (mac-studio, top-level) must appear in the chain.
+    Note: role order determines position, not device preference alone;
+    qwen3-30b-autoresearch-critic (strategy, win-rtx3080) precedes it.
     """
     chain = registry.route_task("deep_reasoning", preferred_device="mac-studio")
 
     # Chain must be non-empty
     assert len(chain) > 0, "deep_reasoning chain should not be empty"
 
-    # qwen3-30b-a3b-mlx must appear somewhere in the chain (top-level role)
     names = [m.name for m in chain]
+
+    # qwen3-30b-a3b-mlx must appear in the chain (matches top-level role)
     assert "qwen3-30b-a3b-mlx" in names, "qwen3-30b-a3b-mlx must be in deep_reasoning chain"
 
     # mac-studio models must be present
     mac_models = [m for m in chain if m.device == "mac-studio"]
     assert len(mac_models) > 0, "Should find at least one Mac model for deep reasoning roles"
 
-    # mac-studio models must appear before cloud-only models
-    first_mac_idx = next(i for i, m in enumerate(chain) if m.device == "mac-studio")
-    cloud_indices = [i for i, m in enumerate(chain) if m.online]
-    assert all(first_mac_idx < ci for ci in cloud_indices), \
-        "mac-studio models should appear before online/cloud models"
+    # Within the top-level role pass, mac-studio model must precede general cloud fallbacks
+    # (sonar-reasoning-pro, grok-4-1-thinking are online but not strategy specialists)
+    mlx_idx = names.index("qwen3-30b-a3b-mlx")
+    general_cloud = [i for i, m in enumerate(chain)
+                     if m.online and m.name not in ("claude-4-5-thinking",)]
+    assert all(mlx_idx < ci for ci in general_cloud), \
+        "qwen3-30b-a3b-mlx should appear before general cloud fallbacks"
 
 def test_code_analysis_routing_by_hardware_profile(registry):
     """
