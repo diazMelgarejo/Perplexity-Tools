@@ -9,7 +9,8 @@ import redis.asyncio as redis
 from typing import List, Dict, Optional, Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from pydantic import BaseModel, Field, validator
+# fix(orchestrator): migrate from deprecated Pydantic V1 @validator to V2 @field_validator
+from pydantic import BaseModel, Field, field_validator
 from loguru import logger
 from dotenv import load_dotenv
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -62,7 +63,8 @@ class OrchestrationRequest(BaseModel):
     is_finance_realtime: bool = False
     enable_critic: bool = True
 
-    @validator("task_description")
+    @field_validator("task_description")
+    @classmethod
     def no_null_bytes(cls, v: str) -> str:
         if "\x00" in v:
             raise ValueError("Null bytes not allowed in task_description")
