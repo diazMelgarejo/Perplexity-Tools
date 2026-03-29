@@ -1,3 +1,18 @@
+"""orchestrator.py — Perplexity-Tools Orchestrator (port 8000)
+Routes AI tasks across local Ollama models + Perplexity cloud with budget controls.
+
+Design principles
+-----------------
+* Privacy-first — privacy_critical tasks route to ultrathink-system (local) first.
+* Budget-controlled — MAX_DAILY_SPEND and MAX_PERPLEXITY_CALLS_DAY caps enforced via Redis.
+* Graceful degradation — if Redis is unavailable, file-based state (.state/agents.json) is used.
+* Stateful deduplication — PT owns agent lifecycle; ultrathink-system is stateless.
+
+Usage
+-----
+    pip install fastapi uvicorn aiohttp loguru python-dotenv slowapi pydantic>=2.6.0
+    python -m uvicorn orchestrator:app --host 0.0.0.0 --port 8000
+"""
 import os
 import json
 import asyncio
@@ -33,7 +48,7 @@ ULTRATHINK_ENDPOINT = os.getenv("ULTRATHINK_ENDPOINT")
 if not PERPLEXITY_API_KEY:
     logger.warning("PERPLEXITY_API_KEY is not set — cloud calls will be skipped")
 
-# v0.9.8.0 Security Hardening: rate limiting + input validation
+# v0.9.8.0: rate limiting + input validation + Pydantic V2 field_validator
 VERSION = "0.9.8.0"
 
 # Rate limiter (OWASP API4 — Unrestricted Resource Consumption)
