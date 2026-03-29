@@ -7,10 +7,14 @@ import aiohttp
 # If Redis is unreachable, operations continue with local file-based state.
 import redis.asyncio as redis
 from typing import List, Dict, Optional, Any
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from pydantic import BaseModel, Field, validator
 from loguru import logger
 from dotenv import load_dotenv
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 load_dotenv()
 
@@ -24,18 +28,45 @@ MAX_DAILY_SPEND = float(os.getenv("MAX_DAILY_SPEND", 0.17))
 MAX_PERPLEXITY_CALLS_DAY = int(os.getenv("MAX_PERPLEXITY_CALLS_DAY", 5))
 ULTRATHINK_ENDPOINT = os.getenv("ULTRATHINK_ENDPOINT")
 
-# v0.9.7.0 Hardening: Version consistency with ultrathink-system
-VERSION = "0.9.7.0"
+# sec: validate API key is configured at startup
+if not PERPLEXITY_API_KEY:
+    logger.warning("PERPLEXITY_API_KEY is not set — cloud calls will be skipped")
+
+# v0.9.8.0 Security Hardening: rate limiting + input validation
+VERSION = "0.9.8.0"
+
+# Rate limiter (OWASP API4 — Unrestricted Resource Consumption)
+limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 
 app = FastAPI(title="Perplexity-Tools Orchestrator", version=VERSION)
-r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+# sec: restrict to known hosts in production (set ALLOWED_HOSTS env var)
+_allowed_hosts = os.getenv("ALLOWED_HOSTS", "*")
+if _allowed_hosts != "*":
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=_allowed_hosts.split(","))
+
+# Redis connection with graceful failure
+try:
+    r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+except Exception as _redis_init_err:
+    logger.error(f"Redis init failed: {_redis_init_err}; budget tracking disabled")
+    r = None
 
 
+# sec: input validation — bounded task_description (OWASP API3 injection + API4 DoS)
 class OrchestrationRequest(BaseModel):
-    task_description: str
+    task_description: str = Field(..., min_length=1, max_length=8000)
     privacy_critical: bool = False
     is_finance_realtime: bool = False
     enable_critic: bool = True
+
+    @validator("task_description")
+    def no_null_bytes(cls, v: str) -> str:
+        if "\x00" in v:
+            raise ValueError("Null bytes not allowed in task_description")
+        return v
 
 
 class OrchestrationResponse(BaseModel):
@@ -47,9 +78,9 @@ class OrchestrationResponse(BaseModel):
 
 # v0.9.7.0: Layer 2 Spawn Reconciliation
 class ReconcileRequest(BaseModel):
-    session_id: str
-    model_id: str
-    hardware_profile: str  # e.g., "win-rtx3080" or "mac-studio"
+    session_id: str = Field(..., min_length=1, max_length=128)
+    model_id: str = Field(..., min_length=1, max_length=128)
+    hardware_profile: str = Field(..., min_length=1, max_length=64)  # e.g., "win-rtx3080" or "mac-studio"
 
 
 class ReconcileResponse(BaseModel):
@@ -59,24 +90,39 @@ class ReconcileResponse(BaseModel):
 
 
 async def check_budget():
-    calls = await r.get("perplexity:daily_calls") or 0
-    spend = await r.get("perplexity:daily_spend") or 0
-    if int(calls) >= MAX_PERPLEXITY_CALLS_DAY or float(spend) >= MAX_DAILY_SPEND:
-        return False
-    return True
+    if r is None:
+        return True  # Redis unavailable — allow calls, log warning
+    try:
+        calls = await r.get("perplexity:daily_calls") or 0
+        spend = await r.get("perplexity:daily_spend") or 0
+        if int(calls) >= MAX_PERPLEXITY_CALLS_DAY or float(spend) >= MAX_DAILY_SPEND:
+            return False
+        return True
+    except Exception as e:
+        logger.warning(f"Budget check failed (Redis error): {e}")
+        return True
 
 
 async def log_perplexity_usage(tokens_used: int):
+    if r is None:
+        return
     # $15 per 1M tokens blended rate
     cost = (tokens_used / 1_000_000) * 15.0
-    await r.incr("perplexity:daily_calls")
-    await r.incrbyfloat("perplexity:daily_spend", cost)
-    # Bug fix: await cannot be used inside an f-string expression
-    daily_spend = await r.get("perplexity:daily_spend")
-    logger.info(f"Perplexity call logged. Daily spend: {daily_spend}")
+    try:
+        await r.incr("perplexity:daily_calls")
+        await r.incrbyfloat("perplexity:daily_spend", cost)
+        # Bug fix: await cannot be used inside an f-string expression
+        daily_spend = await r.get("perplexity:daily_spend")
+        logger.info(f"Perplexity call logged. Daily spend: {daily_spend}")
+    except Exception as e:
+        logger.warning(f"Usage logging failed (Redis error): {e}")
 
 
 async def call_perplexity(prompt: str, model: str = "claude-3-5-sonnet-thinking"):
+    # sec: refuse to call if API key is missing
+    if not PERPLEXITY_API_KEY:
+        logger.warning("PERPLEXITY_API_KEY not configured; skipping cloud call")
+        return None
     if not await check_budget():
         logger.warning("Budget exceeded, falling back to local model")
         return None
@@ -134,10 +180,13 @@ async def call_ultrathink(task: str):
 
 
 @app.post("/reconcile", response_model=ReconcileResponse)
-async def reconcile(req: ReconcileRequest):
+@limiter.limit("30/minute")
+async def reconcile(req: ReconcileRequest, request: Request):
     """
     v0.9.7.0: Prevent GPU contention and enforce hardware limits.
     """
+    if r is None:
+        return ReconcileResponse(approved=True, reason="Redis unavailable; skipping contention check")
     # Check for existing sessions on the hardware in Redis
     active_sessions = await r.keys(f"ultrathink:session:active:{req.hardware_profile}:*")
     # RTX 3080 has a hard OLLAMA_NUM_PARALLEL=1 limit
@@ -153,7 +202,8 @@ async def reconcile(req: ReconcileRequest):
 
 
 @app.post("/orchestrate", response_model=OrchestrationResponse)
-async def orchestrate(req: OrchestrationRequest):
+@limiter.limit("20/minute")
+async def orchestrate(req: OrchestrationRequest, request: Request):
     routing_log = []
     if req.is_finance_realtime:
         routing_log.append("Routing to Perplexity Grok 4.1 for real-time finance/events")
@@ -173,7 +223,6 @@ async def orchestrate(req: OrchestrationRequest):
         if not result:
             routing_log.append("Cloud budget/error. Falling back to local Qwen3-30B orchestrator.")
             result = await call_ollama(req.task_description, "qwen3:30b-a3b-instruct-q4_K_M", OLLAMA_WINDOWS_ENDPOINT)
-
     if req.enable_critic:
         routing_log.append("Running critic pass with Qwen3-30B on Dell")
         critic_prompt = f"Critique the following AI response for accuracy and completeness: {result}"
@@ -181,18 +230,21 @@ async def orchestrate(req: OrchestrationRequest):
         routing_log.append("Refining based on critic feedback")
         refine_prompt = f"Original result: {result}\nCritic feedback: {feedback}\nProvide the final improved response."
         result = await call_ollama(refine_prompt, "qwen3:30b-a3b-instruct-q4_K_M", OLLAMA_WINDOWS_ENDPOINT)
-
     # Bug fix: result can be None if all backends fail; coerce to str to satisfy response schema
     if result is None:
         result = ""
         routing_log.append("All backends failed; returning empty result.")
-
-    spend = await r.get("perplexity:daily_spend") or 0
+    spend = 0.0
+    if r is not None:
+        try:
+            spend = float(await r.get("perplexity:daily_spend") or 0)
+        except Exception:
+            pass
     return OrchestrationResponse(
         status="success",
         result=result,
         routing_log=routing_log,
-        cost_estimate=float(spend)
+        cost_estimate=spend
     )
 
 
