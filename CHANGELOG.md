@@ -7,6 +7,30 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Cross-repo changes affecting ultrathink-system are marked with `[SYNC]`.
 
 ---
+## [1.0-rc] - 2026-03-30
+
+### Added
+- `orchestrator/ultrathink_mcp_client.py` — MCP-Optional client infrastructure:
+  async subprocess lifecycle, JSON-RPC framing over stdio, stub-response detection
+- `call_ultrathink_mcp_or_bridge()` in `orchestrator/ultrathink_bridge.py` —
+  tries MCP first when `ULTRATHINK_MCP_SERVER_CMD` is set; falls back to HTTP on
+  any failure (crash, timeout, malformed response, or stub response from server)
+- `"transport": "mcp" | "http"` key in `/orchestrate` response envelope so callers
+  can observe which path was taken without guessing
+- `ULTRATHINK_MCP_SERVER_CMD` env var — opt-in MCP transport; unset = HTTP only (default)
+- `docs/RC_CHECKLIST.md` — explicit v1.0 RC stamp criteria and completion checklist
+
+### Fixed
+- `orchestrator/ultrathink_bridge.py` was calling sync `httpx.post()` inside an async
+  FastAPI route handler, blocking the event loop. New async wrapper uses `httpx.AsyncClient`.
+
+### Notes
+- MCP server (`ultrathink-system`) `_solve()` is still a stub in this release.
+  When `ULTRATHINK_MCP_SERVER_CMD` is set, the client will detect the stub response
+  and fall back to HTTP automatically — no task is dropped. Tier 2 (real MCP pipeline)
+  is tracked in `docs/ROADMAP_v1.1.md`.
+
+---
 ## [0.9.9.0] - 2026-03-30
 
 ### Added
