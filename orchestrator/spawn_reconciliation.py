@@ -51,6 +51,8 @@ class SpawnReconciler:
             if potential_match:
                 # Resume previous role
                 updated = self.tracker.update_status(potential_match.agent_id, "running")
+                if updated is None:
+                    continue  # agent disappeared between scan and update
                 print(f"[reconciler] Recruited orphaned agent {updated.agent_id} as {updated.role}")
                 recruited.append(updated)
             else:
@@ -65,9 +67,9 @@ class SpawnReconciler:
                     port=ep.port,
                     metadata={"source": "lan_discovery_recruit"}
                 )
-                self.tracker.update_status(new_agent.agent_id, "running")
+                updated_new = self.tracker.update_status(new_agent.agent_id, "running")
                 print(f"[reconciler] Registered and recruited new spawn {new_agent.agent_id} as {new_role}")
-                recruited.append(new_agent)
+                recruited.append(updated_new or new_agent)
                 
         return recruited
 
