@@ -26,7 +26,7 @@ import ipaddress
 from pathlib import Path
 from typing import List, Dict, Optional
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 
 try:
     import httpx
@@ -49,6 +49,11 @@ PROBE_TIMEOUT = 2  # seconds
 DISCOVERY_STATE_FILE = Path(".state/lan_discovery.json")
 
 
+def _utc_now_iso() -> str:
+    """Return an ISO 8601 timestamp with an explicit UTC offset."""
+    return datetime.now(timezone.utc).isoformat()
+
+
 @dataclass
 class AIEndpoint:
     """Discovered AI inference endpoint."""
@@ -63,7 +68,7 @@ class AIEndpoint:
 
     def __post_init__(self):
         if not self.last_seen:
-            self.last_seen = datetime.utcnow().isoformat()
+            self.last_seen = _utc_now_iso()
 
     @property
     def endpoint_url(self) -> str:
@@ -185,7 +190,7 @@ class LANDiscovery:
         """Persist discovered endpoints to state file."""
         DISCOVERY_STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
         state = {
-            "discovered_at": datetime.utcnow().isoformat(),
+            "discovered_at": _utc_now_iso(),
             "subnet": self.subnet,
             "endpoints": [ep.to_dict() for ep in self.discovered],
         }
