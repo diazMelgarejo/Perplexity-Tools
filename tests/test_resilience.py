@@ -155,3 +155,39 @@ def test_orchestrate_returns_empty_string_when_all_backends_fail(monkeypatch):
     assert resp.result == "", f"Expected empty string, got: {resp.result!r}"
     assert resp.status == "success"
     assert any("All backends failed" in msg for msg in resp.routing_log)
+
+
+def test_orchestrator_starts_without_redis_package(monkeypatch):
+    """redis package absent (ImportError) must not prevent orchestrator from loading.
+
+    Simulates an environment where redis is not installed at all by setting
+    _redis_mod to None before the connection block runs.
+    The handler must still return a valid response (r=None path).
+    """
+    import asyncio
+
+    orch_mod = _load_orchestrator_module()
+
+    # Simulate redis package absent: _redis_mod=None forces r=None
+    monkeypatch.setattr(orch_mod, "_redis_mod", None)
+    monkeypatch.setattr(orch_mod, "r", None)
+
+    async def _none(*a, **kw):
+        return None
+
+    monkeypatch.setattr(orch_mod, "call_perplexity", _none)
+    monkeypatch.setattr(orch_mod, "call_ollama", _none)
+    monkeypatch.setattr(orch_mod, "call_ultrathink", _none)
+
+    req = orch_mod.OrchestrationRequest(
+        task_description="redis-absent test",
+        is_finance_realtime=False,
+        privacy_critical=False,
+        enable_critic=False,
+    )
+    handler = getattr(orch_mod.orchestrate, "__wrapped__", orch_mod.orchestrate)
+    resp = asyncio.run(handler(req, None))
+
+    # Must succeed gracefully without Redis
+    assert resp.status == "success"
+    assert resp.result == ""

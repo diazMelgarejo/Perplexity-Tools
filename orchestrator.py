@@ -19,8 +19,11 @@ import asyncio
 import aiohttp
 # Redis: Optional for MVP. PT uses file-based state (.state/agents.json) by default.
 # Redis enables distributed coordination for multi-instance deployments (v1.1+).
-# If Redis is unreachable, operations continue with local file-based state.
-import redis.asyncio as redis
+# Soft import — app starts cleanly even if the redis package is not installed.
+try:
+    import redis.asyncio as _redis_mod
+except ImportError:
+    _redis_mod = None
 from typing import List, Dict, Optional, Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -63,9 +66,9 @@ _allowed_hosts = os.getenv("ALLOWED_HOSTS", "*")
 if _allowed_hosts != "*":
     app.add_middleware(TrustedHostMiddleware, allowed_hosts=_allowed_hosts.split(","))
 
-# Redis connection with graceful failure
+# Redis connection with graceful failure (no-op when package absent or unreachable)
 try:
-    r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True)
+    r = _redis_mod.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True) if _redis_mod else None
 except Exception as _redis_init_err:
     logger.error(f"Redis init failed: {_redis_init_err}; budget tracking disabled")
     r = None
