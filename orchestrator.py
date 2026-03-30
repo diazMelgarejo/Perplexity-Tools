@@ -226,27 +226,27 @@ async def orchestrate(req: OrchestrationRequest, request: Request):
         routing_log.append("Routing to Perplexity Grok 4.1 for real-time finance/events")
         result = await call_perplexity(req.task_description, model="grok-beta")
         if not result:
-            routing_log.append("Cloud failed, falling back to local Qwen3-30B research")
-            result = await call_ollama(req.task_description, "qwen3:30b-a3b-instruct-q4_K_M", OLLAMA_WINDOWS_ENDPOINT)
+            routing_log.append("Cloud failed, falling back to local Qwen3.5-35B research")
+            result = await call_ollama(req.task_description, "qwen3.5:35b-a3b-q4_K_M", OLLAMA_WINDOWS_ENDPOINT)
     elif req.privacy_critical:
         routing_log.append("Privacy critical task detected. Routing to UltraThink system.")
         result = await call_ultrathink(req.task_description)
         if not result:
-            routing_log.append("UltraThink failed, falling back to local Qwen3-30B")
-            result = await call_ollama(req.task_description, "qwen3:30b-a3b-instruct-q4_K_M", OLLAMA_WINDOWS_ENDPOINT)
+            routing_log.append("UltraThink failed, falling back to local Qwen3.5-35B")
+            result = await call_ollama(req.task_description, "qwen3.5:35b-a3b-q4_K_M", OLLAMA_WINDOWS_ENDPOINT)
     else:
         routing_log.append("Standard orchestration. Calling Claude Sonnet 4.5 via Perplexity.")
         result = await call_perplexity(req.task_description)
         if not result:
-            routing_log.append("Cloud budget/error. Falling back to local Qwen3-30B orchestrator.")
-            result = await call_ollama(req.task_description, "qwen3:30b-a3b-instruct-q4_K_M", OLLAMA_WINDOWS_ENDPOINT)
+            routing_log.append("Cloud budget/error. Falling back to local Qwen3.5-35B orchestrator.")
+            result = await call_ollama(req.task_description, "qwen3.5:35b-a3b-q4_K_M", OLLAMA_WINDOWS_ENDPOINT)
     if req.enable_critic:
-        routing_log.append("Running critic pass with Qwen3-30B on Dell")
+        routing_log.append("Running critic pass with Qwen3.5-35B on Dell")
         critic_prompt = f"Critique the following AI response for accuracy and completeness: {result}"
-        feedback = await call_ollama(critic_prompt, "qwen3:30b-a3b-instruct-q4_K_M", OLLAMA_WINDOWS_ENDPOINT)
+        feedback = await call_ollama(critic_prompt, "qwen3.5:35b-a3b-q4_K_M", OLLAMA_WINDOWS_ENDPOINT)
         routing_log.append("Refining based on critic feedback")
         refine_prompt = f"Original result: {result}\nCritic feedback: {feedback}\nProvide the final improved response."
-        result = await call_ollama(refine_prompt, "qwen3:30b-a3b-instruct-q4_K_M", OLLAMA_WINDOWS_ENDPOINT)
+        result = await call_ollama(refine_prompt, "qwen3.5:35b-a3b-q4_K_M", OLLAMA_WINDOWS_ENDPOINT)
     # Bug fix: result can be None if all backends fail; coerce to str to satisfy response schema
     if result is None:
         result = ""
