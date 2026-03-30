@@ -140,7 +140,7 @@ def _save_state(state: dict[str, Any]) -> None:
 
 
 def _ensure_cloned() -> bool:
-    """Clone ECC Tools repo if not present. Return True if clone ran."""
+    """Ensure vendor/ecc-tools/ is cloned. Return True if available, False if unavailable."""
     VENDOR_DIR.parent.mkdir(parents=True, exist_ok=True)
     git_dir = VENDOR_DIR / ".git"
 
@@ -162,10 +162,9 @@ def _ensure_cloned() -> bool:
         )
         if result.returncode != 0:
             logger.error(f"[ECC Sync] Clone failed: {result.stderr}")
-            return False
+            return False  # unavailable
         logger.info("[ECC Sync] Clone complete.")
-        return True
-    return False
+    return True  # available (just cloned or already existed)
 
 
 def _pull_latest() -> tuple[str, str]:
@@ -255,8 +254,9 @@ def sync_ecc_tools(force: bool = False) -> dict[str, Any]:
     """
     state = _load_state()
     prev_commit = state.get("commit_hash", "")
-    just_cloned = _ensure_cloned()
-    if not (VENDOR_DIR / ".git").exists():
+    git_existed_before = (VENDOR_DIR / ".git").exists()
+    vendor_available = _ensure_cloned()
+    if not vendor_available:
         message = "ECC Tools vendor clone unavailable; sync skipped."
         logger.warning(f"[ECC Sync] {message}")
         return {
@@ -270,6 +270,7 @@ def sync_ecc_tools(force: bool = False) -> dict[str, Any]:
             "missing_source": [],
             "errors": [{"path": str(VENDOR_DIR), "error": "vendor clone unavailable"}],
         }
+    just_cloned = not git_existed_before
     old_hash, new_hash = _pull_latest()
     commit_unchanged = (new_hash == prev_commit) and not just_cloned
 
