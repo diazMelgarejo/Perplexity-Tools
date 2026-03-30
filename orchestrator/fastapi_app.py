@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from hashlib import sha256
@@ -14,6 +15,11 @@ from orchestrator.agent_tracker import AgentTracker
 from orchestrator.connectivity import backend_health_map
 from orchestrator.cost_guard import CostGuard
 from orchestrator.model_registry import ModelRegistry
+from orchestrator.ultrathink_bridge import (
+    call_ultrathink_http_backup,
+    parse_ultrathink_timeout,
+    ultrathink_http_backup_enabled,
+)
 from orchestrator import autoresearch_bridge
 from orchestrator.ecc_tools_sync import get_sync_status, sync_ecc_tools
 
@@ -58,6 +64,7 @@ app.add_middleware(
 tracker = AgentTracker()
 registry = ModelRegistry()
 cost_guard = CostGuard()
+_ULTRATHINK_TASK_TYPES = {"deep_reasoning", "code_analysis"}
 
 
 # ── request / response models ─────────────────────────────────────────────────
@@ -233,6 +240,7 @@ def orchestrate(req: OrchestrateRequest) -> Dict[str, Any]:
         )
 
     selected = candidates[0]
+    route = registry.routing_cfg.get("routes", {}).get(req.task_type, {})
 
     # ── register and activate agent ──────────────────────────────────────────
     agent = tracker.register(
@@ -296,6 +304,30 @@ def orchestrate(req: OrchestrateRequest) -> Dict[str, Any]:
     }
     if budget_warning:
         response["budget_warning"] = budget_warning
+
+    if (
+        req.task_type in _ULTRATHINK_TASK_TYPES
+        and route.get("endpoint")
+        and ultrathink_http_backup_enabled()
+    ):
+        timeout = parse_ultrathink_timeout(route.get("timeout"))
+        try:
+            response["ultrathink_http_backup"] = {
+                "enabled": True,
+                **call_ultrathink_http_backup(
+                    endpoint=str(route["endpoint"]),
+                    timeout=timeout,
+                    task=req.task,
+                    task_type=req.task_type,
+                ),
+            }
+        except Exception as exc:
+            _startup_log.warning("UltraThink HTTP backup call failed: %s", exc)
+            response["ultrathink_http_backup"] = {
+                "enabled": True,
+                "error": str(exc),
+                "endpoint": os.path.expandvars(str(route["endpoint"])),
+            }
     return response
 
 
