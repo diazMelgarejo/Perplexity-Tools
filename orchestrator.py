@@ -48,8 +48,8 @@ ULTRATHINK_ENDPOINT = os.getenv("ULTRATHINK_ENDPOINT")
 if not PERPLEXITY_API_KEY:
     logger.warning("PERPLEXITY_API_KEY is not set — cloud calls will be skipped")
 
-# v0.9.8.0: rate limiting + input validation + Pydantic V2 field_validator
-VERSION = "0.9.8.0"
+# v0.9.9.0: rate limiting + input validation + Pydantic V2 field_validator
+VERSION = "0.9.9.0"
 
 # Rate limiter (OWASP API4 — Unrestricted Resource Consumption)
 limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
