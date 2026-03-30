@@ -1,6 +1,6 @@
 # SKILL.md — Perplexity-Tools Model Selection Skill
 
-**Version:** `v0.9.7.0` (standardized from v0.9.0.0 onward) · **Updated:** 2026-03-28
+**Version:** `v0.9.9.0` (standardized from v0.9.0.0 onward) · **Updated:** 2026-03-30
 **Repo:** https://github.com/diazMelgarejo/Perplexity-Tools · **Branch:** `main`
 
 **Layering (all interoperable and independently configurable):**
@@ -223,6 +223,13 @@ This repo (**Perplexity-Tools**) is the **top-level orchestrator and instance ma
 ---
 
 ## Changelog
+
+### v0.9.9.0 (2026-03-30)
+- **Version freeze**: all files synchronized to 0.9.9.0, held until 1.0 RC
+- **v1.1+ Roadmap**: Deferred MCP-first transport documented in both repos
+- **Bridge tests**: `tests/test_ultrathink_bridge.py` — unit tests for HTTP bridge module
+- **HTTP bridge always-active**: Removed `ULTRATHINK_HTTP_BACKUP_ENABLED` opt-in flag [SYNC]
+- **Renamed**: `ultrathink_http_backup` → `ultrathink_bridge` across all code and response keys
 
 ### v0.9.7.0 (2026-03-28)
 - **AFRP cross-reference**: ultrathink-system layer now documents AFRP (pre-router gate) in 4-layer architecture table [SYNC]
