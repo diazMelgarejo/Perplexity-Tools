@@ -59,3 +59,15 @@ def test_probe_endpoint_requires_httpx(monkeypatch):
 
     with pytest.raises(RuntimeError, match="httpx not installed"):
         asyncio.run(discovery._probe_endpoint("127.0.0.1", 11434))
+
+
+def test_detect_local_subnet_logs_warning_on_fallback(monkeypatch, caplog):
+    import socket
+
+    monkeypatch.setattr(socket, "gethostbyname", lambda _hostname: (_ for _ in ()).throw(OSError("dns down")))
+    caplog.set_level("WARNING", logger="orchestrator.lan_discovery")
+
+    subnet = lan_discovery.LANDiscovery(subnet=None, ports=[11434]).subnet
+
+    assert subnet == "192.168.1.0/24"
+    assert "Failed to auto-detect local subnet" in caplog.text

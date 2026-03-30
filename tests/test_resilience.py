@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
+
+import pytest
 
 
 def test_cost_guard_falls_back_to_memory(monkeypatch, tmp_path):
@@ -192,3 +195,30 @@ def test_orchestrator_starts_without_redis_package(monkeypatch):
     # Must succeed gracefully without Redis
     assert resp.status == "success"
     assert resp.result == ""
+
+
+def test_health_reports_redis_unavailable_when_ping_fails(monkeypatch):
+    orch_mod = _load_orchestrator_module()
+
+    class _FailingRedis:
+        async def ping(self):
+            raise RuntimeError("connection refused")
+
+    monkeypatch.setattr(orch_mod, "r", _FailingRedis())
+    monkeypatch.setattr(orch_mod, "_redis_health_error", None)
+
+    payload = asyncio.run(orch_mod.health())
+
+    assert payload["redis"]["available"] is False
+    assert "connection refused" in payload["redis"]["error"]
+
+
+def test_reconcile_request_rejects_unsafe_hardware_profile():
+    orch_mod = _load_orchestrator_module()
+
+    with pytest.raises(Exception, match="Only letters, numbers, dot, underscore, and hyphen are allowed"):
+        orch_mod.ReconcileRequest(
+            session_id="safe-session",
+            model_id="safe-model",
+            hardware_profile="win-rtx3080:*",
+        )

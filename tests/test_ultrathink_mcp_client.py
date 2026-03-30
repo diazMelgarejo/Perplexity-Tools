@@ -52,7 +52,7 @@ class TestCallUltrathinkMcpOrBridge:
         """When MCP succeeds, httpx.AsyncClient.post must never be called."""
         monkeypatch.setenv("ULTRATHINK_MCP_SERVER_CMD", "python fake_server.py")
 
-        mock_client = AsyncMock()
+        mock_client = MagicMock()
         mock_client.call_solve = AsyncMock(return_value=_GOOD_MCP_RESULT)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock(return_value=False)
@@ -93,7 +93,7 @@ class TestCallUltrathinkMcpOrBridge:
             "orchestrator.ultrathink_mcp_client.UltrathinkMCPClient",
             return_value=mock_client,
         ), patch("httpx.AsyncClient") as mock_async_client_cls:
-            mock_async_client_instance = AsyncMock()
+            mock_async_client_instance = MagicMock()
             mock_async_client_instance.post = AsyncMock(return_value=mock_http_response)
             mock_async_client_instance.__aenter__ = AsyncMock(return_value=mock_async_client_instance)
             mock_async_client_instance.__aexit__ = AsyncMock(return_value=False)
@@ -124,7 +124,7 @@ class TestCallUltrathinkMcpOrBridge:
         """Stub response (no 'result' key) raises ValueError → HTTP fallback."""
         monkeypatch.setenv("ULTRATHINK_MCP_SERVER_CMD", "python fake_server.py")
 
-        mock_client = AsyncMock()
+        mock_client = MagicMock()
         mock_client.call_solve = AsyncMock(
             side_effect=ValueError("MCP _solve() returned stub response")
         )
@@ -139,7 +139,7 @@ class TestCallUltrathinkMcpOrBridge:
             "orchestrator.ultrathink_mcp_client.UltrathinkMCPClient",
             return_value=mock_client,
         ), patch("httpx.AsyncClient") as mock_async_client_cls:
-            mock_async_client_instance = AsyncMock()
+            mock_async_client_instance = MagicMock()
             mock_async_client_instance.post = AsyncMock(return_value=mock_http_response)
             mock_async_client_instance.__aenter__ = AsyncMock(return_value=mock_async_client_instance)
             mock_async_client_instance.__aexit__ = AsyncMock(return_value=False)
@@ -168,7 +168,7 @@ class TestCallUltrathinkMcpOrBridge:
         with patch(
             "orchestrator.ultrathink_mcp_client.UltrathinkMCPClient"
         ) as mock_mcp_cls, patch("httpx.AsyncClient") as mock_async_client_cls:
-            mock_async_client_instance = AsyncMock()
+            mock_async_client_instance = MagicMock()
             mock_async_client_instance.post = AsyncMock(return_value=mock_http_response)
             mock_async_client_instance.__aenter__ = AsyncMock(return_value=mock_async_client_instance)
             mock_async_client_instance.__aexit__ = AsyncMock(return_value=False)
@@ -184,6 +184,47 @@ class TestCallUltrathinkMcpOrBridge:
 
         assert result["transport"] == "http"
         mock_mcp_cls.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_total_mcp_timeout_falls_back_to_http(self, monkeypatch):
+        monkeypatch.setenv("ULTRATHINK_MCP_SERVER_CMD", "python fake_server.py")
+
+        class _SlowClient:
+            def __init__(self, *_args, **_kwargs):
+                pass
+
+            async def __aenter__(self):
+                await asyncio.sleep(0.05)
+                return self
+
+            async def __aexit__(self, *_args):
+                return False
+
+        mock_http_response = MagicMock()
+        mock_http_response.json.return_value = _HTTP_MOCK_RESPONSE
+        mock_http_response.raise_for_status = MagicMock()
+
+        with patch(
+            "orchestrator.ultrathink_mcp_client.UltrathinkMCPClient",
+            _SlowClient,
+        ), patch("httpx.AsyncClient") as mock_async_client_cls:
+            mock_async_client_instance = MagicMock()
+            mock_async_client_instance.post = AsyncMock(return_value=mock_http_response)
+            mock_async_client_instance.__aenter__ = AsyncMock(return_value=mock_async_client_instance)
+            mock_async_client_instance.__aexit__ = AsyncMock(return_value=False)
+            mock_async_client_cls.return_value = mock_async_client_instance
+
+            from orchestrator.ultrathink_bridge import call_ultrathink_mcp_or_bridge
+
+            result = await call_ultrathink_mcp_or_bridge(
+                endpoint="http://localhost:8001",
+                timeout=0.01,
+                task="timed MCP call",
+                task_type="deep_reasoning",
+            )
+
+        assert result["transport"] == "http"
+        mock_async_client_instance.post.assert_called_once()
 
 
 # ── UltrathinkMCPClient.call_solve unit tests ─────────────────────────────────
@@ -221,3 +262,37 @@ class TestUltrathinkMCPClientCallSolve:
         assert result == _GOOD_MCP_RESULT
         assert result["status"] == "done"
         assert "result" in result
+
+
+class TestUltrathinkMCPClientStop:
+
+    @pytest.mark.asyncio
+    async def test_stop_kills_and_waits_when_terminate_times_out(self):
+        from orchestrator.ultrathink_mcp_client import UltrathinkMCPClient
+
+        client = UltrathinkMCPClient(["python", "fake.py"], timeout=10.0)
+        stdin = MagicMock()
+        stdin.close = MagicMock()
+        stdin.wait_closed = AsyncMock()
+
+        proc = MagicMock()
+        proc.returncode = None
+        proc.stdin = stdin
+        proc.terminate = MagicMock()
+        proc.kill = MagicMock()
+        proc.wait = AsyncMock()
+        client._proc = proc
+
+        async def _timeout_and_close(awaitable, timeout):
+            awaitable.close()
+            raise asyncio.TimeoutError
+
+        with patch("orchestrator.ultrathink_mcp_client.asyncio.wait_for", side_effect=_timeout_and_close):
+            await client.stop()
+
+        proc.terminate.assert_called_once()
+        proc.kill.assert_called_once()
+        proc.wait.assert_awaited_once()
+        stdin.close.assert_called_once()
+        stdin.wait_closed.assert_awaited_once()
+        assert client._proc is None
