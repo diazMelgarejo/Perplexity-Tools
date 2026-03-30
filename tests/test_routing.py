@@ -79,3 +79,12 @@ def test_autoresearch_coder_device_affinity(routing_config):
     """autoresearch-coder must target win-rtx3080."""
     route = routing_config["routes"]["autoresearch-coder"]
     assert route.get("device_affinity") == "win-rtx3080"
+
+
+def test_ultrathink_comments_describe_current_task_type_contract():
+    """Routing comments should describe current PT behavior, not stale request fields."""
+    content = ROUTING_YML.read_text()
+    assert "Called when reasoning_depth=ultra or privacy_critical=True." not in content
+    assert "PT selects task_type=deep_reasoning or task_type=code_analysis" in content
+    assert "`reasoning_depth` belongs to the optional HTTP backup path" in content
+    assert "`privacy_critical` is not a live PT request field" in content
