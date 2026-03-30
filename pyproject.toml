@@ -5,11 +5,11 @@
 
 [build-system]
 requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "perplexity-tools"
-dynamic = ["version"]
+version = "0.9.9.0"
 description = "Top-level idempotent multi-agent orchestrator: per-device model selection, fallback routing, cost guard, and ultrathink-system integration."
 readme = "README.md"
 license = { text = "AGPL-3.0" }
@@ -83,9 +83,6 @@ dev = [
 pt-orchestrator = "orchestrator.fastapi_app:app"
 pt-setup = "setup_wizard:main"
 pt-launch = "agent_launcher:main"
-
-[tool.setuptools.dynamic]
-version = { attr = "orchestrator.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["."]

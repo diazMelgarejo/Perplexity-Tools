@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 from datetime import datetime
 from pathlib import Path
+
+import pytest
 
 
 REPO_ROOT = Path(__file__).parent.parent
@@ -48,3 +51,11 @@ def test_save_discovery_state_writes_timezone_aware_timestamp(tmp_path, monkeypa
 
     state = json.loads(state_file.read_text())
     _assert_timezone_aware_utc(state["discovered_at"])
+
+
+def test_probe_endpoint_requires_httpx(monkeypatch):
+    monkeypatch.setattr(lan_discovery, "httpx", None)
+    discovery = lan_discovery.LANDiscovery(subnet="127.0.0.0/30", ports=[11434])
+
+    with pytest.raises(RuntimeError, match="httpx not installed"):
+        asyncio.run(discovery._probe_endpoint("127.0.0.1", 11434))
