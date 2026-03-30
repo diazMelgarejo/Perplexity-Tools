@@ -23,11 +23,6 @@ TASK_TYPE_TO_HTTP_TASK_TYPE = {
 }
 
 
-def ultrathink_http_backup_enabled() -> bool:
-    value = os.getenv("ULTRATHINK_HTTP_BACKUP_ENABLED", "")
-    return value.strip().lower() in {"1", "true", "yes", "on"}
-
-
 def normalize_ultrathink_endpoint(endpoint: str) -> str:
     expanded = os.path.expandvars(str(endpoint or "")).rstrip("/")
     if not expanded:
@@ -57,7 +52,7 @@ def build_ultrathink_http_payload(task: str, task_type: str) -> Dict[str, Any]:
     }
 
 
-def call_ultrathink_http_backup(
+def call_ultrathink_bridge(
     *,
     endpoint: str,
     timeout: float,

@@ -31,8 +31,7 @@ def _make_candidate(
     return candidate
 
 
-def test_orchestrate_calls_ultrathink_http_backup_with_mapped_depth(monkeypatch):
-    monkeypatch.setenv("ULTRATHINK_HTTP_BACKUP_ENABLED", "true")
+def test_orchestrate_calls_ultrathink_bridge_with_mapped_depth(monkeypatch):
     monkeypatch.setenv("ULTRATHINK_ENDPOINT", "http://127.0.0.1:8001")
 
     ultrathink_candidate = _make_candidate()
@@ -97,5 +96,5 @@ def test_orchestrate_calls_ultrathink_http_backup_with_mapped_depth(monkeypatch)
     assert captured["url"] == "http://127.0.0.1:8001/ultrathink"
     assert captured["json"]["optimize_for"] == "reliability"
     assert captured["json"]["reasoning_depth"] == "ultra"
-    assert body["ultrathink_http_backup"]["request"]["reasoning_depth"] == "ultra"
-    assert body["ultrathink_http_backup"]["response"]["reasoning_depth"] == "ultra"
+    assert body["ultrathink_bridge"]["request"]["reasoning_depth"] == "ultra"
+    assert body["ultrathink_bridge"]["response"]["reasoning_depth"] == "ultra"
