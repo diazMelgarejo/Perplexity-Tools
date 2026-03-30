@@ -1,23 +1,21 @@
 ---
-name: feature-development
-description: Workflow command scaffold for feature-development in everything-claude-code.
+name: database-migration
+description: Workflow command scaffold for database-migration in everything-claude-code.
 allowed_tools: ["Bash", "Read", "Write", "Grep", "Glob"]
 ---
 
-# /feature-development
+# /database-migration
 
-Use this workflow when working on **feature-development** in `everything-claude-code`.
+Use this workflow when working on **database-migration** in `everything-claude-code`.
 
 ## Goal
 
-Standard feature implementation workflow
+Database schema changes with migration files
 
 ## Common Files
 
-- `manifests/*`
-- `schemas/*`
-- `**/*.test.*`
-- `**/api/**`
+- `**/schema.*`
+- `migrations/*`
 
 ## Suggested Sequence
 
@@ -28,9 +26,9 @@ Standard feature implementation workflow
 
 ## Typical Commit Signals
 
-- Add feature implementation
-- Add tests for feature
-- Update documentation
+- Create migration file
+- Update schema definitions
+- Generate/update types
 
 ## Notes
 
