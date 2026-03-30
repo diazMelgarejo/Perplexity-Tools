@@ -17,7 +17,7 @@ asyncio>=3.4.3
 httpx>=0.26.0
 
 # Database and caching
-redis>=5.0.1
+# redis>=5.0.1  # Optional — only needed for multi-instance coordination (v1.1+)
 python-multipart>=0.0.9
 sqlalchemy>=2.0.25
 
