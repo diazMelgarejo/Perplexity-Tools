@@ -23,7 +23,7 @@ All items must be checked before pushing the tag.
 
 ## Tests & CI
 
-- [x] 108+ tests passing in Perplexity-Tools
+- [x] 114/114 tests passing in Perplexity-Tools (108 pre-RC + 6 MCP client tests)
 - [x] CI green on both repos (`.github/workflows/ci.yml`)
 - [x] `tests/test_ultrathink_mcp_client.py` — MCP success path, MCP failure → HTTP fallback
 
@@ -40,9 +40,10 @@ All items must be checked before pushing the tag.
 
 ## Release Gate
 
-- [ ] Manual end-to-end smoke test:
-      `POST /orchestrate` with `task_type=deep_reasoning` →
-      ultrathink HTTP bridge → Ollama → non-empty `result` in response
+- [x] Manual end-to-end smoke test (2026-03-30):
+      `POST /orchestrate` `task_type=deep_reasoning` → ultrathink HTTP (port 8001)
+      → Ollama `qwen3:4b-instruct` (localhost fallback) → non-empty `result` ✓
+      Response: `status=created`, `transport=http`, result non-empty.
 - [ ] `git tag v1.0-rc` pushed to `diazMelgarejo/Perplexity-Tools`
 - [ ] `git tag v1.0-rc` pushed to `diazMelgarejo/ultrathink-system`
 
