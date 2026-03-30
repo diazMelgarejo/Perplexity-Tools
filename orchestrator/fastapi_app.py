@@ -16,9 +16,8 @@ from orchestrator.connectivity import backend_health_map
 from orchestrator.cost_guard import CostGuard
 from orchestrator.model_registry import ModelRegistry
 from orchestrator.ultrathink_bridge import (
-    call_ultrathink_http_backup,
+    call_ultrathink_bridge,
     parse_ultrathink_timeout,
-    ultrathink_http_backup_enabled,
 )
 from orchestrator import autoresearch_bridge
 from orchestrator.ecc_tools_sync import get_sync_status, sync_ecc_tools
@@ -308,13 +307,12 @@ def orchestrate(req: OrchestrateRequest) -> Dict[str, Any]:
     if (
         req.task_type in _ULTRATHINK_TASK_TYPES
         and route.get("endpoint")
-        and ultrathink_http_backup_enabled()
     ):
         timeout = parse_ultrathink_timeout(route.get("timeout"))
         try:
-            response["ultrathink_http_backup"] = {
+            response["ultrathink_bridge"] = {
                 "enabled": True,
-                **call_ultrathink_http_backup(
+                **call_ultrathink_bridge(
                     endpoint=str(route["endpoint"]),
                     timeout=timeout,
                     task=req.task,
@@ -322,8 +320,8 @@ def orchestrate(req: OrchestrateRequest) -> Dict[str, Any]:
                 ),
             }
         except Exception as exc:
-            _startup_log.warning("UltraThink HTTP backup call failed: %s", exc)
-            response["ultrathink_http_backup"] = {
+            _startup_log.warning("UltraThink bridge call failed: %s", exc)
+            response["ultrathink_bridge"] = {
                 "enabled": True,
                 "error": str(exc),
                 "endpoint": os.path.expandvars(str(route["endpoint"])),
