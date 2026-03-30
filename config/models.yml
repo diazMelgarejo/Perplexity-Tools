@@ -6,7 +6,7 @@
 models:
 
   # ── LOCAL: Shared Ollama (Mac or Win or dedicated server) ─────────────────
-  - name: qwen3:30b-a3b-instruct-q4_K_M
+  - name: qwen3.5:35b-a3b-q4_K_M
     backend: ollama
     device: shared-ollama-host
     host: "${OLLAMA_HOST:-http://127.0.0.1}"
@@ -18,7 +18,7 @@ models:
     reasoning: local-default
 
   # ── LOCAL: Mac MLX ────────────────────────────────────────────────────────
-  - name: qwen3-30b-a3b-mlx
+  - name: qwen3.5-9b-mlx
     backend: mlx
     device: mac-studio
     host: "http://127.0.0.1"
@@ -30,7 +30,7 @@ models:
     reasoning: mac-local
 
   # ── LOCAL: Windows LM Studio ─────────────────────────────────────────────
-  - name: qwen3-30b-a3b-lmstudio
+  - name: qwen3.5-35b-a3b-lmstudio
     backend: lm-studio
     device: win-rtx3080
     host: "http://127.0.0.1"

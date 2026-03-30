@@ -29,7 +29,7 @@ def test_deep_reasoning_routing_by_hardware_profile(registry):
     """
     Verifies that 'deep_reasoning' task_type includes mac-studio models.
     deep_reasoning roles: [ultrathink, strategy, top-level, fallback]
-    qwen3-30b-a3b-mlx (mac-studio, top-level) must appear in the chain.
+    qwen3.5-9b-mlx (mac-studio, top-level) must appear in the chain.
     Note: role order determines position, not device preference alone;
     qwen3-30b-autoresearch-critic (strategy, win-rtx3080) precedes it.
     """
@@ -40,8 +40,8 @@ def test_deep_reasoning_routing_by_hardware_profile(registry):
 
     names = [m.name for m in chain]
 
-    # qwen3-30b-a3b-mlx must appear in the chain (matches top-level role)
-    assert "qwen3-30b-a3b-mlx" in names, "qwen3-30b-a3b-mlx must be in deep_reasoning chain"
+    # qwen3.5-9b-mlx must appear in the chain (matches top-level role)
+    assert "qwen3.5-9b-mlx" in names, "qwen3.5-9b-mlx must be in deep_reasoning chain"
 
     # mac-studio models must be present
     mac_models = [m for m in chain if m.device == "mac-studio"]
@@ -49,18 +49,18 @@ def test_deep_reasoning_routing_by_hardware_profile(registry):
 
     # Within the top-level role pass, mac-studio model must precede general cloud fallbacks
     # (sonar-reasoning-pro, grok-4-1-thinking are online but not strategy specialists)
-    mlx_idx = names.index("qwen3-30b-a3b-mlx")
+    mlx_idx = names.index("qwen3.5-9b-mlx")
     general_cloud = [i for i, m in enumerate(chain)
                      if m.online and m.name not in ("claude-4-5-thinking",)]
     assert all(mlx_idx < ci for ci in general_cloud), \
-        "qwen3-30b-a3b-mlx should appear before general cloud fallbacks"
+        "qwen3.5-9b-mlx should appear before general cloud fallbacks"
 
 def test_code_analysis_routing_by_hardware_profile(registry):
     """
     Verifies 'code_analysis' routes correctly, preferring coding-specialist models.
     code_analysis roles: [ultrathink, coding, top-level, fallback]
     qwen3-coder-14b (win-rtx3080, priority=5) has role 'coding' and wins
-    over qwen3-30b-a3b-lmstudio (priority=30, also has 'coding').
+    over qwen3.5-35b-a3b-lmstudio (priority=30, also has 'coding').
     """
     chain = registry.route_task("code_analysis", preferred_device="win-rtx3080")
 
@@ -83,7 +83,7 @@ def test_orchestrate_hardware_selection():
     assert resp.status_code == 200
     data = resp.json()
     assert data["selected_model"]["device"] == "win-rtx3080"
-    assert "qwen3-coder-14b" in data["selected_model"]["name"] or "qwen3-30b-a3b-lmstudio" in data["selected_model"]["name"]
+    assert "qwen3-coder-14b" in data["selected_model"]["name"] or "qwen3.5-35b-a3b-lmstudio" in data["selected_model"]["name"]
 
     # Task type 'default' on mac-studio
     resp = client.post("/orchestrate", json={
@@ -94,7 +94,7 @@ def test_orchestrate_hardware_selection():
     assert resp.status_code == 200
     data = resp.json()
     assert data["selected_model"]["device"] == "mac-studio"
-    assert data["selected_model"]["name"] == "qwen3-30b-a3b-mlx"
+    assert data["selected_model"]["name"] == "qwen3.5-9b-mlx"
 
 def test_fallback_chain_across_hardware(registry):
     """
