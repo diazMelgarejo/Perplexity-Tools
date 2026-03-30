@@ -242,7 +242,10 @@ async def orchestrate(req: OrchestrateRequest) -> Dict[str, Any]:
     selected = candidates[0]
     route = registry.routing_cfg.get("routes", {}).get(req.task_type, {})
 
-    # ── register and activate agent ──────────────────────────────────────────
+    # ── register agent ───────────────────────────────────────────────────────
+    # This endpoint only records the routed selection; it does not run a live
+    # long-lived agent lifecycle in-process, so persist the settled state in
+    # one write instead of chaining status transitions.
     agent = tracker.register(
         role=req.task_type,
         model=selected.name,
@@ -256,33 +259,13 @@ async def orchestrate(req: OrchestrateRequest) -> Dict[str, Any]:
             "device": selected.device,
             "online": selected.online,
         },
+        status="idle",
     )
-    running = tracker.update_status(agent.agent_id, "running")
-    if running is None:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "Agent record missing after registration (e.g., concurrent deletion). "
-                "Retry orchestration or inspect GET /agents."
-            ),
-        )
-
-    idle = tracker.update_status(agent.agent_id, "idle")
-    if idle is None:
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                "Agent record disappeared before idle transition (e.g., concurrent DELETE). "
-                "Retry orchestration or inspect GET /agents."
-            ),
-        )
-
-    # Charge only after both transitions succeeded (avoids recording spend if deleted mid-flight).
     cost_guard.record_spend(req.estimated_cost)
 
     response: Dict[str, Any] = {
         "status": "created",
-        "agent": asdict(idle),
+        "agent": asdict(agent),
         "selected_model": {
             "name": selected.name,
             "backend": selected.backend,
