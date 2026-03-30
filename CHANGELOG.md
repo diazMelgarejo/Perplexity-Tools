@@ -7,6 +7,25 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Cross-repo changes affecting ultrathink-system are marked with `[SYNC]`.
 
 ---
+## [0.9.9.0] - 2026-03-30
+
+### Added
+- **v1.1+ Roadmap**: Deferred MCP-first transport documented in both repos
+- **Bridge tests**: `tests/test_ultrathink_bridge.py` — unit tests for HTTP bridge module
+
+### Changed
+- **HTTP bridge always-active**: Removed `ULTRATHINK_HTTP_BACKUP_ENABLED` opt-in flag [SYNC]
+- **Renamed**: `ultrathink_http_backup` → `ultrathink_bridge` across all code and response keys
+- MCP over stdio deferred to v1.1+ as primary transport [SYNC]
+
+### Fixed
+- Version alignment: all files synchronized to 0.9.9.0
+
+### Synced with ultrathink-system
+- Both repos synchronized to v0.9.9.0 [SYNC]
+- ultrathink api_server.py hardened with corrected defaults [SYNC]
+
+---
 ## [0.9.8.0] - 2026-03-29
 
 ### Security
