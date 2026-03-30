@@ -35,8 +35,11 @@ routes:
     description: Live data, current events, monitoring
     roles: [realtime, market, research, fallback]
 
-  # ── ULTRATHINK: deep reasoning via ultrathink-system (port 8001) ────────────
-  # Called when reasoning_depth=ultra or privacy_critical=True.
+  # ── ULTRATHINK: local-only ultrathink routes via task_type selection ────────
+  # PT selects task_type=deep_reasoning or task_type=code_analysis for these.
+  # `reasoning_depth` belongs to the optional HTTP backup path, not OrchestrateRequest.
+  # `privacy_critical` is not a live PT request field; privacy is enforced here
+  # by requiring ultrathink_available and by excluding cloud/online model roles.
   # ultrathink is stateless — PT owns dedup via .state/agents.json.
   # Fallback: local qwen3:30b if ultrathink endpoint unreachable.
   deep_reasoning:
