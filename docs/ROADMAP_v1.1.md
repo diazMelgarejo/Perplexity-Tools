@@ -8,6 +8,19 @@ and multi-instance PT, see:
 
 ## PT-specific v1.1 items:
 
+### Implementation Order — Read Before Starting
+
+> **Do Tier 2 (ultrathink-system server pipeline) before Tier 1 (PT client infrastructure).**
+>
+> Tier 2 is tracked in [ultrathink-system/docs/ROADMAP_v1.1.md](https://github.com/diazMelgarejo/ultrathink-system/blob/main/docs/ROADMAP_v1.1.md).
+> Tier 1 work here starts only after Tier 2 is merged and tested.
+>
+> **The HTTP bridge stays fully functional at every intermediate state.**
+> No PT feature breaks if MCP work is incomplete or abandoned mid-flight:
+> - Before Tier 2: MCP client (if built) detects stub response and falls back to HTTP automatically.
+> - After Tier 2, before Tier 1: Ollama pipeline runs in MCP server; HTTP bridge unchanged, still primary.
+> - After both tiers: PT tries MCP, falls back to HTTP on any subprocess failure. HTTP is never removed.
+
 ### Tier 1 — MCP client infrastructure (PT only, no ultrathink-system changes needed)
 - [ ] Create `orchestrator/ultrathink_mcp_client.py`
   - `UltrathinkMCPClient(server_cmd: list[str], timeout: float = 120.0)` class
