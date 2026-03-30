@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import shutil
 import subprocess
 from datetime import datetime, timezone
@@ -37,6 +38,11 @@ except ImportError:  # pragma: no cover - fallback for minimal environments
 
 ECC_REPO_URL: str = "https://github.com/affaan-m/everything-claude-code.git"
 ECC_REPO_BRANCH: str = "main"
+
+# Set ECC_SYNC_ENABLED=false to skip live git clone/pull at startup.
+# Useful for offline deployments, CI environments, and unit test runs.
+# Default: true (enabled — pulls latest ECC Tools on every startup).
+ECC_SYNC_ENABLED: bool = os.getenv("ECC_SYNC_ENABLED", "true").lower() in ("true", "1", "yes")
 
 # Vendor dir (cloned ECC Tools lives here, relative to project root)
 VENDOR_DIR: Path = Path("vendor/ecc-tools")
@@ -252,6 +258,9 @@ def sync_ecc_tools(force: bool = False) -> dict[str, Any]:
     """
     Full idempotent ECC Tools sync: clone/pull, hash-gated copy, persist .state/ecc_sync.json.
     """
+    if not ECC_SYNC_ENABLED:
+        logger.info("[ECC Sync] Skipped (ECC_SYNC_ENABLED=false)")
+        return {"status": "skipped", "message": "ECC Tools sync disabled via ECC_SYNC_ENABLED"}
     state = _load_state()
     prev_commit = state.get("commit_hash", "")
     git_existed_before = (VENDOR_DIR / ".git").exists()

@@ -2,7 +2,7 @@
 
 **Status:** TODO — not scheduled for v1.0 RC
 
-For the full v1.1+ roadmap including MCP-first transport, Redis coordination,
+For the full v1.1+ roadmap including MCP-optional transport, Redis coordination,
 and multi-instance PT, see:
 [ultrathink-system/docs/ROADMAP_v1.1.md](https://github.com/diazMelgarejo/ultrathink-system/blob/main/docs/ROADMAP_v1.1.md)
 
