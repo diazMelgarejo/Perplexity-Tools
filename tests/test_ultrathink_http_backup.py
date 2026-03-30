@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -44,22 +44,20 @@ def test_orchestrate_calls_ultrathink_bridge_with_mapped_depth(monkeypatch):
     )
     captured = {}
 
-    class _FakeResponse:
-        def raise_for_status(self):
-            return None
+    fake_json_response = {
+        "status": "success",
+        "result": "backup ok",
+        "reasoning_depth": "ultra",
+    }
 
-        def json(self):
-            return {
-                "status": "success",
-                "result": "backup ok",
-                "reasoning_depth": "ultra",
-            }
+    mock_http_response = MagicMock()
+    mock_http_response.raise_for_status = MagicMock()
+    mock_http_response.json.return_value = fake_json_response
 
-    def fake_post(url, json, timeout):
-        captured["url"] = url
-        captured["json"] = json
-        captured["timeout"] = timeout
-        return _FakeResponse()
+    mock_async_client_instance = AsyncMock()
+    mock_async_client_instance.post = AsyncMock(return_value=mock_http_response)
+    mock_async_client_instance.__aenter__ = AsyncMock(return_value=mock_async_client_instance)
+    mock_async_client_instance.__aexit__ = AsyncMock(return_value=False)
 
     with (
         patch(
@@ -77,7 +75,10 @@ def test_orchestrate_calls_ultrathink_bridge_with_mapped_depth(monkeypatch):
             "orchestrator.ecc_tools_sync.get_sync_status",
             return_value={"status": "ok"},
         ),
-        patch("orchestrator.ultrathink_bridge.httpx.post", side_effect=fake_post),
+        patch("orchestrator.ultrathink_bridge.httpx.AsyncClient",
+              return_value=mock_async_client_instance),
+        # Ensure no MCP subprocess is attempted
+        patch.dict("os.environ", {"ULTRATHINK_MCP_SERVER_CMD": ""}),
     ):
         from orchestrator.fastapi_app import app
 
@@ -93,8 +94,11 @@ def test_orchestrate_calls_ultrathink_bridge_with_mapped_depth(monkeypatch):
 
     assert response.status_code == 200, response.text
     body = response.json()
-    assert captured["url"] == "http://127.0.0.1:8001/ultrathink"
-    assert captured["json"]["optimize_for"] == "reliability"
-    assert captured["json"]["reasoning_depth"] == "ultra"
+    # Verify HTTP path was taken (MCP cmd is unset)
+    assert body["ultrathink_bridge"]["transport"] == "http"
+    # Verify the payload sent to HTTP bridge has correct contract mapping
+    _, call_kwargs = mock_async_client_instance.post.call_args
+    assert call_kwargs["json"]["optimize_for"] == "reliability"
+    assert call_kwargs["json"]["reasoning_depth"] == "ultra"
     assert body["ultrathink_bridge"]["request"]["reasoning_depth"] == "ultra"
     assert body["ultrathink_bridge"]["response"]["reasoning_depth"] == "ultra"

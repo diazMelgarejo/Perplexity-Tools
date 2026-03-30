@@ -17,6 +17,7 @@ from orchestrator.cost_guard import CostGuard
 from orchestrator.model_registry import ModelRegistry
 from orchestrator.ultrathink_bridge import (
     call_ultrathink_bridge,
+    call_ultrathink_mcp_or_bridge,
     parse_ultrathink_timeout,
 )
 from orchestrator import autoresearch_bridge
@@ -184,7 +185,7 @@ def route(
 # ── orchestrate ───────────────────────────────────────────────────────────────
 
 @app.post("/orchestrate", tags=["orchestrate"])
-def orchestrate(req: OrchestrateRequest) -> Dict[str, Any]:
+async def orchestrate(req: OrchestrateRequest) -> Dict[str, Any]:
     """
     Idempotent orchestration entrypoint.
 
@@ -312,7 +313,7 @@ def orchestrate(req: OrchestrateRequest) -> Dict[str, Any]:
         try:
             response["ultrathink_bridge"] = {
                 "enabled": True,
-                **call_ultrathink_bridge(
+                **await call_ultrathink_mcp_or_bridge(
                     endpoint=str(route["endpoint"]),
                     timeout=timeout,
                     task=req.task,
