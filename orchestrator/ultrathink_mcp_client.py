@@ -59,7 +59,7 @@ class UltrathinkMCPClient:
             "initialize",
             {
                 "protocolVersion": _MCP_PROTOCOL_VERSION,
-                "clientInfo": {"name": "perplexity-tools", "version": "1.0-rc"},
+                "clientInfo": {"name": "perplexity-tools", "version": "0.9.9.0"},
                 "capabilities": {},
             },
         )

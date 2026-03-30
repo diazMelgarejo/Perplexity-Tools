@@ -31,8 +31,7 @@ from datetime import datetime, timezone
 try:
     import httpx
 except ImportError:
-    print("[lan_discovery] ERROR: httpx not installed. Run: pip install httpx")
-    sys.exit(1)
+    httpx = None
 
 # Common AI inference server ports
 DEFAULT_PORTS = [
@@ -114,6 +113,9 @@ class LANDiscovery:
         Probe a single host:port for AI inference server.
         Returns AIEndpoint if found, None otherwise.
         """
+        if httpx is None:
+            raise RuntimeError("httpx not installed. Run: pip install httpx")
+
         base_url = f"http://{host}:{port}"
         
         try:

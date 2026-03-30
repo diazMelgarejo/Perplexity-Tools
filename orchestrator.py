@@ -17,6 +17,7 @@ import os
 import json
 import asyncio
 import aiohttp
+import logging
 # Redis: Optional for MVP. PT uses file-based state (.state/agents.json) by default.
 # Redis enables distributed coordination for multi-instance deployments (v1.1+).
 # Soft import — app starts cleanly even if the redis package is not installed.
@@ -29,11 +30,37 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 # fix(orchestrator): migrate from deprecated Pydantic V1 @validator to V2 @field_validator
 from pydantic import BaseModel, Field, field_validator
-from loguru import logger
-from dotenv import load_dotenv
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
+try:
+    from loguru import logger
+except ImportError:
+    logger = logging.getLogger("perplexity_tools.orchestrator")
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    def load_dotenv(*_args, **_kwargs):
+        return False
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.util import get_remote_address
+    from slowapi.errors import RateLimitExceeded
+except ImportError:
+    class RateLimitExceeded(Exception):
+        pass
+
+    def _rate_limit_exceeded_handler(*_args, **_kwargs):
+        raise RateLimitExceeded("slowapi is not installed")
+
+    def get_remote_address(_request):
+        return "local"
+
+    class Limiter:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def limit(self, _rule):
+            def decorator(fn):
+                return fn
+            return decorator
 
 load_dotenv()
 

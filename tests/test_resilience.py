@@ -42,6 +42,7 @@ def test_agent_tracker_falls_back_to_memory(monkeypatch, tmp_path):
 def test_sync_returns_structured_error_when_vendor_clone_unavailable(monkeypatch):
     import orchestrator.ecc_tools_sync as sync_mod
 
+    monkeypatch.setattr(sync_mod, "ECC_SYNC_ENABLED", True)
     monkeypatch.setattr(sync_mod, "_ensure_cloned", lambda: False)
     result = sync_mod.sync_ecc_tools(force=False)
 
