@@ -1,10 +1,10 @@
 """test_ultrathink_integration.py — Unified integration test (SYNC_ANALYSIS OPT 3)
 
 Verifies the end-to-end contract between Perplexity-Tools and ultrathink-system:
-  POST /orchestrate with privacy_critical=True  →  deep_reasoning route selected
   POST /orchestrate with task_type="deep_reasoning"  →  ultrathink endpoint in response
   POST /orchestrate with task_type="code_analysis"   →  ultrathink endpoint in response
-  Response structure matches PERPLEXITY_BRIDGE.md spec
+  Response structure matches the MCP-first bridge contract, with HTTP `/ultrathink`
+  treated as backup-only historical context in current docs
 
 All HTTP calls to ultrathink (port 8001) and Ollama are mocked — runs fully offline in CI.
 No version bump — rolling changes pre-v1.0 RC.
