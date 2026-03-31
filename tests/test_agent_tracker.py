@@ -61,6 +61,18 @@ class TestRegister:
         assert a1.agent_id in ids
         assert a2.agent_id in ids
 
+    def test_register_allows_custom_initial_status(self, tracker):
+        agent = tracker.register(
+            role="coder",
+            model="qwen3:8b",
+            backend="ollama",
+            host="localhost",
+            port=11434,
+            status="idle",
+        )
+
+        assert agent.status == "idle"
+
 
 class TestUpdateStatus:
     def test_update_status_changes_field(self, tracker):
