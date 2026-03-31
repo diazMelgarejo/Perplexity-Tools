@@ -185,6 +185,7 @@ class TestUltrathinkRouting:
         agent = body["agent"]
         for field in ("agent_id", "role", "model", "status"):
             assert field in agent, f"agent missing expected field: '{field}'"
+        assert agent["status"] == "idle"
         # fallback_chain is a list
         assert isinstance(body["fallback_chain"], list)
 

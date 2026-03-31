@@ -23,6 +23,7 @@ import sys
 import json
 import asyncio
 import ipaddress
+import logging
 from pathlib import Path
 from typing import List, Dict, Optional
 from dataclasses import dataclass, asdict
@@ -46,6 +47,7 @@ PROBE_TIMEOUT = 2  # seconds
 
 # State file
 DISCOVERY_STATE_FILE = Path(".state/lan_discovery.json")
+log = logging.getLogger("orchestrator.lan_discovery")
 
 
 def _utc_now_iso() -> str:
@@ -105,7 +107,11 @@ class LANDiscovery:
             parts = local_ip.split(".")
             subnet = f"{parts[0]}.{parts[1]}.{parts[2]}.0/24"
             return subnet
-        except Exception:
+        except Exception as exc:
+            log.warning(
+                "Failed to auto-detect local subnet (%s); falling back to 192.168.1.0/24",
+                exc,
+            )
             return "192.168.1.0/24"  # Safe default
 
     async def _probe_endpoint(self, host: str, port: int) -> Optional[AIEndpoint]:
@@ -156,10 +162,12 @@ class LANDiscovery:
                                 server_type="unknown",
                                 models=[],
                             )
-                    except:
+                    except Exception as exc:
+                        log.debug("Health probe failed for %s%s: %s", base_url, endpoint, exc)
                         continue
         
-        except Exception:
+        except Exception as exc:
+            log.debug("Endpoint probe failed for %s: %s", base_url, exc)
             return None
         
         return None

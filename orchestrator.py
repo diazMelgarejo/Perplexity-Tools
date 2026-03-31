@@ -18,6 +18,7 @@ import json
 import asyncio
 import aiohttp
 import logging
+import re
 # Redis: Optional for MVP. PT uses file-based state (.state/agents.json) by default.
 # Redis enables distributed coordination for multi-instance deployments (v1.1+).
 # Soft import — app starts cleanly even if the redis package is not installed.
@@ -80,6 +81,8 @@ if not PERPLEXITY_API_KEY:
 
 # v0.9.9.0: rate limiting + input validation + Pydantic V2 field_validator
 VERSION = "0.9.9.0"
+SAFE_REDIS_KEY_SEGMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+_redis_health_error: Optional[str] = None
 
 # Rate limiter (OWASP API4 — Unrestricted Resource Consumption)
 limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
@@ -98,7 +101,41 @@ try:
     r = _redis_mod.Redis(host=REDIS_HOST, port=REDIS_PORT, decode_responses=True) if _redis_mod else None
 except Exception as _redis_init_err:
     logger.error(f"Redis init failed: {_redis_init_err}; budget tracking disabled")
+    _redis_health_error = str(_redis_init_err)
     r = None
+
+
+def _disable_redis(reason: str) -> None:
+    global r, _redis_health_error
+    _redis_health_error = reason
+    if r is not None:
+        logger.warning(f"Redis became unavailable: {reason}; budget tracking disabled")
+    r = None
+
+
+async def _redis_available() -> bool:
+    if r is None:
+        return False
+    try:
+        pong = await r.ping()
+    except Exception as exc:
+        _disable_redis(str(exc))
+        return False
+    if not pong:
+        _disable_redis("PING returned falsy response")
+        return False
+    return True
+
+
+async def _redis_health() -> dict:
+    available = await _redis_available()
+    return {
+        "configured": _redis_mod is not None,
+        "available": available,
+        "host": REDIS_HOST,
+        "port": REDIS_PORT,
+        "error": None if available else (_redis_health_error or "Redis disabled"),
+    }
 
 
 # sec: input validation — bounded task_description (OWASP API3 injection + API4 DoS)
@@ -129,6 +166,15 @@ class ReconcileRequest(BaseModel):
     model_id: str = Field(..., min_length=1, max_length=128)
     hardware_profile: str = Field(..., min_length=1, max_length=64)  # e.g., "win-rtx3080" or "mac-studio"
 
+    @field_validator("session_id", "model_id", "hardware_profile")
+    @classmethod
+    def safe_redis_key_segment(cls, value: str) -> str:
+        if not SAFE_REDIS_KEY_SEGMENT.fullmatch(value):
+            raise ValueError(
+                "Only letters, numbers, dot, underscore, and hyphen are allowed"
+            )
+        return value
+
 
 class ReconcileResponse(BaseModel):
     approved: bool
@@ -137,7 +183,7 @@ class ReconcileResponse(BaseModel):
 
 
 async def check_budget():
-    if r is None:
+    if not await _redis_available():
         return True  # Redis unavailable — allow calls, log warning
     try:
         calls = await r.get("perplexity:daily_calls") or 0
@@ -151,7 +197,7 @@ async def check_budget():
 
 
 async def log_perplexity_usage(tokens_used: int):
-    if r is None:
+    if not await _redis_available():
         return
     # $15 per 1M tokens blended rate
     cost = (tokens_used / 1_000_000) * 15.0
@@ -232,7 +278,7 @@ async def reconcile(req: ReconcileRequest, request: Request):
     """
     v0.9.7.0: Prevent GPU contention and enforce hardware limits.
     """
-    if r is None:
+    if not await _redis_available():
         return ReconcileResponse(approved=True, reason="Redis unavailable; skipping contention check")
     # Check for existing sessions on the hardware in Redis
     active_sessions = await r.keys(f"ultrathink:session:active:{req.hardware_profile}:*")
@@ -282,7 +328,7 @@ async def orchestrate(req: OrchestrationRequest, request: Request):
         result = ""
         routing_log.append("All backends failed; returning empty result.")
     spend = 0.0
-    if r is not None:
+    if await _redis_available():
         try:
             spend = float(await r.get("perplexity:daily_spend") or 0)
         except Exception:
@@ -297,7 +343,7 @@ async def orchestrate(req: OrchestrationRequest, request: Request):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "version": VERSION}
+    return {"status": "ok", "version": VERSION, "redis": await _redis_health()}
 
 
 if __name__ == "__main__":
