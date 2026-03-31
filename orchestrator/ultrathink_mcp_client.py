@@ -21,6 +21,7 @@ Usage:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import shlex
@@ -71,13 +72,23 @@ class UltrathinkMCPClient:
 
     async def stop(self) -> None:
         """Terminate subprocess cleanly."""
-        if self._proc and self._proc.returncode is None:
-            try:
-                self._proc.terminate()
-                await asyncio.wait_for(self._proc.wait(), timeout=5.0)
-            except Exception:
-                self._proc.kill()
-        self._proc = None
+        proc = self._proc
+        if proc is None:
+            return
+        try:
+            if proc.returncode is None:
+                proc.terminate()
+                try:
+                    await asyncio.wait_for(proc.wait(), timeout=5.0)
+                except Exception:
+                    proc.kill()
+                    await proc.wait()
+        finally:
+            if proc.stdin is not None:
+                proc.stdin.close()
+                with contextlib.suppress(Exception):
+                    await proc.stdin.wait_closed()
+            self._proc = None
 
     async def __aenter__(self) -> "UltrathinkMCPClient":
         await self._start()

@@ -105,6 +105,7 @@ class AgentTracker:
         task_hash: Optional[str] = None,
         parent_agent_id: Optional[str] = None,
         metadata: Optional[dict] = None,
+        status: str = "starting",
     ) -> AgentRecord:
         agents = self._load()
         now = time.time()
@@ -115,7 +116,7 @@ class AgentTracker:
             backend=backend,
             host=host,
             port=port,
-            status="starting",
+            status=status,
             created_at=now,
             updated_at=now,
             task_hash=task_hash,
