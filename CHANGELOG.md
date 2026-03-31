@@ -1,3 +1,32 @@
+# Changelog
+
+All notable changes to Perplexity-Tools are documented here.
+Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+Versioning follows [Semantic Versioning](https://semver.org/).
+
+---
+
+## [1.0.0-rc] - 2026-03-31 [SYNC]
+
+### Added
+- `call_lmstudio()` — async LM Studio client (Win + Mac) in `orchestrator.py`
+- Mac orchestrator + Win agent routing chain
+
+### Changed
+- `config/models.yml` — canonical models for v1.0 RC:
+  - Mac: Qwen3.5-9B-MLX-4bit, roles=[orchestrator,final-validator,presenter], context=4096
+  - Win: Qwen3.5-27B Q4_K_M, roles=[coder,checker,refiner,executor,verifier], context=16384
+  - Both entries note backend-agnostic model files (loadable in Ollama too)
+- `.env.example` — LM Studio vars with Mac/Win role comments
+
+### Architecture (v1.0 RC) [SYNC]
+- Mac = Orchestrator + Final Validator/Presenter (context=4096 conservative)
+- Windows = UltraThink Agent(s) (1-4x, sequential or parallel)
+- Optional cloud verification step when online + budget allows
+- Ollama remains as fallback (same model files, different runtime)
+
+---
+
 # Changelog — Perplexity-Tools
 
 All notable changes to this project will be documented in this file.
