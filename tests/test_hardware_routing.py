@@ -86,6 +86,8 @@ def test_orchestrate_hardware_selection():
     assert "qwen3-coder-14b" in data["selected_model"]["name"] or "qwen3.5-35b-a3b-lmstudio" in data["selected_model"]["name"]
 
     # Task type 'default' on mac-studio
+    # Qwen3.5-9B-MLX-4bit (priority=10) outranks qwen3.5-9b-mlx (priority=20)
+    # for the top-level role on mac-studio since commit ff2275e.
     resp = client.post("/orchestrate", json={
         "task": "What is the capital of France?",
         "task_type": "default",
@@ -94,7 +96,7 @@ def test_orchestrate_hardware_selection():
     assert resp.status_code == 200
     data = resp.json()
     assert data["selected_model"]["device"] == "mac-studio"
-    assert data["selected_model"]["name"] == "qwen3.5-9b-mlx"
+    assert data["selected_model"]["name"] == "Qwen3.5-9B-MLX-4bit"
 
 def test_fallback_chain_across_hardware(registry):
     """
