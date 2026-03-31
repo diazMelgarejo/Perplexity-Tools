@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -26,8 +27,8 @@ from orchestrator.ecc_tools_sync import get_sync_status, sync_ecc_tools
 _startup_log = logging.getLogger("orchestrator.fastapi_app")
 
 
-@asynccontextmanager
-async def _lifespan(app: FastAPI):
+def _run_ecc_sync_bg() -> None:
+    """Blocking ECC sync — runs in a thread so startup is not delayed."""
     try:
         ecc_result = sync_ecc_tools(force=False)
         _startup_log.info(
@@ -37,6 +38,12 @@ async def _lifespan(app: FastAPI):
         )
     except Exception as exc:
         _startup_log.warning("ECC Tools sync failed (non-fatal): %s", exc)
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    # Fire ECC sync in background — does not block port bind or request handling.
+    asyncio.get_event_loop().run_in_executor(None, _run_ecc_sync_bg)
     yield
 
 
