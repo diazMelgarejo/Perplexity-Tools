@@ -30,16 +30,46 @@ models:
     reasoning: mac-local
 
   # ── LOCAL: Windows LM Studio ─────────────────────────────────────────────
-  - name: qwen3.5-35b-a3b-lmstudio
+  # [v1.0 RC] Win agent — Qwen3.5-27B Q4_K_M via LM Studio (GPU Offload=40, context=16384)
+  # GGUF file is backend-agnostic: also loads in Ollama, koboldcpp, llama.cpp
+  - name: Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2
     backend: lm-studio
     device: win-rtx3080
-    host: "http://127.0.0.1"
+    host: "${LM_STUDIO_WIN_ENDPOINT:-http://192.168.1.100}"
     port: 1234
-    context_window: 32768
-    roles: [general, coding, subagent, fallback]
-    priority: 30
+    context_window: 16384
+    roles: [coder, checker, refiner, executor, verifier, subagent, fallback]
+    priority: 15
     online: false
-    reasoning: windows-local
+    reasoning: windows-ultrathink-agent
+    notes: "v1.0 RC Win UltraThink Agent. HF: bartowski/Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2-GGUF"
+
+  # [v1.0 RC] Mac orchestrator — Qwen3.5-9B MLX 4bit via LM Studio (Metal full offload, context=4096)
+  # MLX format — also loads as GGUF in Ollama or llama.cpp if needed
+  - name: Qwen3.5-9B-MLX-4bit
+    backend: lm-studio
+    device: mac-studio
+    host: "${LM_STUDIO_MAC_ENDPOINT:-http://localhost}"
+    port: 1234
+    context_window: 4096
+    roles: [orchestrator, final-validator, presenter, top-level]
+    priority: 10
+    online: false
+    reasoning: mac-orchestrator
+    notes: "v1.0 RC Mac Orchestrator+Validator. Context=4096 conservative for M2 16GB."
+
+  # [planned — future release] qwen3.5-35b-a3b-lmstudio (Win LM Studio, context=32768)
+  # Uncomment when upgrading Win agent to 35B or higher VRAM config
+  # - name: qwen3.5-35b-a3b-lmstudio
+  #   backend: lm-studio
+  #   device: win-rtx3080
+  #   host: "http://127.0.0.1"
+  #   port: 1234
+  #   context_window: 32768
+  #   roles: [general, coding, subagent, fallback]
+  #   priority: 30
+  #   online: false
+  #   reasoning: windows-local
 
   # ── ONLINE: Perplexity sonar-reasoning-pro ───────────────────────────────
   - name: sonar-reasoning-pro
