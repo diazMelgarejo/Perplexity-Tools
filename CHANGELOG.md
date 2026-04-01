@@ -36,6 +36,28 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Cross-repo changes affecting ultrathink-system are marked with `[SYNC]`.
 
 ---
+## [1.0.0-rc] - 2026-04-01 [LM Studio MCP Server] [SYNC]
+
+### Added
+- `call_lmstudio()` in `orchestrator.py` — async POST to LM Studio `/api/v1/chat`,
+  extracts first `type="message"` content. Reads from `LM_STUDIO_WIN_ENDPOINTS`,
+  `LM_STUDIO_MAC_ENDPOINT`, `LMS_WIN_MODEL`, `LMS_MAC_MODEL`.
+- `config/models.yml` — canonical Win (priority 15) and Mac (priority 10) LM Studio entries:
+  `Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2` (Win, GGUF, Q4_K_M, GPU 40-layer offload)
+  and `Qwen3.5-9B-MLX-4bit` (Mac, MLX-4bit, Metal full offload, context=4096).
+  Both model files are backend-agnostic (compatible with Ollama, koboldcpp, llama.cpp).
+- `.env.example` — LM Studio canonical model vars, multi-Win endpoint support.
+
+### Changed
+- `orchestrator.py` routing:
+  - `privacy_critical=True` path: UltraThink → LM Studio Win(s) → LM Studio Mac → Ollama
+  - standard path: Perplexity cloud → LM Studio Win(s) → Ollama
+
+### Synced with ultrathink-system [SYNC]
+- US added `lmstudio_bridge.py`, `lmstudio_mcp_server.py`, `portal_server.py`,
+  `multi_agent/config/mcp.json`, updated `api_server.py` with LM Studio primary backend
+
+---
 ## [1.0-rc] - 2026-03-30
 
 ### Added
