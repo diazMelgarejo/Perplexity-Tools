@@ -75,6 +75,18 @@ MAX_DAILY_SPEND = float(os.getenv("MAX_DAILY_SPEND", 0.17))
 MAX_PERPLEXITY_CALLS_DAY = int(os.getenv("MAX_PERPLEXITY_CALLS_DAY", 5))
 ULTRATHINK_ENDPOINT = os.getenv("ULTRATHINK_ENDPOINT")
 
+# LM Studio (v1.0 RC primary local backend)
+LMS_WIN_ENDPOINTS: List[str] = [
+    ep.strip()
+    for ep in os.getenv("LM_STUDIO_WIN_ENDPOINTS", "http://192.168.1.100:1234").split(",")
+    if ep.strip()
+]
+LMS_MAC_ENDPOINT: str = os.getenv("LM_STUDIO_MAC_ENDPOINT", "http://localhost:1234")
+LMS_API_TOKEN: str = os.getenv("LM_STUDIO_API_TOKEN", "")
+LMS_WIN_MODEL: str = os.getenv("LMS_WIN_MODEL", "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2")
+LMS_MAC_MODEL: str = os.getenv("LMS_MAC_MODEL", "Qwen3.5-9B-MLX-4bit")
+LMS_TIMEOUT: float = float(os.getenv("LM_STUDIO_TIMEOUT", "120"))
+
 # sec: validate API key is configured at startup
 if not PERPLEXITY_API_KEY:
     logger.warning("PERPLEXITY_API_KEY is not set — cloud calls will be skipped")
@@ -240,6 +252,31 @@ async def call_perplexity(prompt: str, model: str = "claude-3-5-sonnet-thinking"
             return None
 
 
+async def call_lmstudio(prompt: str, endpoint: str = "", model: str = "") -> Optional[str]:
+    """POST to LM Studio /api/v1/chat; extract first message-type content."""
+    ep = endpoint or (LMS_WIN_ENDPOINTS[0] if LMS_WIN_ENDPOINTS else LMS_MAC_ENDPOINT)
+    mdl = model or LMS_WIN_MODEL
+    headers: Dict[str, str] = {"Content-Type": "application/json"}
+    if LMS_API_TOKEN:
+        headers["Authorization"] = f"Bearer {LMS_API_TOKEN}"
+    payload = {"model": mdl, "input": prompt, "context_length": 8192}
+    async with aiohttp.ClientSession() as session:
+        try:
+            async with session.post(
+                f"{ep}/api/v1/chat", json=payload, headers=headers,
+                timeout=aiohttp.ClientTimeout(total=LMS_TIMEOUT),
+            ) as resp:
+                data = await resp.json()
+                output = data.get("output", [])
+                for item in output:
+                    if item.get("type") == "message":
+                        return item.get("content")
+                return " ".join(item.get("content", "") for item in output if item.get("content")) or None
+        except Exception as e:
+            logger.error(f"LM Studio error ({ep}): {e}")
+            return None
+
+
 async def call_ollama(prompt: str, model: str, endpoint: str):
     url = f"{endpoint}/api/generate"
     payload = {
@@ -305,16 +342,33 @@ async def orchestrate(req: OrchestrationRequest, request: Request):
             routing_log.append("Cloud failed, falling back to local Qwen3.5-35B research")
             result = await call_ollama(req.task_description, "qwen3.5:35b-a3b-q4_K_M", OLLAMA_WINDOWS_ENDPOINT)
     elif req.privacy_critical:
-        routing_log.append("Privacy critical task detected. Routing to UltraThink system.")
+        routing_log.append("Privacy critical: routing to UltraThink → LM Studio Win → LM Studio Mac → Ollama.")
         result = await call_ultrathink(req.task_description)
         if not result:
-            routing_log.append("UltraThink failed, falling back to local Qwen3.5-35B")
+            routing_log.append("UltraThink unavailable, trying LM Studio Win agents.")
+            for ep in LMS_WIN_ENDPOINTS:
+                result = await call_lmstudio(req.task_description, endpoint=ep, model=LMS_WIN_MODEL)
+                if result:
+                    routing_log.append(f"LM Studio Win answered ({ep}).")
+                    break
+        if not result:
+            routing_log.append("LM Studio Win failed, trying LM Studio Mac.")
+            result = await call_lmstudio(req.task_description, endpoint=LMS_MAC_ENDPOINT, model=LMS_MAC_MODEL)
+        if not result:
+            routing_log.append("LM Studio Mac failed, falling back to Ollama.")
             result = await call_ollama(req.task_description, "qwen3.5:35b-a3b-q4_K_M", OLLAMA_WINDOWS_ENDPOINT)
     else:
-        routing_log.append("Standard orchestration. Calling Claude Sonnet 4.5 via Perplexity.")
+        routing_log.append("Standard orchestration. Calling Perplexity cloud.")
         result = await call_perplexity(req.task_description)
         if not result:
-            routing_log.append("Cloud budget/error. Falling back to local Qwen3.5-35B orchestrator.")
+            routing_log.append("Cloud budget/error. Trying LM Studio Win (local fallback).")
+            for ep in LMS_WIN_ENDPOINTS:
+                result = await call_lmstudio(req.task_description, endpoint=ep, model=LMS_WIN_MODEL)
+                if result:
+                    routing_log.append(f"LM Studio Win answered ({ep}).")
+                    break
+        if not result:
+            routing_log.append("LM Studio Win failed, falling back to Ollama.")
             result = await call_ollama(req.task_description, "qwen3.5:35b-a3b-q4_K_M", OLLAMA_WINDOWS_ENDPOINT)
     if req.enable_critic:
         routing_log.append("Running critic pass with Qwen3.5-35B on Dell")
