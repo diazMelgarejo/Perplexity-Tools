@@ -1,0 +1,40 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.0
+    hooks:
+      - id: ruff
+        files: \.py$
+      - id: ruff-format
+        files: \.py$
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-toml
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+        exclude: \.md$
+
+  - repo: local
+    hooks:
+      - id: no-stale-model
+        name: "Reject stale model references as primary"
+        entry: bash -c "! grep -n 'default_primary_model.*qwen3.5-35b-a3b-q4' hardware/SKILL.md"
+        language: system
+        pass_filenames: false
+
+      - id: docs-sync
+        name: "Validate hardware/SKILL.md matches config/models.yml"
+        entry: python scripts/check_docs_sync.py --quiet
+        language: system
+        pass_filenames: false
+        types: [yaml, markdown]
+
+      - id: pytest-gate
+        name: "Run tests before commit (Python changes only)"
+        entry: pytest -q tests/
+        language: system
+        pass_filenames: false
+        types: [python]

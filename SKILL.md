@@ -1,6 +1,6 @@
 # SKILL.md — Perplexity-Tools Model Selection Skill
 
-**Version:** `v0.9.9.0` (standardized from v0.9.0.0 onward) · **Updated:** 2026-03-30
+**Version:** `v0.9.9.1` · **Updated:** 2026-04-04
 **Repo:** https://github.com/diazMelgarejo/Perplexity-Tools · **Branch:** `main`
 
 **Layering (all interoperable and independently configurable):**
@@ -54,14 +54,14 @@ This orchestrator is designed for **full hardware profile awareness** [web:40] a
 Refer to [hardware/SKILL.md](https://github.com/diazMelgarejo/Perplexity-Tools/blob/main/hardware/SKILL.md) for full specs.
 
 ### Profile A — mac-studio (16GB+ Unified Memory)
-- **Primary**: `qwen3.5-9b-mlx-4bit` (MLX)
-- **Roles**: Orchestrator, Manager, General, Synthesis.
-- **VRAM**: N/A (Unified).
+- **Primary**: `Qwen3.5-9B-MLX-4bit` (LM Studio, Metal full offload, context 4096)
+- **Roles**: Orchestrator, Final Validator, Presenter, Top-Level.
+- **VRAM**: N/A (Unified). LM Studio handles MLX weights natively.
 
 ### Profile B — win-rtx3080 (10GB VRAM)
-- **Primary**: `qwen3.5-35b-a3b-q4` (Ollama)
-- **Roles**: Coding, Autoresearch, Heavy Reasoning, Critic.
-- **Constraints**: 10GB hard ceiling; `num_ctx <= 8192`.
+- **Primary**: `Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2` (LM Studio, gpu_offload=40)
+- **Roles**: Coder, Checker, Refiner, Executor, Verifier (UltraThink agent roles).
+- **Constraints**: gpu_offload=40 layers; `context 16384`; fallback: Ollama `qwen3.5-35b-a3b-q4`.
 
 ---
 
@@ -121,8 +121,8 @@ Task Received
 │
 ├─ Privacy Critical?
 │  └─ YES → ALWAYS local, skip cloud
-│     ├─ Code task → win-rtx3080: qwen3.5-35b-a3b-q4
-│     └─ Standard → mac-studio: qwen3.5-9b-mlx-4bit
+│     ├─ Code task → win-rtx3080: Qwen3.5-27B (LM Studio) → Ollama fallback
+│     └─ Standard → mac-studio: Qwen3.5-9B-MLX-4bit (LM Studio, context 4096)
 │
 ├─ Budget exhausted OR Internet offline?
 │  └─ YES → win-rtx3080: qwen3-30b-critic (FALLBACK)
@@ -134,13 +134,13 @@ Task Received
 │  └─ YES + Budget OK → Perplexity: claude-sonnet-4.5-thinking
 │
 ├─ Heavy code generation (> 500 lines)?
-│  ├─ > 2000 lines → win-rtx3080: qwen3-30b-critic
-│  └─ 500-2000 lines → win-rtx3080: qwen3.5-35b-a3b-q4
+│  ├─ > 2000 lines → win-rtx3080: Qwen3.5-27B (LM Studio, context 16384)
+│  └─ 500-2000 lines → win-rtx3080: Qwen3.5-27B (LM Studio)
 │
 ├─ Quick/interactive task?
-│  └─ mac-studio: qwen3-8b-instruct (fastest)
+│  └─ mac-studio: qwen3-8b-instruct (Ollama, fastest)
 │
-└─ Default → mac-studio: qwen3.5-9b-mlx-4bit
+└─ Default → mac-studio: Qwen3.5-9B-MLX-4bit (LM Studio, context 4096)
 ```
 
 ---
@@ -196,19 +196,25 @@ cloud_enabled: true
 critic_pass: true
 ```
 
-### Mode 3: Mac + Dell LAN (Full Orchestration — RECOMMENDED)
+### Mode 3: Mac + Win LAN (Full Orchestration — RECOMMENDED)
 ```yaml
 mode: lan_full
-mac_endpoint: http://192.168.1.101:11434
-dell_endpoint: http://192.168.1.100:11434
-redis_broker: http://192.168.1.100:6379
+# LM Studio endpoints (primary — v0.9.9.1+)
+lmstudio_mac: http://192.168.254.105:1234    # Qwen3.5-9B-MLX-4bit, context 4096
+lmstudio_win: http://192.168.254.101:1234    # Qwen3.5-27B, gpu_offload=40, context 16384
+# Portal dashboard
+portal: http://192.168.254.105:8002          # LAN status (auto-refresh 10s)
+# Ollama fallbacks
+ollama_mac: http://192.168.254.105:11434
+ollama_win: http://192.168.254.101:11434
 cloud_enabled: true
 critic_pass: true
 fallback_chain:
-  - cloud_perplexity
-  - dell_qwen3_30b
-  - dell_qwen3_35b
-  - mac_qwen3_9b
+  - lmstudio_win           # primary UltraThink agent
+  - lmstudio_mac           # orchestrator + validator
+  - ollama_win             # qwen3.5-35b-a3b-q4
+  - ollama_mac
+  - cloud_perplexity       # cost_guard checked first
 ```
 
 ---
@@ -223,6 +229,14 @@ This repo (**Perplexity-Tools**) is the **top-level orchestrator and instance ma
 ---
 
 ## Changelog
+
+### v0.9.9.1 (2026-04-04)
+- **LM Studio promoted to primary backend**: Win=Qwen3.5-27B (gpu_offload=40, context 16384); Mac=Qwen3.5-9B-MLX-4bit (context 4096 conservative)
+- **Mac roles updated**: orchestrator, final-validator, presenter, top-level
+- **Win roles updated**: coder, checker, refiner, executor, verifier (UltraThink agent)
+- **Mode 3 LAN config**: LM Studio endpoints (port 1234) + portal (port 8002) documented
+- **Routing tree**: all model references updated to LM Studio canonical IDs
+- **Enforcement**: `scripts/check_docs_sync.py` + `.pre-commit-config.yaml` added [SYNC]
 
 ### v0.9.9.0 (2026-03-30)
 - **Version freeze**: all files synchronized to 0.9.9.0, held until 1.0 RC
