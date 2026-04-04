@@ -20,8 +20,8 @@ repos:
   - repo: local
     hooks:
       - id: no-stale-model
-        name: "Reject stale model references as primary"
-        entry: bash -c "! grep -n 'default_primary_model.*qwen3.5-35b-a3b-q4' hardware/SKILL.md"
+        name: "Reject stale model as default_primary_model"
+        entry: bash -c "! grep 'default_primary_model:.*qwen3.5-35b-a3b-q4' hardware/SKILL.md"
         language: system
         pass_filenames: false
 

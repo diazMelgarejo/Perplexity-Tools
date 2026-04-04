@@ -74,10 +74,12 @@ jobs:
       - name: Validate hardware/SKILL.md matches config/models.yml
         run: python scripts/check_docs_sync.py --quiet
 
-      - name: Reject stale model references
+      - name: Reject stale model as default_primary_model
         run: |
-          if grep -r "qwen3.5-35b-a3b-q4" hardware/SKILL.md; then
-            echo "FAIL: stale model 'qwen3.5-35b-a3b-q4' found as primary in hardware/SKILL.md"
+          # Only fail if qwen3.5-35b-a3b-q4 is set as the PRIMARY model.
+          # It may still appear as a legacy fallback entry — that is intentional.
+          if grep "default_primary_model:.*qwen3.5-35b-a3b-q4" hardware/SKILL.md; then
+            echo "FAIL: stale model 'qwen3.5-35b-a3b-q4' is set as default_primary_model — update to canonical LM Studio model"
             exit 1
           fi
-          echo "OK: no stale primary model references"
+          echo "OK: default_primary_model is not a stale reference"
