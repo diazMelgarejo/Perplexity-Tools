@@ -6,7 +6,17 @@ For the full v1.1+ roadmap including MCP-optional transport, Redis coordination,
 and multi-instance PT, see:
 [ultrathink-system/docs/ROADMAP_v1.1.md](https://github.com/diazMelgarejo/ultrathink-system/blob/main/docs/ROADMAP_v1.1.md)
 
-## PT-specific v1.1 items:
+---
+
+## 0. Shield git repo from saving SOUL.md → IDENTITY.md → USER.md → task context → memory, should be gitignored.
+
+Only specialized "AGENTS.md" should exist and be reproduced for agent alignment and assignment?
+
+Only the top-level orchestrator and final validator has elevated privileged access, all other agent sessions are always ephemeral and least privileged.
+
+---
+
+## 1. PT-specific v1.1 items:
 
 ### Implementation Order — Read Before Starting
 
