@@ -57,3 +57,29 @@ jobs:
           assert 'code_analysis' in cfg['routes'], 'code_analysis route missing'
           print('routing.yml OK -- all required routes present')
           "
+
+  docs-sync:
+    name: Docs/Config Sync Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pyyaml
+        run: pip install pyyaml
+
+      - name: Validate hardware/SKILL.md matches config/models.yml
+        run: python scripts/check_docs_sync.py --quiet
+
+      - name: Reject stale model as default_primary_model
+        run: |
+          # Only fail if qwen3.5-35b-a3b-q4 is set as the PRIMARY model.
+          # It may still appear as a legacy fallback entry — that is intentional.
+          if grep "default_primary_model:.*qwen3.5-35b-a3b-q4" hardware/SKILL.md; then
+            echo "FAIL: stale model 'qwen3.5-35b-a3b-q4' is set as default_primary_model — update to canonical LM Studio model"
+            exit 1
+          fi
+          echo "OK: default_primary_model is not a stale reference"
