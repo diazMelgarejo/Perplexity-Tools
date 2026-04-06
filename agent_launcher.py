@@ -25,7 +25,9 @@ import asyncio
 import argparse
 from pathlib import Path
 
-from orchestrator.connectivity import check_lm_studio as _lms_sync_check
+import functools
+
+from orchestrator.connectivity import _probe as _connectivity_probe
 
 try:
     import httpx
@@ -50,7 +52,9 @@ WINDOWS_CODER_MODEL  = os.getenv("WINDOWS_CODER_MODEL", "qwen3.5-35b-a3b-win")
 
 WINDOWS_LMS_PORT      = int(os.getenv("WINDOWS_LMS_PORT", "1234"))
 REMOTE_WINDOWS_LMS_URL = f"http://{WINDOWS_IP}:{WINDOWS_LMS_PORT}"
-WINDOWS_LMS_MODEL     = os.getenv("WINDOWS_LMS_MODEL") or os.getenv("LMS_WIN_MODEL", "")
+WINDOWS_LMS_MODEL     = (os.getenv("WINDOWS_LMS_MODEL")
+                         or os.getenv("LMS_WIN_MODEL")
+                         or "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2")
 
 # Timeout in seconds — short to avoid blocking the launcher when Windows is asleep
 DETECT_TIMEOUT = int(os.getenv("AGENT_DETECT_TIMEOUT", "3"))
@@ -74,11 +78,15 @@ async def check_remote_worker(base_url: str, timeout: int = DETECT_TIMEOUT) -> b
 
 
 async def check_lmstudio_worker(base_url: str, timeout: int = DETECT_TIMEOUT) -> bool:
-    """Async wrapper around orchestrator.connectivity.check_lm_studio.
-    Reachability only — trusts config that WINDOWS_LMS_MODEL is loaded.
+    """Reachability probe for Windows LM Studio (/v1/models).
+    Delegates to orchestrator.connectivity._probe so AGENT_DETECT_TIMEOUT is honoured.
+    Trusts config that WINDOWS_LMS_MODEL is the currently-loaded model.
     """
     loop = asyncio.get_event_loop()
-    result = await loop.run_in_executor(None, _lms_sync_check, base_url)
+    url = f"{base_url.rstrip('/')}/v1/models"
+    result = await loop.run_in_executor(
+        None, functools.partial(_connectivity_probe, url, float(timeout))
+    )
     return result["ok"]
 
 
