@@ -1,7 +1,7 @@
-# Perplexity-Tools v0.9.9.0
+# Perplexity-Tools v0.9.9.1
 
 > **Top-level idempotent multi-agent orchestrator for Mac + Windows**
-> Standardized first on `v0.9.0.0` — branch `v0.9.0.0` of [`diazMelgarejo/Perplexity-Tools`](https://github.com/diazMelgarejo/Perplexity-Tools); *`main` branch is now ahead at v0.9.9.0*
+> Standardized first on `v0.9.0.0` — branch `v0.9.0.0` of [`diazMelgarejo/Perplexity-Tools`](https://github.com/diazMelgarejo/Perplexity-Tools); *`main` branch is now ahead at v0.9.9.1*
 
 ---
 
@@ -142,7 +142,7 @@ POST /orchestrate
 
 | Field | Value |
 |-------|-------|
-| Version | `0.9.9.0` |
+| Version | `0.9.9.1` |
 | Branch | `main` |
 | Compatible with | ultrathink-system (reasoning layer; version per that repo), ECC Tools standard, karpathy/autoresearch (research automation) |
 | Python | `3.11+` |
