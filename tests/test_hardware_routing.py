@@ -98,6 +98,26 @@ def test_orchestrate_hardware_selection():
     assert data["selected_model"]["device"] == "mac-studio"
     assert data["selected_model"]["name"] == "Qwen3.5-9B-MLX-4bit"
 
+def test_coder_routes_to_lmstudio_when_ollama_offline():
+    """Regression (PR #8 P1): win_ok=False, lms_ok=True → coder uses LM Studio, not Mac."""
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    async def run():
+        with (
+            patch("agent_launcher.check_remote_worker",   new=AsyncMock(return_value=False)),
+            patch("agent_launcher.check_lmstudio_worker", new=AsyncMock(return_value=True)),
+        ):
+            import agent_launcher
+            return await agent_launcher.initialize_environment()
+
+    state = asyncio.run(run())
+    assert state["coder_backend"] == "windows-lmstudio"
+    assert "1234" in state["coder_endpoint"]
+    assert state["distributed"] is True
+    assert state["mac_only"] is False
+
+
 def test_fallback_chain_across_hardware(registry):
     """
     Ensures that fallback chain includes models from other devices if local fails.
