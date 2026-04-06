@@ -41,7 +41,15 @@ LOCAL_MAC_PORT    = int(os.getenv("LOCAL_MAC_PORT", "11434"))
 LOCAL_MAC_URL     = f"http://{LOCAL_MAC_HOST}:{LOCAL_MAC_PORT}"
 MAC_MANAGER_MODEL = os.getenv("MAC_MANAGER_MODEL", "qwen3:8b-instruct")
 
-WINDOWS_IP        = os.getenv("WINDOWS_IP",   "192.168.1.100")
+# Mac LM Studio (separate from local Ollama — may be on a LAN IP)
+MAC_LMS_HOST  = os.getenv("MAC_LMS_HOST",  "192.168.254.101")
+MAC_LMS_PORT  = int(os.getenv("MAC_LMS_PORT", "1234"))
+MAC_LMS_URL   = f"http://{MAC_LMS_HOST}:{MAC_LMS_PORT}"
+MAC_LMS_MODEL = (os.getenv("MAC_LMS_MODEL")
+                 or os.getenv("LMS_MAC_MODEL")
+                 or "qwen3:8b-instruct")
+
+WINDOWS_IP        = os.getenv("WINDOWS_IP",   "192.168.254.103")
 WINDOWS_PORT      = int(os.getenv("WINDOWS_PORT", "11434"))
 REMOTE_WINDOWS_URL   = f"http://{WINDOWS_IP}:{WINDOWS_PORT}"
 WINDOWS_CODER_MODEL  = os.getenv("WINDOWS_CODER_MODEL", "qwen3.5-35b-a3b-win")
@@ -106,37 +114,50 @@ async def initialize_environment() -> dict:
             distributed       - True if Windows worker is reachable
             mac_only          - True if running in Mac-only degraded mode
     """
-    mac_ok, win_ok, lms_ok = await asyncio.gather(
+    mac_ok, mac_lms_ok, win_ok, lms_ok = await asyncio.gather(
         check_remote_worker(LOCAL_MAC_URL),
+        check_lmstudio_worker(MAC_LMS_URL),
         check_remote_worker(REMOTE_WINDOWS_URL),
         check_lmstudio_worker(REMOTE_WINDOWS_LMS_URL),
     )
 
-    if not mac_ok:
-        print(f"[agent_launcher] WARNING: Local Mac Ollama not reachable at {LOCAL_MAC_URL}")
-        print("  → Is Ollama running? Try: ollama serve")
+    mac_any = mac_ok or mac_lms_ok
+    if not mac_any:
+        print(f"[agent_launcher] WARNING: No Mac backend reachable "
+              f"(Ollama={LOCAL_MAC_URL}, LMS={MAC_LMS_URL})")
+        print("  → Start Ollama ('ollama serve') or LM Studio on the Mac")
+
+    # Manager runs on Mac — prefer local Ollama, fall back to Mac LM Studio
+    manager_endpoint = LOCAL_MAC_URL   if mac_ok     else MAC_LMS_URL
+    manager_model    = MAC_MANAGER_MODEL if mac_ok   else MAC_LMS_MODEL
+    manager_backend  = "mac-ollama"    if mac_ok     else "mac-lmstudio"
 
     routing_state = {
-        "manager_endpoint":     LOCAL_MAC_URL,
-        "manager_model":        MAC_MANAGER_MODEL,
+        "manager_endpoint":     manager_endpoint,
+        "manager_model":        manager_model,
+        "manager_backend":      manager_backend,
         "coder_endpoint":       (REMOTE_WINDOWS_URL      if win_ok
                                  else REMOTE_WINDOWS_LMS_URL if lms_ok
-                                 else LOCAL_MAC_URL),
+                                 else manager_endpoint),
         "coder_model":          (WINDOWS_CODER_MODEL     if win_ok
                                  else WINDOWS_LMS_MODEL       if lms_ok
-                                 else MAC_MANAGER_MODEL),
+                                 else manager_model),
         "coder_backend":        ("windows-ollama"    if win_ok
                                  else "windows-lmstudio" if lms_ok
                                  else "mac-degraded"),
+        "mac_ollama_ok":        mac_ok,
+        "mac_lmstudio_ok":      mac_lms_ok,
         "windows_ollama_ok":    win_ok,
         "windows_lm_studio_ok": lms_ok,
         "distributed":          win_ok or lms_ok,
         "mac_only":             not win_ok and not lms_ok,
-        "mac_reachable":        mac_ok,
+        "mac_reachable":        mac_any,
         "windows_ip":           WINDOWS_IP,
         "lmstudio_endpoint":    REMOTE_WINDOWS_LMS_URL if lms_ok else None,
         "lmstudio_model":       WINDOWS_LMS_MODEL if lms_ok else None,
         "lmstudio_detected":    lms_ok,
+        "mac_lmstudio_endpoint": MAC_LMS_URL if mac_lms_ok else None,
+        "mac_lmstudio_model":    MAC_LMS_MODEL if mac_lms_ok else None,
     }
 
     return routing_state
