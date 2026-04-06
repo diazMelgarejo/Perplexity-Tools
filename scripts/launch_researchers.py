@@ -192,8 +192,10 @@ async def main(task: str, loop_once: bool, interval: int) -> None:
         routing["distributed"],
     )
 
-    jobs: list[asyncio.Task] = [
-        asyncio.create_task(run_researcher(
+    jobs: list[asyncio.Task] = []
+
+    if routing.get("mac_reachable", True):
+        jobs.append(asyncio.create_task(run_researcher(
             role="mac-researcher",
             endpoint=routing["manager_endpoint"],
             model=routing["manager_model"],
@@ -201,8 +203,10 @@ async def main(task: str, loop_once: bool, interval: int) -> None:
             task=task,
             loop_once=loop_once,
             interval=interval,
-        )),
-    ]
+        )))
+    else:
+        log.warning("Mac Ollama not reachable at %s — skipping mac-researcher",
+                    routing["manager_endpoint"])
 
     win_backend = routing.get("coder_backend", "")
     if routing["distributed"] and win_backend != "mac-degraded":
@@ -217,6 +221,11 @@ async def main(task: str, loop_once: bool, interval: int) -> None:
         )))
     else:
         log.warning("Windows backend not reachable — running mac-researcher only (degraded mode)")
+
+    if not jobs:
+        log.error("No backends reachable (Mac Ollama down, no Windows LMS). "
+                  "Start Ollama ('ollama serve') or configure WINDOWS_IP / LM Studio.")
+        return
 
     try:
         await asyncio.gather(*jobs)
