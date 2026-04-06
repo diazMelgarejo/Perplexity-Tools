@@ -25,10 +25,6 @@ import asyncio
 import argparse
 from pathlib import Path
 
-import functools
-
-from orchestrator.connectivity import _probe as _connectivity_probe
-
 try:
     import httpx
 except ImportError:
@@ -52,6 +48,7 @@ WINDOWS_CODER_MODEL  = os.getenv("WINDOWS_CODER_MODEL", "qwen3.5-35b-a3b-win")
 
 WINDOWS_LMS_PORT      = int(os.getenv("WINDOWS_LMS_PORT", "1234"))
 REMOTE_WINDOWS_LMS_URL = f"http://{WINDOWS_IP}:{WINDOWS_LMS_PORT}"
+LMS_API_TOKEN         = os.getenv("LM_STUDIO_API_TOKEN", "")
 WINDOWS_LMS_MODEL     = (os.getenv("WINDOWS_LMS_MODEL")
                          or os.getenv("LMS_WIN_MODEL")
                          or "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2")
@@ -79,15 +76,17 @@ async def check_remote_worker(base_url: str, timeout: int = DETECT_TIMEOUT) -> b
 
 async def check_lmstudio_worker(base_url: str, timeout: int = DETECT_TIMEOUT) -> bool:
     """Reachability probe for Windows LM Studio (/v1/models).
-    Delegates to orchestrator.connectivity._probe so AGENT_DETECT_TIMEOUT is honoured.
-    Trusts config that WINDOWS_LMS_MODEL is the currently-loaded model.
+    Passes LM_STUDIO_API_TOKEN as Bearer if set, so secured deployments are
+    not misreported as unreachable. Timeout is honoured via AsyncClient.
     """
-    loop = asyncio.get_event_loop()
     url = f"{base_url.rstrip('/')}/v1/models"
-    result = await loop.run_in_executor(
-        None, functools.partial(_connectivity_probe, url, float(timeout))
-    )
-    return result["ok"]
+    headers = {"Authorization": f"Bearer {LMS_API_TOKEN}"} if LMS_API_TOKEN else {}
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(url, headers=headers)
+            return resp.status_code < 400
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------------------
