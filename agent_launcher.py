@@ -25,6 +25,8 @@ import asyncio
 import argparse
 from pathlib import Path
 
+from orchestrator.connectivity import check_lm_studio as _lms_sync_check
+
 try:
     import httpx
 except ImportError:
@@ -48,7 +50,7 @@ WINDOWS_CODER_MODEL  = os.getenv("WINDOWS_CODER_MODEL", "qwen3.5-35b-a3b-win")
 
 WINDOWS_LMS_PORT      = int(os.getenv("WINDOWS_LMS_PORT", "1234"))
 REMOTE_WINDOWS_LMS_URL = f"http://{WINDOWS_IP}:{WINDOWS_LMS_PORT}"
-WINDOWS_LMS_MODEL     = os.getenv("WINDOWS_LMS_MODEL", "gemma-4-26B-A4B-it-Q4_K_M")
+WINDOWS_LMS_MODEL     = os.getenv("WINDOWS_LMS_MODEL") or os.getenv("LMS_WIN_MODEL", "")
 
 # Timeout in seconds — short to avoid blocking the launcher when Windows is asleep
 DETECT_TIMEOUT = int(os.getenv("AGENT_DETECT_TIMEOUT", "3"))
@@ -72,13 +74,12 @@ async def check_remote_worker(base_url: str, timeout: int = DETECT_TIMEOUT) -> b
 
 
 async def check_lmstudio_worker(base_url: str, timeout: int = DETECT_TIMEOUT) -> bool:
-    """Return True if LM Studio at base_url is reachable (port 1234, /v1/models)."""
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(f"{base_url}/v1/models")
-            return resp.status_code == 200
-    except Exception:
-        return False
+    """Async wrapper around orchestrator.connectivity.check_lm_studio.
+    Reachability only — trusts config that WINDOWS_LMS_MODEL is loaded.
+    """
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, _lms_sync_check, base_url)
+    return result["ok"]
 
 
 # ---------------------------------------------------------------------------
@@ -109,17 +110,26 @@ async def initialize_environment() -> dict:
         print("  → Is Ollama running? Try: ollama serve")
 
     routing_state = {
-        "manager_endpoint":  LOCAL_MAC_URL,
-        "manager_model":     MAC_MANAGER_MODEL,
-        "coder_endpoint":    REMOTE_WINDOWS_URL if win_ok else LOCAL_MAC_URL,
-        "coder_model":       WINDOWS_CODER_MODEL if win_ok else MAC_MANAGER_MODEL,
-        "distributed":       win_ok,
-        "mac_only":          not win_ok and not lms_ok,
-        "mac_reachable":     mac_ok,
-        "windows_ip":        WINDOWS_IP,
-        "lmstudio_endpoint": REMOTE_WINDOWS_LMS_URL if lms_ok else None,
-        "lmstudio_model":    WINDOWS_LMS_MODEL if lms_ok else None,
-        "lmstudio_detected": lms_ok,
+        "manager_endpoint":     LOCAL_MAC_URL,
+        "manager_model":        MAC_MANAGER_MODEL,
+        "coder_endpoint":       (REMOTE_WINDOWS_URL      if win_ok
+                                 else REMOTE_WINDOWS_LMS_URL if lms_ok
+                                 else LOCAL_MAC_URL),
+        "coder_model":          (WINDOWS_CODER_MODEL     if win_ok
+                                 else WINDOWS_LMS_MODEL       if lms_ok
+                                 else MAC_MANAGER_MODEL),
+        "coder_backend":        ("windows-ollama"    if win_ok
+                                 else "windows-lmstudio" if lms_ok
+                                 else "mac-degraded"),
+        "windows_ollama_ok":    win_ok,
+        "windows_lm_studio_ok": lms_ok,
+        "distributed":          win_ok or lms_ok,
+        "mac_only":             not win_ok and not lms_ok,
+        "mac_reachable":        mac_ok,
+        "windows_ip":           WINDOWS_IP,
+        "lmstudio_endpoint":    REMOTE_WINDOWS_LMS_URL if lms_ok else None,
+        "lmstudio_model":       WINDOWS_LMS_MODEL if lms_ok else None,
+        "lmstudio_detected":    lms_ok,
     }
 
     return routing_state
@@ -184,18 +194,19 @@ async def main(args: argparse.Namespace) -> None:
     mode = "DISTRIBUTED (Mac + Windows)" if state["distributed"] else "MAC-ONLY (degraded)"
     print(f"│  Mode        : {mode}")
     print(f"│  Manager     : {state['manager_endpoint']}  [{state['manager_model']}]")
-    print(f"│  Coder       : {state['coder_endpoint']}  [{state['coder_model']}]")
-    if state.get("lmstudio_detected"):
-        print(f"│  LM Studio   : {state['lmstudio_endpoint']}  [{state['lmstudio_model']}]")
+    print(f"│  Coder       : {state['coder_endpoint']}  [{state['coder_model']}]  ({state['coder_backend']})")
     if state["mac_only"]:
         print("│  NOTE: Windows worker offline — all tasks routed to Mac")
     print("└" + "─" * 55)
 
-    if state["distributed"]:
+    if state["windows_ollama_ok"]:
+        # Explicit confirmation only for primary Ollama path
         proceed = input("\nProceed with distributed mode? [Y/n]: ").strip().lower()
         if proceed == "n":
             print("  To set up the Windows instance first, run: python setup_wizard.py")
             return
+    elif state["windows_lm_studio_ok"]:
+        pass  # Silent fallback — LM Studio is the active coder backend
     else:
         print("\nWindows worker not detected. Running in Mac-only mode.")
         print("  To configure Windows: python agent_launcher.py --configure")
