@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from hashlib import sha256
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Query
@@ -171,6 +173,24 @@ def destroy_agent(agent_id: str) -> Dict[str, Any]:
 def gc_stopped() -> Dict[str, Any]:
     removed = tracker.destroy_stopped()
     return {"removed": removed}
+
+
+@app.get("/activity", tags=["agents"])
+def get_activity(limit: int = Query(50, ge=1, le=200)) -> Dict[str, Any]:
+    """Return recent researcher activity from .state/researcher_activity.jsonl."""
+    from json import JSONDecodeError
+    path = Path(".state/researcher_activity.jsonl")
+    if not path.exists():
+        return {"events": [], "count": 0}
+    raw_lines = [l for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    events: List[Dict[str, Any]] = []
+    for line in raw_lines[-limit:]:
+        try:
+            events.append(json.loads(line))
+        except JSONDecodeError:
+            pass
+    events.sort(key=lambda e: e.get("ts", 0), reverse=True)
+    return {"events": events, "count": len(events)}
 
 
 # ── models ────────────────────────────────────────────────────────────────────
