@@ -46,6 +46,10 @@ WINDOWS_PORT      = int(os.getenv("WINDOWS_PORT", "11434"))
 REMOTE_WINDOWS_URL   = f"http://{WINDOWS_IP}:{WINDOWS_PORT}"
 WINDOWS_CODER_MODEL  = os.getenv("WINDOWS_CODER_MODEL", "qwen3.5-35b-a3b-win")
 
+WINDOWS_LMS_PORT      = int(os.getenv("WINDOWS_LMS_PORT", "1234"))
+REMOTE_WINDOWS_LMS_URL = f"http://{WINDOWS_IP}:{WINDOWS_LMS_PORT}"
+WINDOWS_LMS_MODEL     = os.getenv("WINDOWS_LMS_MODEL", "gemma-4-26B-A4B-it-Q4_K_M")
+
 # Timeout in seconds — short to avoid blocking the launcher when Windows is asleep
 DETECT_TIMEOUT = int(os.getenv("AGENT_DETECT_TIMEOUT", "3"))
 
@@ -62,6 +66,16 @@ async def check_remote_worker(base_url: str, timeout: int = DETECT_TIMEOUT) -> b
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.get(f"{base_url}/api/tags")
+            return resp.status_code == 200
+    except Exception:
+        return False
+
+
+async def check_lmstudio_worker(base_url: str, timeout: int = DETECT_TIMEOUT) -> bool:
+    """Return True if LM Studio at base_url is reachable (port 1234, /v1/models)."""
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(f"{base_url}/v1/models")
             return resp.status_code == 200
     except Exception:
         return False
@@ -84,22 +98,28 @@ async def initialize_environment() -> dict:
             distributed       - True if Windows worker is reachable
             mac_only          - True if running in Mac-only degraded mode
     """
-    mac_ok = await check_remote_worker(LOCAL_MAC_URL)
-    win_ok = await check_remote_worker(REMOTE_WINDOWS_URL)
+    mac_ok, win_ok, lms_ok = await asyncio.gather(
+        check_remote_worker(LOCAL_MAC_URL),
+        check_remote_worker(REMOTE_WINDOWS_URL),
+        check_lmstudio_worker(REMOTE_WINDOWS_LMS_URL),
+    )
 
     if not mac_ok:
         print(f"[agent_launcher] WARNING: Local Mac Ollama not reachable at {LOCAL_MAC_URL}")
         print("  → Is Ollama running? Try: ollama serve")
 
     routing_state = {
-        "manager_endpoint": LOCAL_MAC_URL,
-        "manager_model":    MAC_MANAGER_MODEL,
-        "coder_endpoint":   REMOTE_WINDOWS_URL if win_ok else LOCAL_MAC_URL,
-        "coder_model":      WINDOWS_CODER_MODEL if win_ok else MAC_MANAGER_MODEL,
-        "distributed":      win_ok,
-        "mac_only":         not win_ok,
-        "mac_reachable":    mac_ok,
-        "windows_ip":       WINDOWS_IP,
+        "manager_endpoint":  LOCAL_MAC_URL,
+        "manager_model":     MAC_MANAGER_MODEL,
+        "coder_endpoint":    REMOTE_WINDOWS_URL if win_ok else LOCAL_MAC_URL,
+        "coder_model":       WINDOWS_CODER_MODEL if win_ok else MAC_MANAGER_MODEL,
+        "distributed":       win_ok,
+        "mac_only":          not win_ok and not lms_ok,
+        "mac_reachable":     mac_ok,
+        "windows_ip":        WINDOWS_IP,
+        "lmstudio_endpoint": REMOTE_WINDOWS_LMS_URL if lms_ok else None,
+        "lmstudio_model":    WINDOWS_LMS_MODEL if lms_ok else None,
+        "lmstudio_detected": lms_ok,
     }
 
     return routing_state
@@ -165,6 +185,8 @@ async def main(args: argparse.Namespace) -> None:
     print(f"│  Mode        : {mode}")
     print(f"│  Manager     : {state['manager_endpoint']}  [{state['manager_model']}]")
     print(f"│  Coder       : {state['coder_endpoint']}  [{state['coder_model']}]")
+    if state.get("lmstudio_detected"):
+        print(f"│  LM Studio   : {state['lmstudio_endpoint']}  [{state['lmstudio_model']}]")
     if state["mac_only"]:
         print("│  NOTE: Windows worker offline — all tasks routed to Mac")
     print("└" + "─" * 55)
