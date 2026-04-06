@@ -199,7 +199,7 @@ async def main(task: str, loop_once: bool, interval: int) -> None:
             role="mac-researcher",
             endpoint=routing["manager_endpoint"],
             model=routing["manager_model"],
-            backend="mac-ollama",
+            backend=routing.get("manager_backend", "mac-ollama"),
             task=task,
             loop_once=loop_once,
             interval=interval,
