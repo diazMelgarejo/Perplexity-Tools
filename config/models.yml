@@ -64,6 +64,25 @@ models:
     reasoning: mac-lmstudio
     hf_repo: mlx-community/Qwen3.5-9B-MLX-4bit
 
+  # ── LOCAL: Windows LM Studio — Gemma 4 26B A4B (MoE) ─────────────────────
+  # lmstudio-community/gemma-4-26B-A4B-it-GGUF Q4_K_M ≈ 16.8 GB
+  # MoE: 4B active params — lower VRAM pressure than dense 26B
+  # XPS 8950 + RTX 3080 10GB: gpu_offload=35 → ~9.5 GB VRAM, rest on 32 GB CPU RAM
+  - name: gemma-4-26B-A4B-it-Q4_K_M
+    backend: lm-studio
+    device: win-rtx3080
+    host: "${LM_STUDIO_WIN_ENDPOINTS:-http://192.168.1.100}"
+    port: 1234
+    context_window: 16384
+    gpu_offload: 35
+    roles: [general, coding, executor, subagent, fallback]
+    priority: 16
+    online: false
+    reasoning: windows-lmstudio-gemma4
+    gguf_file: gemma-4-26B-A4B-it-Q4_K_M.gguf
+    hf_repo: lmstudio-community/gemma-4-26B-A4B-it-GGUF
+    notes: "LM Studio community build — optimized for LM Studio, seamless load."
+
   # ── ONLINE: Perplexity sonar-reasoning-pro ───────────────────────────────
   - name: sonar-reasoning-pro
     backend: perplexity

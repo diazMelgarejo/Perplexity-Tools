@@ -106,6 +106,14 @@ recommended_models:
     lm_studio_context: 16384
     roles: [coder, checker, refiner, executor, verifier, subagent, fallback]
     notes: "Primary Windows UltraThink agent (v0.9.9.1+). Backend-agnostic GGUF."
+  - id: gemma-4-26B-A4B-it-Q4_K_M
+    gguf_file: gemma-4-26B-A4B-it-Q4_K_M.gguf
+    hf_repo: lmstudio-community/gemma-4-26B-A4B-it-GGUF
+    backend: lm-studio
+    gpu_offload: 35
+    lm_studio_context: 16384
+    roles: [general, coding, executor, subagent, fallback]
+    notes: "Gemma 4 26B MoE (4B active params). LM Studio community build — auto-detects. Secondary to Qwen 27B."
   - id: qwen3.5-35b-a3b-q4
     ollama_tag: frob/qwen3.5:35b-a3b-instruct-ud-q4_K_M
     backend: ollama
@@ -147,6 +155,7 @@ that exceeds the profile's VRAM/RAM ceiling.
 | `orchestrator` / `final-validator` / `presenter` | mac-studio | Qwen3.5-9B-MLX-4bit (LM Studio) | context≤4096 conservative |
 | `coder` / `checker` / `executor` / `verifier` | win-rtx3080 | Qwen3.5-27B (LM Studio) | gpu_offload=40, context≤16384 |
 | `refiner` / `subagent` | win-rtx3080 | Qwen3.5-27B (LM Studio) | gpu_offload=40 |
+| `general` / `coding` (secondary) | win-rtx3080 | gemma-4-26B-A4B-it-Q4_K_M (LM Studio) | gpu_offload=35, context≤16384 |
 | `coding` / `autoresearch-coder` | win-rtx3080 | qwen3.5-35b-a3b-q4 (Ollama fallback) | ≤10GB VRAM, num_ctx≤8192 |
 | `critic` / `refiner` (Ollama path) | win-rtx3080 | qwen3-30b-critic | ≤10GB VRAM |
 | `standard` / `subagent` | mac-studio | qwen3-8b-instruct | 16GB+ unified |
@@ -218,6 +227,11 @@ This file is the **single source of truth** for hardware profiles.
 ---
 
 ## Changelog
+
+### v0.9.9.2 (2026-04-06)
+- **win-rtx3080**: Add `gemma-4-26B-A4B-it-Q4_K_M` (lmstudio-community) as secondary LM Studio model (priority 16, gpu_offload=35, roles: general/coding/executor/subagent/fallback)
+- **agent_launcher**: Add `check_lmstudio_worker()` — now probes Windows LM Studio port 1234 alongside Ollama port 11434; routing state includes `lmstudio_endpoint`, `lmstudio_model`, `lmstudio_detected`
+- **hardware**: Add `gemma-4-26b-setup.md` setup reference card for known-models folder
 
 ### v0.9.9.1 (2026-04-04)
 - **win-rtx3080**: `preferred_backend` ollama → lm-studio; add canonical primary model `Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2` (gpu_offload=40, context 16384); legacy Ollama models preserved as fallback entries

@@ -41,16 +41,31 @@ LOCAL_MAC_PORT    = int(os.getenv("LOCAL_MAC_PORT", "11434"))
 LOCAL_MAC_URL     = f"http://{LOCAL_MAC_HOST}:{LOCAL_MAC_PORT}"
 MAC_MANAGER_MODEL = os.getenv("MAC_MANAGER_MODEL", "qwen3:8b-instruct")
 
-WINDOWS_IP        = os.getenv("WINDOWS_IP",   "192.168.1.100")
+# Mac LM Studio (separate from local Ollama — may be on a LAN IP)
+MAC_LMS_HOST  = os.getenv("MAC_LMS_HOST",  "192.168.254.101")
+MAC_LMS_PORT  = int(os.getenv("MAC_LMS_PORT", "1234"))
+MAC_LMS_URL   = f"http://{MAC_LMS_HOST}:{MAC_LMS_PORT}"
+MAC_LMS_MODEL = (os.getenv("MAC_LMS_MODEL")
+                 or os.getenv("LMS_MAC_MODEL")
+                 or "qwen3:8b-instruct")
+
+WINDOWS_IP        = os.getenv("WINDOWS_IP",   "192.168.254.103")
 WINDOWS_PORT      = int(os.getenv("WINDOWS_PORT", "11434"))
 REMOTE_WINDOWS_URL   = f"http://{WINDOWS_IP}:{WINDOWS_PORT}"
 WINDOWS_CODER_MODEL  = os.getenv("WINDOWS_CODER_MODEL", "qwen3.5-35b-a3b-win")
 
+WINDOWS_LMS_PORT      = int(os.getenv("WINDOWS_LMS_PORT", "1234"))
+REMOTE_WINDOWS_LMS_URL = f"http://{WINDOWS_IP}:{WINDOWS_LMS_PORT}"
+LMS_API_TOKEN         = os.getenv("LM_STUDIO_API_TOKEN", "")
+WINDOWS_LMS_MODEL     = (os.getenv("WINDOWS_LMS_MODEL")
+                         or os.getenv("LMS_WIN_MODEL")
+                         or "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2")
+
 # Timeout in seconds — short to avoid blocking the launcher when Windows is asleep
 DETECT_TIMEOUT = int(os.getenv("AGENT_DETECT_TIMEOUT", "3"))
 
-# State file for idempotency (Perplexity-Tools convention)
-STATE_FILE = Path(".state/agents.json")
+# State file for routing state (separate from AgentTracker's agents.json)
+STATE_FILE = Path(".state/routing.json")
 
 
 # ---------------------------------------------------------------------------
@@ -63,6 +78,21 @@ async def check_remote_worker(base_url: str, timeout: int = DETECT_TIMEOUT) -> b
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.get(f"{base_url}/api/tags")
             return resp.status_code == 200
+    except Exception:
+        return False
+
+
+async def check_lmstudio_worker(base_url: str, timeout: int = DETECT_TIMEOUT) -> bool:
+    """Reachability probe for Windows LM Studio (/v1/models).
+    Passes LM_STUDIO_API_TOKEN as Bearer if set, so secured deployments are
+    not misreported as unreachable. Timeout is honoured via AsyncClient.
+    """
+    url = f"{base_url.rstrip('/')}/v1/models"
+    headers = {"Authorization": f"Bearer {LMS_API_TOKEN}"} if LMS_API_TOKEN else {}
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(url, headers=headers)
+            return resp.status_code < 400
     except Exception:
         return False
 
@@ -84,29 +114,57 @@ async def initialize_environment() -> dict:
             distributed       - True if Windows worker is reachable
             mac_only          - True if running in Mac-only degraded mode
     """
-    mac_ok = await check_remote_worker(LOCAL_MAC_URL)
-    win_ok = await check_remote_worker(REMOTE_WINDOWS_URL)
+    mac_ok, mac_lms_ok, win_ok, lms_ok = await asyncio.gather(
+        check_remote_worker(LOCAL_MAC_URL),
+        check_lmstudio_worker(MAC_LMS_URL),
+        check_remote_worker(REMOTE_WINDOWS_URL),
+        check_lmstudio_worker(REMOTE_WINDOWS_LMS_URL),
+    )
 
-    if not mac_ok:
-        print(f"[agent_launcher] WARNING: Local Mac Ollama not reachable at {LOCAL_MAC_URL}")
-        print("  → Is Ollama running? Try: ollama serve")
+    mac_any = mac_ok or mac_lms_ok
+    if not mac_any:
+        print(f"[agent_launcher] WARNING: No Mac backend reachable "
+              f"(Ollama={LOCAL_MAC_URL}, LMS={MAC_LMS_URL})")
+        print("  → Start Ollama ('ollama serve') or LM Studio on the Mac")
+
+    # Manager runs on Mac — prefer local Ollama, fall back to Mac LM Studio
+    manager_endpoint = LOCAL_MAC_URL   if mac_ok     else MAC_LMS_URL
+    manager_model    = MAC_MANAGER_MODEL if mac_ok   else MAC_LMS_MODEL
+    manager_backend  = "mac-ollama"    if mac_ok     else "mac-lmstudio"
 
     routing_state = {
-        "manager_endpoint": LOCAL_MAC_URL,
-        "manager_model":    MAC_MANAGER_MODEL,
-        "coder_endpoint":   REMOTE_WINDOWS_URL if win_ok else LOCAL_MAC_URL,
-        "coder_model":      WINDOWS_CODER_MODEL if win_ok else MAC_MANAGER_MODEL,
-        "distributed":      win_ok,
-        "mac_only":         not win_ok,
-        "mac_reachable":    mac_ok,
-        "windows_ip":       WINDOWS_IP,
+        "manager_endpoint":     manager_endpoint,
+        "manager_model":        manager_model,
+        "manager_backend":      manager_backend,
+        "coder_endpoint":       (REMOTE_WINDOWS_URL      if win_ok
+                                 else REMOTE_WINDOWS_LMS_URL if lms_ok
+                                 else manager_endpoint),
+        "coder_model":          (WINDOWS_CODER_MODEL     if win_ok
+                                 else WINDOWS_LMS_MODEL       if lms_ok
+                                 else manager_model),
+        "coder_backend":        ("windows-ollama"    if win_ok
+                                 else "windows-lmstudio" if lms_ok
+                                 else "mac-degraded"),
+        "mac_ollama_ok":        mac_ok,
+        "mac_lmstudio_ok":      mac_lms_ok,
+        "windows_ollama_ok":    win_ok,
+        "windows_lm_studio_ok": lms_ok,
+        "distributed":          win_ok or lms_ok,
+        "mac_only":             not win_ok and not lms_ok,
+        "mac_reachable":        mac_any,
+        "windows_ip":           WINDOWS_IP,
+        "lmstudio_endpoint":    REMOTE_WINDOWS_LMS_URL if lms_ok else None,
+        "lmstudio_model":       WINDOWS_LMS_MODEL if lms_ok else None,
+        "lmstudio_detected":    lms_ok,
+        "mac_lmstudio_endpoint": MAC_LMS_URL if mac_lms_ok else None,
+        "mac_lmstudio_model":    MAC_LMS_MODEL if mac_lms_ok else None,
     }
 
     return routing_state
 
 
 # ---------------------------------------------------------------------------
-# State persistence (idempotency: .state/agents.json)
+# State persistence (idempotency: .state/routing.json)
 # ---------------------------------------------------------------------------
 
 def save_routing_state(state: dict) -> None:
@@ -156,6 +214,15 @@ async def main(args: argparse.Namespace) -> None:
         interactive_configure()
         return
 
+    # --status: print saved state without re-probing
+    if args.status:
+        saved = load_routing_state()
+        if saved is None:
+            print("[agent_launcher] No state saved yet — run without --status first")
+            sys.exit(1)
+        print(json.dumps(saved, indent=2))
+        return
+
     print("[agent_launcher] Detecting hardware...")
     state = await initialize_environment()
 
@@ -164,23 +231,37 @@ async def main(args: argparse.Namespace) -> None:
     mode = "DISTRIBUTED (Mac + Windows)" if state["distributed"] else "MAC-ONLY (degraded)"
     print(f"│  Mode        : {mode}")
     print(f"│  Manager     : {state['manager_endpoint']}  [{state['manager_model']}]")
-    print(f"│  Coder       : {state['coder_endpoint']}  [{state['coder_model']}]")
+    print(f"│  Coder       : {state['coder_endpoint']}  [{state['coder_model']}]  ({state['coder_backend']})")
     if state["mac_only"]:
         print("│  NOTE: Windows worker offline — all tasks routed to Mac")
     print("└" + "─" * 55)
 
-    if state["distributed"]:
-        proceed = input("\nProceed with distributed mode? [Y/n]: ").strip().lower()
-        if proceed == "n":
-            print("  To set up the Windows instance first, run: python setup_wizard.py")
-            return
-    else:
-        print("\nWindows worker not detected. Running in Mac-only mode.")
-        print("  To configure Windows: python agent_launcher.py --configure")
-        print("  To install on Windows first: python setup_wizard.py")
+    # Interactive prompt — skip in --write-state (non-interactive) mode
+    if not args.write_state:
+        if state["windows_ollama_ok"]:
+            # Explicit confirmation only for primary Ollama path
+            proceed = input("\nProceed with distributed mode? [Y/n]: ").strip().lower()
+            if proceed == "n":
+                print("  To set up the Windows instance first, run: python setup_wizard.py")
+                return
+        elif state["windows_lm_studio_ok"]:
+            pass  # Silent fallback — LM Studio is the active coder backend
+        else:
+            print("\nWindows worker not detected. Running in Mac-only mode.")
+            print("  To configure Windows: python agent_launcher.py --configure")
+            print("  To install on Windows first: python setup_wizard.py")
 
     # Persist routing state for orchestrator consumers
     save_routing_state(state)
+
+    if args.write_state:
+        # Machine-readable one-liner for start.sh
+        bk = state["coder_backend"]
+        print(f"[agent_launcher] manager={state['manager_endpoint']}  "
+              f"coder={state['coder_endpoint']} ({bk})  "
+              f"distributed={state['distributed']}")
+        return state
+
     print(f"\n[agent_launcher] Routing state saved to {STATE_FILE}")
     print("[agent_launcher] Ready. Import routing state in your orchestrator:")
     print("  from agent_launcher import initialize_environment")
@@ -190,12 +271,33 @@ async def main(args: argparse.Namespace) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Hardware-aware agent launcher for Perplexity-Tools"
+        description="Hardware-aware agent launcher for Perplexity-Tools",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  python agent_launcher.py                # detect + print + interactive\n"
+            "  python agent_launcher.py --write-state  # detect, save, exit (non-interactive)\n"
+            "  python agent_launcher.py --status       # print saved state, no probing\n"
+            "  python agent_launcher.py --configure    # set hardware IPs interactively\n"
+        ),
     )
     parser.add_argument(
         "--configure",
         action="store_true",
         help="Interactively configure hardware IP addresses and ports",
+    )
+    parser.add_argument(
+        "--write-state",
+        dest="write_state",
+        action="store_true",
+        help="Detect backends, write .state/routing.json, exit (non-interactive). "
+             "Used by start.sh and automated callers.",
+    )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Print the last saved .state/routing.json without re-probing. "
+             "Exits 1 if no state file exists yet.",
     )
     args = parser.parse_args()
     asyncio.run(main(args))

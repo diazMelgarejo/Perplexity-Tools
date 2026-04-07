@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from hashlib import sha256
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Query
@@ -17,7 +19,6 @@ from orchestrator.connectivity import backend_health_map
 from orchestrator.cost_guard import CostGuard
 from orchestrator.model_registry import ModelRegistry
 from orchestrator.ultrathink_bridge import (
-    call_ultrathink_bridge,
     call_ultrathink_mcp_or_bridge,
     parse_ultrathink_timeout,
 )
@@ -42,7 +43,24 @@ def _run_ecc_sync_bg() -> None:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    # Fire ECC sync in background — does not block port bind or request handling.
+    # 1. Detect hardware routing on boot — updates .state/agents.json (non-fatal).
+    try:
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from agent_launcher import initialize_environment, save_routing_state
+        _routing = await initialize_environment()
+        save_routing_state(_routing)
+        _startup_log.info(
+            "Routing: manager=%s  coder=%s (%s)  distributed=%s",
+            _routing["manager_endpoint"],
+            _routing["coder_endpoint"],
+            _routing.get("coder_backend", "?"),
+            _routing["distributed"],
+        )
+    except Exception as _exc:
+        _startup_log.warning("Backend detection failed (non-fatal): %s", _exc)
+
+    # 2. ECC sync in background — does not block port bind or request handling.
     asyncio.get_event_loop().run_in_executor(None, _run_ecc_sync_bg)
     yield
 
@@ -51,7 +69,7 @@ async def _lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Perplexity-Tools Orchestrator",
-    version="0.9.9.0",
+    version="0.9.9.3",
     description=(
         "Top-level idempotent multi-agent orchestrator. "
         "Repo #1 — complements ultrathink-system (Repo #2) "
@@ -171,6 +189,24 @@ def destroy_agent(agent_id: str) -> Dict[str, Any]:
 def gc_stopped() -> Dict[str, Any]:
     removed = tracker.destroy_stopped()
     return {"removed": removed}
+
+
+@app.get("/activity", tags=["agents"])
+def get_activity(limit: int = Query(50, ge=1, le=200)) -> Dict[str, Any]:
+    """Return recent researcher activity from .state/researcher_activity.jsonl."""
+    from json import JSONDecodeError
+    path = Path(".state/researcher_activity.jsonl")
+    if not path.exists():
+        return {"events": [], "count": 0}
+    raw_lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    events: List[Dict[str, Any]] = []
+    for line in raw_lines[-limit:]:
+        try:
+            events.append(json.loads(line))
+        except JSONDecodeError:
+            pass
+    events.sort(key=lambda e: e.get("ts", 0), reverse=True)
+    return {"events": events, "count": len(events)}
 
 
 # ── models ────────────────────────────────────────────────────────────────────
