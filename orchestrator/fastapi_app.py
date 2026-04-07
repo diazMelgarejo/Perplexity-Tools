@@ -44,7 +44,24 @@ def _run_ecc_sync_bg() -> None:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    # Fire ECC sync in background — does not block port bind or request handling.
+    # 1. Detect hardware routing on boot — updates .state/agents.json (non-fatal).
+    try:
+        import sys as _sys
+        _sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from agent_launcher import initialize_environment, save_routing_state
+        _routing = await initialize_environment()
+        save_routing_state(_routing)
+        _startup_log.info(
+            "Routing: manager=%s  coder=%s (%s)  distributed=%s",
+            _routing["manager_endpoint"],
+            _routing["coder_endpoint"],
+            _routing.get("coder_backend", "?"),
+            _routing["distributed"],
+        )
+    except Exception as _exc:
+        _startup_log.warning("Backend detection failed (non-fatal): %s", _exc)
+
+    # 2. ECC sync in background — does not block port bind or request handling.
     asyncio.get_event_loop().run_in_executor(None, _run_ecc_sync_bg)
     yield
 
@@ -53,7 +70,7 @@ async def _lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Perplexity-Tools Orchestrator",
-    version="0.9.9.0",
+    version="0.9.9.3",
     description=(
         "Top-level idempotent multi-agent orchestrator. "
         "Repo #1 — complements ultrathink-system (Repo #2) "
