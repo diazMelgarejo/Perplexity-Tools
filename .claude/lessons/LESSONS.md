@@ -62,3 +62,44 @@ Import command: `/instinct-import .claude/homunculus/instincts/inherited/Perplex
 - `23bd01d` (UTS) — fix(bootstrap): remove capture_output=True
 - `ffb1be0` (PT)  — fix(researchers): auto-discover loaded model via /v1/models + /api/tags
 - `d9e4f50` (PT)  — fix(tracker): handle stale routing data in agents.json
+
+---
+
+## 2026-04-07 — Claude — Device identity + GPU crash recovery
+
+### What was learned
+
+**1. `127.0.0.1` and a LAN IP can point to the same physical machine**
+- `WINDOWS_IP=192.168.254.101` (the Mac's own LAN IP) would probe successfully and spawn a second researcher on the same device, treating one Mac as a distributed two-node cluster
+- OS routing tables encode this: opening a `SOCK_DGRAM` socket toward `8.8.8.8` without sending packets reveals the outbound LAN IP — compare against configured endpoints
+- Fix: `_get_local_ips()` uses hostname resolution + UDP routing trick; `_is_local_endpoint()` checks if a URL host is in that set; all Windows probes that match a local IP are zeroed out
+
+**2. One role per physical device is a hard constraint**
+- If both Mac Ollama (`127.0.0.1:11434`) and Mac LM Studio (`192.168.254.101:1234`) are up and on the same machine, picking both as independent "backends" would load two models simultaneously on the same GPU/RAM
+- Resolution: Ollama takes precedence; LM Studio treated as same-device and ignored when Ollama is running
+
+**3. Rapid model reload after crash burns GPU**
+- When a model crashes (404, 500) or is loading (503), the next iteration fires immediately or after `interval` seconds — enough to trigger repeated load/unload cycles under GPU pressure
+- Fix: classify errors by HTTP status code (503=loading, 404=unloaded, ConnectError=offline) and replace normal `asyncio.sleep(interval)` with a 30-second cooldown (`CRASH_RECOVERY_SECS`)
+
+**4. Terminal feedback during crash recovery is essential**
+- Silent waiting with no output makes it impossible to tell if the system is frozen or recovering
+- Fix: `_wait_with_progress(seconds, role, reason)` renders a live ASCII progress bar with role name, crash classification, and per-second countdown
+
+### Prevention Rules (encode in all future multi-device orchestrators)
+
+1. **Always call `_get_local_ips()` before trusting any "remote" endpoint** — use the UDP routing trick (no packets sent) to discover the machine's outbound LAN IP
+2. **One role per physical device** — zero out any "remote" probe whose host IP is in `local_ips`
+3. **On same device: one inference backend** — if both Ollama and LM Studio are local and running, pick one deterministically (Ollama > LM Studio)
+4. **Crash recovery must be at least 30 seconds** — GPU model load/unload cycles need this buffer; never retry immediately after a 503/404/500 from an inference backend
+5. **Classify errors before sleeping** — 503 ≠ 404 ≠ ConnectError; each needs a different user-facing message and potentially different recovery time
+6. **Show a progress bar during recovery** — `asyncio.sleep(N)` is invisible; use a 1-second tick loop with `\r` overwrite so the user knows the system is alive
+
+### Implementation
+- `_get_local_ips()` + `_is_local_endpoint()` in `agent_launcher.py`
+- Device-identity guard block in `initialize_environment()` — runs after async probes, before routing decisions
+- `CRASH_RECOVERY_SECS = 30` constant + `_wait_with_progress()` in `scripts/launch_researchers.py`
+- Error classification: HTTP status code from `exc.response.status_code` via `getattr` chain (safe on non-HTTP exceptions)
+
+### Commits
+- `8af62f5` (PT) — feat(routing): one-role-per-device guard + GPU crash recovery cooldown
