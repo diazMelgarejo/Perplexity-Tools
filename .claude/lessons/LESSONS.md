@@ -126,3 +126,31 @@ Import command: `/instinct-import .claude/homunculus/instincts/inherited/Perplex
 
 ### Commits
 - `6bc40d0` (UTS) — feat(bootstrap): probe all candidate ports and commandeer any running gateway
+
+---
+
+## 2026-04-07 — Claude — Bulk sed safety: check before editing / look for missing files
+
+### What Went Wrong
+
+A batch `sed -i` to replace old `multi_agent\.` import-style path references with `bin.` matched more than intended:
+- Pattern `s|multi_agent\.\([a-z]\)|bin.\1|g` was applied across all text files (READMEs, shell scripts, Python files)
+- It matched filename **strings** inside file contents, e.g.:
+  - `chk_f tests/test_multi_agent.py` → `chk_f tests/test_bin.py` (wrong — file does not exist)
+  - `pytest tests/test_multi_agent.py` → `pytest tests/test_bin.py` (docs reference broken)
+  - `test_multi_agent.py` docstring self-reference → `test_bin.py`
+- The same issue had previously hit `single_agent\.` → `test_bin.skills.py` in README
+- These substitutions introduced CI failures: `chk_f` could not find `test_bin.py`
+
+Root cause: **the pattern was designed for Python import statements** (`from multi_agent.foo`) but was applied broadly — it also matched shell commands, docstrings, and doc prose referencing actual filenames.
+
+### Prevention Rules
+
+1. **`grep -rn` before any bulk `sed`** — preview every match, read each context line; abort if any match is a filename or path to an existing file
+2. **Scope module-import patterns to `.py` files only** — `find . -name "*.py" -exec sed`; never apply import-rename regexes to `.md`, `.sh`, `.yaml`, or `.txt`
+3. **Verify files exist before referencing them in commands** — after any substitution that changes a filename-like string, run `ls` or `find` to confirm the referenced path actually exists
+4. **Keep filename strings and import module names disjoint in patterns** — if the old module path happens to appear in filenames (e.g. `test_multi_agent.py`), use a more precise anchor (`from multi_agent\.` with the `from` prefix, or word-boundary assertions)
+5. **CI will catch broken `chk_f` / `pytest` references** — but catching it post-push is costly; catch it pre-commit with a `grep` on the changed lines
+
+### Commits
+- `0364098` (UTS) — fix(tests): restore test filenames broken by over-eager multi_agent sed
