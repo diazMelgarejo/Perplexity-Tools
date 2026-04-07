@@ -19,7 +19,6 @@ from orchestrator.connectivity import backend_health_map
 from orchestrator.cost_guard import CostGuard
 from orchestrator.model_registry import ModelRegistry
 from orchestrator.ultrathink_bridge import (
-    call_ultrathink_bridge,
     call_ultrathink_mcp_or_bridge,
     parse_ultrathink_timeout,
 )
@@ -199,7 +198,7 @@ def get_activity(limit: int = Query(50, ge=1, le=200)) -> Dict[str, Any]:
     path = Path(".state/researcher_activity.jsonl")
     if not path.exists():
         return {"events": [], "count": 0}
-    raw_lines = [l for l in path.read_text(encoding="utf-8").splitlines() if l.strip()]
+    raw_lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
     events: List[Dict[str, Any]] = []
     for line in raw_lines[-limit:]:
         try:
