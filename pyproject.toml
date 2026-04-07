@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "perplexity-tools"
-version = "0.9.9.0"
+version = "0.9.9.3"
 description = "Top-level idempotent multi-agent orchestrator: per-device model selection, fallback routing, cost guard, and ultrathink-system integration."
 readme = "README.md"
 license = { text = "AGPL-3.0" }
@@ -106,5 +106,5 @@ ignore_missing_imports = true
 
 [tool.flake8]
 max-line-length = 120
-extend-ignore = ["E203", "W503"]
+extend-ignore = ["E203", "W503", "E221", "E272"]
 exclude = [".git", "__pycache__", "vendor", ".state"]
