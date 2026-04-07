@@ -103,3 +103,26 @@ Import command: `/instinct-import .claude/homunculus/instincts/inherited/Perplex
 
 ### Commits
 - `8af62f5` (PT) — feat(routing): one-role-per-device guard + GPU crash recovery cooldown
+
+---
+
+## 2026-04-07 — Claude — Idempotent gateway discovery (commandeer-first bootstrap)
+
+### What was learned
+
+- **Probe before start**: always check ALL candidate ports before launching any daemon — the running service may be a different fork (AlphaClaw, custom proxy) on a non-default port
+- **Commandeer = use + refresh config, no restart** — if a gateway answers `/health` or `/v1/models`, write updated config/workspaces but never call the daemon start command
+- **Never evict loaded models** — calling `onboard --install-daemon` or equivalent when a gateway is running risks restarting the process and unloading models from GPU VRAM
+- **Set a discoverable env var** after commandeering so all consumers (orchestrators, researchers) use the correct URL without repeating the discovery probe
+- **Protocol probe, not process check** — identify gateways by HTTP interface (`/health`, `/v1/models`), not by process name; this is fork-agnostic
+
+### Prevention Rules
+
+1. All bootstrap scripts: probe candidate ports FIRST, install/start LAST
+2. Commandeer any compatible service found — do not start a duplicate
+3. Never restart a running daemon in a bootstrap path
+4. Set `*_GATEWAY_URL` / `*_ENDPOINT` env var after discovery for downstream use
+5. Candidate port list must be env-configurable (`OPENCLAW_EXTRA_PORTS`, etc.)
+
+### Commits
+- `6bc40d0` (UTS) — feat(bootstrap): probe all candidate ports and commandeer any running gateway
