@@ -64,8 +64,8 @@ WINDOWS_LMS_MODEL     = (os.getenv("WINDOWS_LMS_MODEL")
 # Timeout in seconds — short to avoid blocking the launcher when Windows is asleep
 DETECT_TIMEOUT = int(os.getenv("AGENT_DETECT_TIMEOUT", "3"))
 
-# State file for idempotency (Perplexity-Tools convention)
-STATE_FILE = Path(".state/agents.json")
+# State file for routing state (separate from AgentTracker's agents.json)
+STATE_FILE = Path(".state/routing.json")
 
 
 # ---------------------------------------------------------------------------
@@ -164,7 +164,7 @@ async def initialize_environment() -> dict:
 
 
 # ---------------------------------------------------------------------------
-# State persistence (idempotency: .state/agents.json)
+# State persistence (idempotency: .state/routing.json)
 # ---------------------------------------------------------------------------
 
 def save_routing_state(state: dict) -> None:
@@ -290,13 +290,13 @@ if __name__ == "__main__":
         "--write-state",
         dest="write_state",
         action="store_true",
-        help="Detect backends, write .state/agents.json, exit (non-interactive). "
+        help="Detect backends, write .state/routing.json, exit (non-interactive). "
              "Used by start.sh and automated callers.",
     )
     parser.add_argument(
         "--status",
         action="store_true",
-        help="Print the last saved .state/agents.json without re-probing. "
+        help="Print the last saved .state/routing.json without re-probing. "
              "Exits 1 if no state file exists yet.",
     )
     args = parser.parse_args()
