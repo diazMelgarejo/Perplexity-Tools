@@ -35,9 +35,9 @@ from pathlib import Path
 # Allow running from repo root or scripts/
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-import httpx
+import httpx  # noqa: E402
 
-from orchestrator.agent_tracker import AgentTracker
+from orchestrator.agent_tracker import AgentTracker  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -85,7 +85,7 @@ def _append_event(
     }
     lines: list[str] = []
     if ACTIVITY_LOG.exists():
-        lines = [l for l in ACTIVITY_LOG.read_text().splitlines() if l.strip()]
+        lines = [ln for ln in ACTIVITY_LOG.read_text().splitlines() if ln.strip()]
     lines.append(json.dumps(entry))
     if len(lines) > MAX_EVENTS:
         lines = lines[-MAX_EVENTS:]
