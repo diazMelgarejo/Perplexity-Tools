@@ -51,9 +51,10 @@ STATE_DIR = Path(os.getenv("STATE_DIR", ".state"))
 STATE_DIR.mkdir(parents=True, exist_ok=True)
 ACTIVITY_LOG = STATE_DIR / "researcher_activity.jsonl"
 
-POLL_INTERVAL = int(os.getenv("RESEARCHER_POLL_INTERVAL", "30"))
-MAX_EVENTS    = 200
-REQUEST_TIMEOUT = 90.0
+POLL_INTERVAL        = int(os.getenv("RESEARCHER_POLL_INTERVAL", "30"))
+CRASH_RECOVERY_SECS  = int(os.getenv("RESEARCHER_CRASH_RECOVERY", "30"))
+MAX_EVENTS           = 200
+REQUEST_TIMEOUT      = 90.0
 
 DEFAULT_TASK = (
     "You are an autoresearcher agent. Briefly state your current hardware context, "
@@ -116,6 +117,31 @@ async def _lmstudio_chat(endpoint: str, model: str, prompt: str) -> str:
         r = await client.post(url, json=payload, headers=headers)
         r.raise_for_status()
         return r.json()["choices"][0]["message"]["content"].strip()
+
+
+# ── crash recovery ────────────────────────────────────────────────────────────
+
+async def _wait_with_progress(seconds: int, role: str, reason: str) -> None:
+    """Async countdown progress bar — lets the GPU/model settle after a crash.
+
+    Displays:
+        [mac-researcher] ⚠ model not found (HTTP 404) — qwen3:8b-instruct
+        [mac-researcher] GPU cooldown — 30s before next attempt
+        [mac-researcher] [████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 20%  (24s remaining)
+    """
+    bar_width = 38
+    print(f"\n  [{role}] ⚠  {reason}", flush=True)
+    print(f"  [{role}] GPU cooldown — {seconds}s before next attempt", flush=True)
+    for elapsed in range(seconds + 1):
+        filled = int(bar_width * elapsed / seconds)
+        bar    = "█" * filled + "░" * (bar_width - filled)
+        pct    = int(100 * elapsed / seconds)
+        left   = seconds - elapsed
+        print(f"\r  [{role}] [{bar}] {pct:3d}%  ({left:2d}s remaining)  ",
+              end="", flush=True)
+        if elapsed < seconds:
+            await asyncio.sleep(1)
+    print(f"\r  [{role}] [{'█' * bar_width}] 100%  — resuming              ", flush=True)
 
 
 # ── model discovery ───────────────────────────────────────────────────────────
@@ -208,6 +234,7 @@ async def run_researcher(
             _append_event(agent.agent_id, role, model, backend, "query_sent",
                           f"Iteration #{iteration}")
             tracker.update_status(agent.agent_id, "running")
+            error_reason: str | None = None
             try:
                 if use_lmstudio:
                     reply = await _lmstudio_chat(endpoint, model, task)
@@ -220,11 +247,33 @@ async def run_researcher(
             except Exception as exc:
                 tracker.update_status(agent.agent_id, "error")
                 _append_event(agent.agent_id, role, model, backend, "error", str(exc))
-                log.warning("[%s] error: %s", role, exc)
+                # Classify the error so the user sees a clear crash message
+                status_code = getattr(getattr(exc, "response", None), "status_code", None)
+                exc_str = str(exc)
+                if status_code == 503:
+                    error_reason = (
+                        f"model loading / GPU busy (HTTP 503) — "
+                        f"{model} is still initialising, retrying after cooldown"
+                    )
+                elif status_code == 404:
+                    error_reason = (
+                        f"model not found (HTTP 404) — "
+                        f"{model} may have been unloaded from {endpoint}"
+                    )
+                elif any(t in type(exc).__name__ for t in ("ConnectError", "ConnectTimeout")):
+                    error_reason = f"backend unreachable — {endpoint} is not responding"
+                else:
+                    error_reason = f"inference error ({type(exc).__name__}): {exc_str[:120]}"
+                log.warning("[%s] %s", role, error_reason)
 
             if loop_once:
                 break
-            await asyncio.sleep(interval)
+            # After a crash: 30-second GPU cooldown with progress bar.
+            # After a successful reply: normal poll interval sleep.
+            if error_reason is not None:
+                await _wait_with_progress(CRASH_RECOVERY_SECS, role, error_reason)
+            else:
+                await asyncio.sleep(interval)
     except asyncio.CancelledError:
         pass
     finally:

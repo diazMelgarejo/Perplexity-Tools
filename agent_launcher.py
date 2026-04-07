@@ -23,7 +23,9 @@ import sys
 import json
 import asyncio
 import argparse
+import socket
 from pathlib import Path
+from urllib.parse import urlparse
 
 try:
     import httpx
@@ -66,6 +68,47 @@ DETECT_TIMEOUT = int(os.getenv("AGENT_DETECT_TIMEOUT", "3"))
 
 # State file for routing state (separate from AgentTracker's agents.json)
 STATE_FILE = Path(".state/routing.json")
+
+
+# ---------------------------------------------------------------------------
+# Device identity — detect when two URLs point to the same physical machine
+# ---------------------------------------------------------------------------
+
+def _get_local_ips() -> frozenset[str]:
+    """Return all IPv4 addresses that belong to this machine.
+
+    Uses three strategies (all non-blocking):
+    1. Resolve the machine's hostname.
+    2. UDP routing trick — open a socket toward a routable IP; the OS fills in
+       the outbound LAN IP without actually sending any packets.
+    3. Always include the loopback aliases.
+    """
+    local: set[str] = {"127.0.0.1", "0.0.0.0", "localhost"}
+    try:
+        local.add(socket.gethostbyname(socket.gethostname()))
+    except OSError:
+        pass
+    for probe in ("8.8.8.8", "192.168.0.1", "10.0.0.1"):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+                s.settimeout(0.2)
+                s.connect((probe, 80))
+                local.add(s.getsockname()[0])
+                break
+        except OSError:
+            pass
+    return frozenset(local)
+
+
+def _host_of(url: str) -> str:
+    """Extract hostname from a URL, normalising loopback aliases to 127.0.0.1."""
+    h = urlparse(url).hostname or url
+    return "127.0.0.1" if h in ("localhost", "::1") else h
+
+
+def _is_local_endpoint(url: str, local_ips: frozenset[str]) -> bool:
+    """Return True if *url* points to this machine."""
+    return _host_of(url) in local_ips
 
 
 # ---------------------------------------------------------------------------
@@ -121,6 +164,31 @@ async def initialize_environment() -> dict:
         check_lmstudio_worker(REMOTE_WINDOWS_LMS_URL),
     )
 
+    # ── device-identity guard: one role per physical machine ─────────────────
+    # The OS routing table reveals which IPs belong to this machine.  If a
+    # "remote" Windows URL resolves to a local IP, the user mis-configured
+    # WINDOWS_IP and we must NOT spawn a second researcher on the same device.
+    local_ips = _get_local_ips()
+
+    if win_ok and _is_local_endpoint(REMOTE_WINDOWS_URL, local_ips):
+        print(f"[agent_launcher] ⚠  Windows Ollama {REMOTE_WINDOWS_URL} is THIS device"
+              f" — ignoring (one role per device; local IPs: {sorted(local_ips)})")
+        win_ok = False
+
+    if lms_ok and _is_local_endpoint(REMOTE_WINDOWS_LMS_URL, local_ips):
+        print(f"[agent_launcher] ⚠  Windows LM Studio {REMOTE_WINDOWS_LMS_URL} is THIS device"
+              f" — ignoring (one role per device)")
+        lms_ok = False
+
+    # If Mac Ollama AND Mac LM Studio are both on this device, Ollama takes
+    # priority (avoid two simultaneous inference loads on the same GPU/CPU).
+    mac_lms_is_local = _is_local_endpoint(MAC_LMS_URL, local_ips)
+    if mac_lms_is_local and mac_ok and mac_lms_ok:
+        print(f"[agent_launcher] ℹ  Mac LM Studio ({MAC_LMS_URL}) is on this device"
+              f" — Ollama takes precedence (one role per device)")
+        mac_lms_ok = False
+    # ─────────────────────────────────────────────────────────────────────────
+
     mac_any = mac_ok or mac_lms_ok
     if not mac_any:
         print(f"[agent_launcher] WARNING: No Mac backend reachable "
@@ -158,6 +226,8 @@ async def initialize_environment() -> dict:
         "lmstudio_detected":    lms_ok,
         "mac_lmstudio_endpoint": MAC_LMS_URL if mac_lms_ok else None,
         "mac_lmstudio_model":    MAC_LMS_MODEL if mac_lms_ok else None,
+        "mac_lmstudio_is_local": mac_lms_is_local,
+        "local_ips":            sorted(local_ips),
     }
 
     return routing_state
