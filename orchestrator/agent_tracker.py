@@ -50,10 +50,32 @@ class AgentTracker:
             if not self.registry_path.exists():
                 return {}
             raw = json.loads(self.registry_path.read_text(encoding="utf-8"))
-            agents = {k: AgentRecord(**v) for k, v in raw.items()}
+            if not isinstance(raw, dict):
+                # Corrupted or wrong-format file — reset it
+                self.registry_path.unlink(missing_ok=True)
+                return {}
+            agents: Dict[str, AgentRecord] = {}
+            stale = False
+            for k, v in raw.items():
+                if not isinstance(v, dict):
+                    # Stale routing-state entry from old agent_launcher format — skip
+                    stale = True
+                    continue
+                try:
+                    agents[k] = AgentRecord(**v)
+                except TypeError:
+                    stale = True
+            if stale:
+                # Rewrite file without invalid entries
+                import logging
+                logging.getLogger(__name__).warning(
+                    "agents.json had non-AgentRecord entries (stale routing data?); "
+                    "pruned %d invalid entries", len(raw) - len(agents)
+                )
+                self._save(agents)
             self._memory_agents = dict(agents)
             return agents
-        except OSError:
+        except (OSError, json.JSONDecodeError):
             self._persist_enabled = False
             return dict(self._memory_agents)
 
