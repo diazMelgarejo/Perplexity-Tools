@@ -214,6 +214,15 @@ async def main(args: argparse.Namespace) -> None:
         interactive_configure()
         return
 
+    # --status: print saved state without re-probing
+    if args.status:
+        saved = load_routing_state()
+        if saved is None:
+            print("[agent_launcher] No state saved yet — run without --status first")
+            sys.exit(1)
+        print(json.dumps(saved, indent=2))
+        return
+
     print("[agent_launcher] Detecting hardware...")
     state = await initialize_environment()
 
@@ -227,21 +236,32 @@ async def main(args: argparse.Namespace) -> None:
         print("│  NOTE: Windows worker offline — all tasks routed to Mac")
     print("└" + "─" * 55)
 
-    if state["windows_ollama_ok"]:
-        # Explicit confirmation only for primary Ollama path
-        proceed = input("\nProceed with distributed mode? [Y/n]: ").strip().lower()
-        if proceed == "n":
-            print("  To set up the Windows instance first, run: python setup_wizard.py")
-            return
-    elif state["windows_lm_studio_ok"]:
-        pass  # Silent fallback — LM Studio is the active coder backend
-    else:
-        print("\nWindows worker not detected. Running in Mac-only mode.")
-        print("  To configure Windows: python agent_launcher.py --configure")
-        print("  To install on Windows first: python setup_wizard.py")
+    # Interactive prompt — skip in --write-state (non-interactive) mode
+    if not args.write_state:
+        if state["windows_ollama_ok"]:
+            # Explicit confirmation only for primary Ollama path
+            proceed = input("\nProceed with distributed mode? [Y/n]: ").strip().lower()
+            if proceed == "n":
+                print("  To set up the Windows instance first, run: python setup_wizard.py")
+                return
+        elif state["windows_lm_studio_ok"]:
+            pass  # Silent fallback — LM Studio is the active coder backend
+        else:
+            print("\nWindows worker not detected. Running in Mac-only mode.")
+            print("  To configure Windows: python agent_launcher.py --configure")
+            print("  To install on Windows first: python setup_wizard.py")
 
     # Persist routing state for orchestrator consumers
     save_routing_state(state)
+
+    if args.write_state:
+        # Machine-readable one-liner for start.sh
+        bk = state["coder_backend"]
+        print(f"[agent_launcher] manager={state['manager_endpoint']}  "
+              f"coder={state['coder_endpoint']} ({bk})  "
+              f"distributed={state['distributed']}")
+        return state
+
     print(f"\n[agent_launcher] Routing state saved to {STATE_FILE}")
     print("[agent_launcher] Ready. Import routing state in your orchestrator:")
     print("  from agent_launcher import initialize_environment")
@@ -251,12 +271,33 @@ async def main(args: argparse.Namespace) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Hardware-aware agent launcher for Perplexity-Tools"
+        description="Hardware-aware agent launcher for Perplexity-Tools",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Examples:\n"
+            "  python agent_launcher.py                # detect + print + interactive\n"
+            "  python agent_launcher.py --write-state  # detect, save, exit (non-interactive)\n"
+            "  python agent_launcher.py --status       # print saved state, no probing\n"
+            "  python agent_launcher.py --configure    # set hardware IPs interactively\n"
+        ),
     )
     parser.add_argument(
         "--configure",
         action="store_true",
         help="Interactively configure hardware IP addresses and ports",
+    )
+    parser.add_argument(
+        "--write-state",
+        dest="write_state",
+        action="store_true",
+        help="Detect backends, write .state/agents.json, exit (non-interactive). "
+             "Used by start.sh and automated callers.",
+    )
+    parser.add_argument(
+        "--status",
+        action="store_true",
+        help="Print the last saved .state/agents.json without re-probing. "
+             "Exits 1 if no state file exists yet.",
     )
     args = parser.parse_args()
     asyncio.run(main(args))
