@@ -118,6 +118,48 @@ async def _lmstudio_chat(endpoint: str, model: str, prompt: str) -> str:
         return r.json()["choices"][0]["message"]["content"].strip()
 
 
+# ── model discovery ───────────────────────────────────────────────────────────
+
+async def _resolve_ollama_model(endpoint: str, preferred: str) -> str | None:
+    """Return preferred model if present in Ollama, else first available, else None."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.get(f"{endpoint.rstrip('/')}/api/tags")
+            r.raise_for_status()
+            models = [m["name"] for m in r.json().get("models", [])]
+    except Exception as exc:
+        log.warning("Ollama tag list failed (%s): %s", endpoint, exc)
+        return None
+    if not models:
+        log.warning("Ollama at %s has no models pulled", endpoint)
+        return None
+    if preferred in models:
+        return preferred
+    log.warning("Model %r not in Ollama — using %r instead", preferred, models[0])
+    return models[0]
+
+
+async def _resolve_lmstudio_model(endpoint: str, preferred: str) -> str | None:
+    """Return preferred model if LM Studio reports it, else first loaded model, else None."""
+    token = os.getenv("LM_STUDIO_API_TOKEN", "")
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            r = await client.get(f"{endpoint.rstrip('/')}/v1/models", headers=headers)
+            r.raise_for_status()
+            models = [m["id"] for m in r.json().get("data", [])]
+    except Exception as exc:
+        log.warning("LM Studio model list failed (%s): %s", endpoint, exc)
+        return None
+    if not models:
+        log.warning("LM Studio at %s has no models loaded", endpoint)
+        return None
+    if preferred in models:
+        return preferred
+    log.warning("Model %r not in LM Studio — using %r instead", preferred, models[0])
+    return models[0]
+
+
 # ── researcher coroutine ──────────────────────────────────────────────────────
 
 async def run_researcher(
@@ -130,6 +172,21 @@ async def run_researcher(
     interval: int,
 ) -> None:
     """Register and run a single researcher agent loop."""
+    use_lmstudio = "lmstudio" in backend or ":1234" in endpoint
+
+    # Discover the actually-loaded model before committing to it
+    if use_lmstudio:
+        resolved = await _resolve_lmstudio_model(endpoint, model)
+    else:
+        resolved = await _resolve_ollama_model(endpoint, model)
+
+    if resolved is None:
+        log.error("[%s] no model available at %s — skipping", role, endpoint)
+        return
+    if resolved != model:
+        log.info("[%s] model remapped %r → %r", role, model, resolved)
+        model = resolved
+
     agent = tracker.register(
         role=role,
         model=model,
@@ -143,7 +200,6 @@ async def run_researcher(
     _append_event(agent.agent_id, role, model, backend, "started",
                   f"endpoint={endpoint} model={model}")
 
-    use_lmstudio = "lmstudio" in backend or ":1234" in endpoint
     iteration = 0
 
     try:
