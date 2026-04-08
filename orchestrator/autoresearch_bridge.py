@@ -111,30 +111,27 @@ def sync_autoresearch_idempotent() -> SyncResult:
         "git rev-parse HEAD"
     )
 
-    # Animate the bar while the subprocess runs
-    start = time.monotonic()
-    estimated = SSH_TIMEOUT
-
     try:
-        proc = subprocess.Popen(
+        result = subprocess.run(
             ["ssh", *_SSH_OPTS, GPU_BOX, cmd],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             text=True,
+            timeout=SSH_TIMEOUT,
         )
-        while proc.poll() is None:
-            elapsed = int(time.monotonic() - start)
-            _progress("autoresearch", elapsed, estimated)
-            time.sleep(1)
+        if result.returncode != 0:
+            print()
+            error = (result.stderr or result.stdout or "").strip()
+            if not error:
+                error = f"SSH command failed with return code {result.returncode}"
+            return SyncResult(ok=False, error=error)
 
-        stdout, stderr = proc.communicate(timeout=5)
-        elapsed = int(time.monotonic() - start)
+        stdout = (result.stdout or "").strip()
+        lines = [line for line in stdout.splitlines() if line.strip()]
+        if not lines:
+            print()
+            return SyncResult(ok=False, error="SSH sync completed without returning a SHA")
 
-        if proc.returncode != 0:
-            print()  # end progress line
-            return SyncResult(ok=False, error=stderr.strip())
-
-        sha = stdout.strip().splitlines()[-1]
+        sha = lines[-1]
         _progress_done("autoresearch", f"sha={sha[:7]}")
         return SyncResult(ok=True, sha=sha)
 
