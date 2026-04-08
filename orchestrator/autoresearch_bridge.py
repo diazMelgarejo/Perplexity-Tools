@@ -34,7 +34,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-# ── configuration ──────────────────────────────────────────────────────────────
+# ── configuration (resolved from environment, never hard-coded secrets) ────────
+
 
 GPU_BOX: str = os.environ.get("GPU_BOX", "WINUSER@192.168.1.100")
 GPU_REPO_PATH: str = os.environ.get("GPU_REPO_PATH", "autoresearch")
@@ -95,12 +96,15 @@ class SwarmState:
     evaluator_findings: list[str] = field(default_factory=list)
 
 
-# ── idempotent sync ────────────────────────────────────────────────────────────
+# ── idempotent sync (called by orchestrator before EVERY autoresearch run) ───── 
 
 def sync_autoresearch_idempotent() -> SyncResult:
     """Pull latest karpathy/autoresearch on the Windows GPU runner.
 
     Idempotent: safe to call on every orchestration cycle.
+    Uses `git fetch + reset --hard origin/main` so the runner always
+    runs the latest upstream code without merge conflicts.
+    Returns SyncResult with HEAD sha for logging.
     Prints a staged ASCII progress bar during the SSH operation.
     """
     print("[autoresearch] \u2192 Syncing autoresearch on GPU runner\u2026")
@@ -148,7 +152,7 @@ def sync_autoresearch_idempotent() -> SyncResult:
         return SyncResult(ok=False, error=str(exc))
 
 
-# ── bootstrap ──────────────────────────────────────────────────────────────────
+# ── bootstrap: ensure the repo exists on the GPU runner (first-run only) ──────
 
 def bootstrap_autoresearch_on_runner() -> SyncResult:
     """Clone autoresearch on the Windows GPU runner if it does not exist yet.
@@ -182,7 +186,7 @@ def bootstrap_autoresearch_on_runner() -> SyncResult:
     return sync_autoresearch_idempotent()
 
 
-# ── GPU lock helpers ───────────────────────────────────────────────────────────
+# ── GPU lock helpers (read/write swarm_state.md on Mac) ───────────────────────
 
 def read_swarm_state() -> SwarmState:
     if not SWARM_STATE_FILE.exists():
