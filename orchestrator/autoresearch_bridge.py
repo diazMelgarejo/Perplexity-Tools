@@ -111,6 +111,9 @@ def sync_autoresearch_idempotent() -> SyncResult:
         "git rev-parse HEAD"
     )
 
+    # Run synchronously so tests can mock the SSH call deterministically.
+    # The old animated progress loop depended on Popen polling, which also made
+    # the unit tests hit the real host when subprocess.run was patched.
     try:
         result = subprocess.run(
             ["ssh", *_SSH_OPTS, GPU_BOX, cmd],
@@ -120,6 +123,8 @@ def sync_autoresearch_idempotent() -> SyncResult:
         )
         if result.returncode != 0:
             print()
+            # Prefer stderr, but fall back to stdout if the remote shell wrote
+            # its failure there. Keep a deterministic message when both are empty.
             error = (result.stderr or result.stdout or "").strip()
             if not error:
                 error = f"SSH command failed with return code {result.returncode}"
