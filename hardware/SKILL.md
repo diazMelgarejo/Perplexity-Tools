@@ -2,7 +2,7 @@
 # hardware/SKILL.md
 # Decoupled hardware profiles for role-based agent assignment.
 # Synchronized across all repos. Governs VRAM/RAM limits for model routing.
-# Last updated: 2026-04-04 | Version: 0.9.9.1
+# Last updated: 2026-04-08 | Version: 0.9.9.4
 
 ---
 
