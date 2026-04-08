@@ -9,6 +9,7 @@ Responsibilities
   the top-level Perplexity-Tools AgentTracker so lifecycle and idempotency are
   consistent with the rest of the stack.
 - Reading swarm_state.md for GPU lock status before dispatching any training run.
+- Progress reporting: all long-running SSH operations print staged ASCII bars.
 
 Design rules (from approved interoperability contract)
 ------------------------------------------------------
@@ -20,7 +21,7 @@ Design rules (from approved interoperability contract)
    Never duplicate it.
 3. File transfer uses scp only (rsync not guaranteed on Windows SSH sessions).
 4. API keys are NEVER written to files; they are injected as session env vars.
-5. GPU lock is the IDLE/BUSY flag in swarm_state.md — no external queue daemon.
+5. GPU lock is the IDLE/BUSY flag in swarm_state.md \u2014 no external queue daemon.
 """
 
 from __future__ import annotations
@@ -28,19 +29,18 @@ from __future__ import annotations
 import os
 import subprocess
 import textwrap
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-# ── configuration (resolved from environment, never hard-coded secrets) ────────
+# ── configuration ──────────────────────────────────────────────────────────────
 
 GPU_BOX: str = os.environ.get("GPU_BOX", "WINUSER@192.168.1.100")
 GPU_REPO_PATH: str = os.environ.get("GPU_REPO_PATH", "autoresearch")
 AUTORESEARCH_REMOTE: str = "https://github.com/karpathy/autoresearch.git"
 SSH_TIMEOUT: int = int(os.environ.get("SSH_TIMEOUT", "90"))
 
-# SSH identity key — set DELL_SSH_KEY in .env.local (session-only, gitignored).
-# Falls back to the default SSH agent / ~/.ssh/config if unset.
 _SSH_KEY: str = os.environ.get("DELL_SSH_KEY", "")
 _SSH_OPTS: list[str] = (
     ["-i", _SSH_KEY, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new"]
@@ -48,14 +48,36 @@ _SSH_OPTS: list[str] = (
     ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new"]
 )
 
-# Local Mac path — used only for git history, SKILL.md edits, swarm_state.md.
 LOCAL_REPO_PATH: Path = Path(
     os.environ.get("LOCAL_AUTORESEARCH_PATH", str(Path.home() / "autoresearch"))
 )
 SWARM_STATE_FILE: Path = LOCAL_REPO_PATH / "swarm_state.md"
 
 
-# ── data types ────────────────────────────────────────────────────────────────
+# ── progress helper ────────────────────────────────────────────────────────────
+
+def _progress(label: str, elapsed: int, total: int) -> None:
+    """Print a single-line overwriting ASCII progress bar.
+
+    Example output:
+      [autoresearch] [\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591\u2591] 44%
+    """
+    bar_width = 36
+    filled = int(bar_width * min(elapsed, total) / max(total, 1))
+    bar = "\u2588" * filled + "\u2591" * (bar_width - filled)
+    pct = int(100 * min(elapsed, total) / max(total, 1))
+    print(f"\r  [{label}] [{bar}] {pct:3d}%  ", end="", flush=True)
+
+
+def _progress_done(label: str, detail: str = "") -> None:
+    """Print a completion line after a progress bar."""
+    bar_width = 36
+    bar = "\u2588" * bar_width
+    suffix = f"  \u2713 {detail}" if detail else "  \u2713 done"
+    print(f"\r  [{label}] [{bar}] 100%{suffix}")
+
+
+# ── data types ─────────────────────────────────────────────────────────────────
 
 @dataclass
 class SyncResult:
@@ -66,77 +88,103 @@ class SyncResult:
 
 @dataclass
 class SwarmState:
-    gpu_status: str = "IDLE"       # IDLE | BUSY
+    gpu_status: str = "IDLE"
     baseline_val_bpb: float = 0.0
     baseline_sha: str = ""
     orchestrator_directive: str = ""
     evaluator_findings: list[str] = field(default_factory=list)
 
 
-# ── idempotent sync (called by orchestrator before EVERY autoresearch run) ─────
+# ── idempotent sync ────────────────────────────────────────────────────────────
 
 def sync_autoresearch_idempotent() -> SyncResult:
     """Pull latest karpathy/autoresearch on the Windows GPU runner.
 
     Idempotent: safe to call on every orchestration cycle.
-    Uses `git fetch + reset --hard origin/main` so the runner always
-    runs the latest upstream code without merge conflicts.
-
-    Returns SyncResult with HEAD sha for logging.
+    Prints a staged ASCII progress bar during the SSH operation.
     """
+    print("[autoresearch] \u2192 Syncing autoresearch on GPU runner\u2026")
     cmd = (
         f"cd {GPU_REPO_PATH} && "
         "git fetch origin && "
         "git reset --hard origin/master && "
         "git rev-parse HEAD"
     )
+
+    # Animate the bar while the subprocess runs
+    start = time.monotonic()
+    estimated = SSH_TIMEOUT
+
     try:
-        result = subprocess.run(
+        proc = subprocess.Popen(
             ["ssh", *_SSH_OPTS, GPU_BOX, cmd],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=SSH_TIMEOUT,
         )
-        if result.returncode != 0:
-            return SyncResult(ok=False, error=result.stderr.strip())
-        sha = result.stdout.strip().splitlines()[-1]  # last line = HEAD sha
+        while proc.poll() is None:
+            elapsed = int(time.monotonic() - start)
+            _progress("autoresearch", elapsed, estimated)
+            time.sleep(1)
+
+        stdout, stderr = proc.communicate(timeout=5)
+        elapsed = int(time.monotonic() - start)
+
+        if proc.returncode != 0:
+            print()  # end progress line
+            return SyncResult(ok=False, error=stderr.strip())
+
+        sha = stdout.strip().splitlines()[-1]
+        _progress_done("autoresearch", f"sha={sha[:7]}")
         return SyncResult(ok=True, sha=sha)
+
     except subprocess.TimeoutExpired:
+        print()
         return SyncResult(ok=False, error=f"SSH timeout after {SSH_TIMEOUT}s")
     except Exception as exc:  # noqa: BLE001
+        print()
         return SyncResult(ok=False, error=str(exc))
 
 
-# ── bootstrap: ensure the repo exists on the GPU runner (first-run only) ──────
+# ── bootstrap ──────────────────────────────────────────────────────────────────
 
 def bootstrap_autoresearch_on_runner() -> SyncResult:
     """Clone autoresearch on the Windows GPU runner if it does not exist yet.
 
-    Idempotent: if the directory already exists, falls through to a normal sync.
+    Idempotent. Prints staged status messages.
     """
-    check_cmd = f"if not exist {GPU_REPO_PATH} git clone {AUTORESEARCH_REMOTE} {GPU_REPO_PATH}"
+    print("[autoresearch] \u2192 Bootstrap: ensuring repo exists on GPU runner\u2026")
+    check_cmd = (
+        f"if not exist {GPU_REPO_PATH} "
+        f"git clone {AUTORESEARCH_REMOTE} {GPU_REPO_PATH}"
+    )
+    start = time.monotonic()
     try:
-        subprocess.run(
+        proc = subprocess.Popen(
             ["ssh", *_SSH_OPTS, GPU_BOX, check_cmd],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
             text=True,
-            timeout=SSH_TIMEOUT,
         )
+        while proc.poll() is None:
+            elapsed = int(time.monotonic() - start)
+            _progress("bootstrap", elapsed, SSH_TIMEOUT)
+            time.sleep(1)
+        proc.communicate(timeout=5)
+
     except Exception as exc:  # noqa: BLE001
+        print()
         return SyncResult(ok=False, error=f"Bootstrap failed: {exc}")
+
+    _progress_done("bootstrap", "repo present")
     return sync_autoresearch_idempotent()
 
 
-# ── GPU lock helpers (read/write swarm_state.md on Mac) ───────────────────────
+# ── GPU lock helpers ───────────────────────────────────────────────────────────
 
 def read_swarm_state() -> SwarmState:
-    """Parse swarm_state.md into a SwarmState dataclass.
-
-    Returns a default IDLE state if the file does not exist yet.
-    """
     if not SWARM_STATE_FILE.exists():
         return SwarmState()
-
     content = SWARM_STATE_FILE.read_text(encoding="utf-8")
     state = SwarmState()
     for line in content.splitlines():
@@ -154,83 +202,51 @@ def read_swarm_state() -> SwarmState:
 
 
 def is_gpu_idle() -> bool:
-    """Return True if swarm_state.md reports GPU: IDLE."""
     return read_swarm_state().gpu_status.upper() == "IDLE"
 
 
-# ── deploy train.py to runner ─────────────────────────────────────────────────
+# ── deploy / run / fetch ───────────────────────────────────────────────────────
 
 def deploy_train_py() -> bool:
-    """Copy the locally edited train.py to the Windows GPU runner via scp.
-
-    Called by the Coder agent after every edit, before dispatching a run.
-    Returns True on success.
-    """
     local_train = LOCAL_REPO_PATH / "train.py"
     if not local_train.exists():
         return False
     result = subprocess.run(
         ["scp", *_SSH_OPTS, str(local_train), f"{GPU_BOX}:{GPU_REPO_PATH}/train.py"],
-        capture_output=True,
-        text=True,
-        timeout=SSH_TIMEOUT,
+        capture_output=True, text=True, timeout=SSH_TIMEOUT,
     )
     return result.returncode == 0
 
 
-# ── dispatch training run on GPU runner ───────────────────────────────────────
-
 def run_experiment_on_gpu() -> bool:
-    """SSH into Windows runner and execute train.py inside the autoresearch conda env.
-
-    Uses CMD syntax over SSH (Windows default shell).
-    stdout/stderr are redirected to run.log on the runner.
-    Returns True if the SSH call itself succeeded (not whether val_bpb improved).
-    """
     cmd = (
         f"cd {GPU_REPO_PATH} && "
         "conda run -n autoresearch uv run train.py > run.log 2>&1"
     )
     result = subprocess.run(
         ["ssh", *_SSH_OPTS, GPU_BOX, cmd],
-        capture_output=True,
-        text=True,
-        timeout=400,  # 5 min budget + startup headroom
+        capture_output=True, text=True, timeout=400,
     )
     return result.returncode == 0
 
 
-# ── fetch run.log back to Mac ─────────────────────────────────────────────────
-
 def fetch_run_log() -> bool:
-    """Copy run.log from the Windows runner to the local Mac repo dir via scp.
-
-    Called by the Coder agent after run_experiment_on_gpu() completes.
-    The Evaluator agent then reads the local log.txt.
-    """
     result = subprocess.run(
         [
             "scp", *_SSH_OPTS,
             f"{GPU_BOX}:{GPU_REPO_PATH}/run.log",
             str(LOCAL_REPO_PATH / "log.txt"),
         ],
-        capture_output=True,
-        text=True,
-        timeout=SSH_TIMEOUT,
+        capture_output=True, text=True, timeout=SSH_TIMEOUT,
     )
     return result.returncode == 0
 
 
-# ── swarm_state.md initialiser ────────────────────────────────────────────────
+# ── swarm_state.md initialiser ─────────────────────────────────────────────────
 
 def init_swarm_state(run_tag: str) -> None:
-    """Write a fresh swarm_state.md into the local autoresearch repo.
-
-    Called once by the orchestrator when a new autoresearch session starts.
-    run_tag matches the autoresearch branch name convention (e.g. 'mar22').
-    """
     content = textwrap.dedent(f"""\
-        # Swarm State — {run_tag}
+        # Swarm State \u2014 {run_tag}
         <!-- Managed by Perplexity-Tools autoresearch_bridge.py -->
         <!-- DO NOT commit this file; it is ephemeral session state. -->
 
@@ -247,21 +263,19 @@ def init_swarm_state(run_tag: str) -> None:
         ## Status
         - GPU: IDLE
         <!-- IDLE = safe to dispatch. BUSY = Coder has an active run. -->
-        <!-- Only the Coder agent may flip IDLE → BUSY and back. -->
+        <!-- Only the Coder agent may flip IDLE \u2192 BUSY and back. -->
     """)
     SWARM_STATE_FILE.write_text(content, encoding="utf-8")
 
 
-# ── convenience: full pre-run checklist ───────────────────────────────────────
+# ── preflight ──────────────────────────────────────────────────────────────────
 
 def preflight(run_tag: Optional[str] = None) -> dict:
-    """Run the full pre-flight sequence before starting an autoresearch session.
+    """Full pre-flight sequence with staged progress output.
 
     Steps (all idempotent):
-    1. Bootstrap / sync autoresearch on GPU runner.
-    2. Initialise swarm_state.md on Mac (only if run_tag supplied and file absent).
-
-    Returns a dict with keys: sync_ok, sha, swarm_state_initialised.
+    1. Bootstrap / sync autoresearch on GPU runner (with progress bar).
+    2. Initialise swarm_state.md on Mac (only if run_tag supplied and absent).
     """
     sync = bootstrap_autoresearch_on_runner()
     initialised = False
