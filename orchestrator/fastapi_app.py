@@ -69,7 +69,7 @@ async def _lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Perplexity-Tools Orchestrator",
-    version="0.9.9.3",
+    version="0.9.9.4",
     description=(
         "Top-level idempotent multi-agent orchestrator. "
         "Repo #1 — complements ultrathink-system (Repo #2) "
@@ -138,7 +138,7 @@ def health(
     """Backend connectivity health check — supports Mac+Win+shared Ollama."""
     return {
         "status": "ok",
-        "version": "0.9.9.0",
+        "version": "0.9.9.4",
         "backends": backend_health_map(
             ollama_host=ollama_host,
             lm_studio_host=lm_studio_host,
