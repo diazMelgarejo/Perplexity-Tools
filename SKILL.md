@@ -233,6 +233,8 @@ This repo (**Perplexity-Tools**) is the **top-level orchestrator and instance ma
 ### v0.9.9.4 (2026-04-08)
 - **Gateway lifecycle ownership**: setup-time AlphaClaw flow now delegates to the canonical bootstrap script first, while preserving local fallback behavior.
 - **Perplexity onboarding**: the smoke-test path can force one-time key validation without weakening the richer singleton client flow.
+- **Client ergonomics**: `PerplexityClient.get()` now accepts optional `base_url` and `timeout` overrides for alternate endpoints and test harnesses.
+- **Docs/examples**: README and smoke-test usage now show the preferred `stream()` path plus the new client/config flags.
 - **Version alignment**: runtime, package, and skill surfaces are synchronized to `v0.9.9.4`.
 
 ### v0.9.9.1 (2026-04-04)
