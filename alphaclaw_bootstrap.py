@@ -96,8 +96,9 @@ async def _wait_for_gateway(url: str, timeout: int = 30) -> bool:
             async with httpx.AsyncClient(timeout=1.0) as c:
                 r = await c.get(f"{url}/health")
                 if r.status_code < 400:
+                    ready_bar = "\u2588" * bar_width
                     print(
-                        f"\r  [alphaclaw] [{'\u2588' * bar_width}] 100%  "
+                        f"\r  [alphaclaw] [{ready_bar}] 100%  "
                         "\u2713 ready          "
                     )
                     return True
@@ -105,8 +106,9 @@ async def _wait_for_gateway(url: str, timeout: int = 30) -> bool:
             pass
         if elapsed < timeout:
             await asyncio.sleep(1)
+    timeout_bar = "\u2591" * bar_width
     print(
-        f"\r  [alphaclaw] [{'\u2591' * bar_width}] timed out after {timeout}s           "
+        f"\r  [alphaclaw] [{timeout_bar}] timed out after {timeout}s           "
     )
     return False
 
