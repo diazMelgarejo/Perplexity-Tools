@@ -38,6 +38,7 @@ import os
 import shutil
 import subprocess
 import sys
+from dataclasses import asdict, dataclass
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -71,6 +72,21 @@ LMS_TOKEN  = os.getenv("LM_STUDIO_API_TOKEN", "lm-studio")
 MAC_MODEL  = os.getenv("MAC_LMS_MODEL", "qwen3:8b-instruct")
 WIN_MODEL  = os.getenv("WINDOWS_LMS_MODEL",
                         "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2")
+
+
+@dataclass
+class AlphaClawBootstrapResult:
+    ok: bool
+    gateway_ready: bool
+    gateway_url: str = ""
+    gateway_port: int = OPENCLAW_GATEWAY_PORT
+    runtime: str = "alphaclaw"
+    commandeered: bool = False
+    install_dir: str = str(ALPHACLAW_INSTALL_DIR)
+    config_path: str = str(Path.home() / ".openclaw" / "openclaw.json")
+    error: str = ""
+    role_routing: dict[str, object] | None = None
+    openclaw_config: dict[str, object] | None = None
 
 
 # ── ASCII progress bar: poll /health after gateway start ─────────────────────
@@ -163,8 +179,48 @@ def _lms_base_url(raw: str) -> str:
     return raw if raw.endswith("/v1") else f"{raw}/v1"
 
 
-def _write_openclaw_config(config_dir: Path, config_file: Path) -> None:
-    pt = _load_pt_state()
+def build_role_routing(pt: dict | None = None) -> dict[str, object]:
+    pt = pt or _load_pt_state() or {}
+    manager_backend = pt.get("manager_backend", "mac-ollama")
+    manager_endpoint = pt.get("manager_endpoint", OLLAMA_MAC)
+    manager_model = pt.get("manager_model", MAC_MODEL)
+    coder_backend = pt.get("coder_backend", "mac-degraded")
+    coder_endpoint = pt.get("coder_endpoint", manager_endpoint)
+    coder_model = pt.get("coder_model", manager_model)
+    distributed = bool(pt.get("distributed"))
+    researcher_backend = coder_backend if distributed else manager_backend
+    researcher_endpoint = coder_endpoint if distributed else manager_endpoint
+    researcher_model = coder_model if distributed else manager_model
+    topology = "manager-local_researcher-remote" if distributed else "single-node-local"
+
+    return {
+        "topology": topology,
+        "distributed": distributed,
+        "manager": {
+            "backend": manager_backend,
+            "endpoint": manager_endpoint,
+            "model": manager_model,
+        },
+        "researcher": {
+            "backend": researcher_backend,
+            "endpoint": researcher_endpoint,
+            "model": researcher_model,
+        },
+        "coder": {
+            "backend": coder_backend,
+            "endpoint": coder_endpoint,
+            "model": coder_model,
+        },
+        "autoresearcher": {
+            "backend": coder_backend,
+            "endpoint": coder_endpoint,
+            "model": coder_model,
+        },
+    }
+
+
+def build_openclaw_config(pt: dict | None = None) -> dict[str, object]:
+    pt = pt or _load_pt_state()
     if pt:
         mac_lms_url   = pt.get("mac_lmstudio_endpoint") or LMS_MAC
         win_lms_url   = pt.get("lmstudio_endpoint")     or LMS_WIN
@@ -190,7 +246,7 @@ def _write_openclaw_config(config_dir: Path, config_file: Path) -> None:
     )
 
     agents_root = str(Path.home() / ".openclaw" / "agents")
-    config = {
+    return {
         "gateway": {
             "mode": "local",
             "port": OPENCLAW_GATEWAY_PORT,
@@ -226,8 +282,8 @@ def _write_openclaw_config(config_dir: Path, config_file: Path) -> None:
                     "baseUrl": _lms_base_url(mac_lms_url),
                     "apiKey": LMS_TOKEN,
                     "api": "openai-completions",
-                    "models": [{"id": MAC_MODEL,
-                                "name": f"Mac LMS \u2014 {MAC_MODEL}",
+                    "models": [{"id": manager_model,
+                                "name": f"Mac LMS \u2014 {manager_model}",
                                 "contextWindow": 32768, "maxTokens": 8192,
                                 "cost": {"input": 0, "output": 0}}],
                 },
@@ -235,8 +291,8 @@ def _write_openclaw_config(config_dir: Path, config_file: Path) -> None:
                     "baseUrl": _lms_base_url(win_lms_url),
                     "apiKey": LMS_TOKEN,
                     "api": "openai-completions",
-                    "models": [{"id": WIN_MODEL,
-                                "name": f"Win LMS \u2014 {WIN_MODEL}",
+                    "models": [{"id": coder_model,
+                                "name": f"Win LMS \u2014 {coder_model}",
                                 "contextWindow": 32768, "maxTokens": 8192,
                                 "cost": {"input": 0, "output": 0}}],
                 },
@@ -253,12 +309,20 @@ def _write_openclaw_config(config_dir: Path, config_file: Path) -> None:
             },
         },
     }
+
+
+def _write_openclaw_config(config_dir: Path, config_file: Path) -> dict[str, object]:
+    pt = _load_pt_state()
+    config = build_openclaw_config(pt)
+    role_routing = build_role_routing(pt)
     config_dir.mkdir(parents=True, exist_ok=True)
     config_file.write_text(json.dumps(config, indent=2), encoding="utf-8")
+    coder_backend = role_routing["coder"]["backend"]
     print(
         f"[alphaclaw] \u2713 openclaw.json written \u2192 {config_file}"
         f"  (coder-backend={coder_backend})"
     )
+    return config
 
 
 def _ensure_agent_workspaces(config_dir: Path) -> None:
@@ -299,7 +363,7 @@ def _ensure_autoresearch() -> None:
 
 # ── main bootstrap ────────────────────────────────────────────────────────────
 
-async def bootstrap_alphaclaw(force: bool = False) -> bool:
+async def bootstrap_alphaclaw(force: bool = False) -> dict[str, object]:
     """
     Idempotent AlphaClaw gateway bootstrap. Safe to call on every start.sh run.
 
@@ -309,7 +373,13 @@ async def bootstrap_alphaclaw(force: bool = False) -> bool:
         import httpx  # noqa: F401
     except ImportError:
         print("[alphaclaw] \u2717 httpx not installed \u2014 run: pip install httpx")
-        return False
+        return asdict(
+            AlphaClawBootstrapResult(
+                ok=False,
+                gateway_ready=False,
+                error="httpx not installed",
+            )
+        )
 
     config_dir  = Path.home() / ".openclaw"
     config_file = config_dir  / "openclaw.json"
@@ -331,18 +401,36 @@ async def bootstrap_alphaclaw(force: bool = False) -> bool:
         else:
             print(f"[alphaclaw] \u2713 Gateway already running at {existing_url} \u2014 commandeering")
         os.environ["OPENCLAW_GATEWAY_URL"] = existing_url
+        pt_state = _load_pt_state()
         if not config_file.exists() or force:
-            _write_openclaw_config(config_dir, config_file)
+            config = _write_openclaw_config(config_dir, config_file)
+        else:
+            config = build_openclaw_config(pt_state)
         _ensure_agent_workspaces(config_dir)
         _ensure_autoresearch()
-        return True
+        return asdict(
+            AlphaClawBootstrapResult(
+                ok=True,
+                gateway_ready=True,
+                gateway_url=existing_url,
+                commandeered=True,
+                role_routing=build_role_routing(pt_state),
+                openclaw_config=config,
+            )
+        )
 
     print("[alphaclaw] No running gateway found \u2014 proceeding with full bootstrap")
 
     # Step 1: npm check
     if not shutil.which("npm"):
         print("[alphaclaw] \u2717 npm not found \u2014 install Node 20+ from https://nodejs.org/")
-        return False
+        return asdict(
+            AlphaClawBootstrapResult(
+                ok=False,
+                gateway_ready=False,
+                error="npm not found",
+            )
+        )
 
     # Step 2: install @chrysb/alphaclaw locally if missing
     if not _is_alphaclaw_installed():
@@ -361,13 +449,22 @@ async def bootstrap_alphaclaw(force: bool = False) -> bool:
             print("[alphaclaw] \u2713 @chrysb/alphaclaw installed")
         except subprocess.CalledProcessError as e:
             print(f"[alphaclaw] \u2717 install failed: {e}")
-            return False
+            return asdict(
+                AlphaClawBootstrapResult(
+                    ok=False,
+                    gateway_ready=False,
+                    error=f"install failed: {e}",
+                )
+            )
     else:
         print("[alphaclaw] \u2713 @chrysb/alphaclaw already installed \u2014 skipping")
 
     # Step 3: write config
+    pt_state = _load_pt_state()
     if not config_file.exists() or force:
-        _write_openclaw_config(config_dir, config_file)
+        config = _write_openclaw_config(config_dir, config_file)
+    else:
+        config = build_openclaw_config(pt_state)
 
     # Step 4: agent workspaces
     _ensure_agent_workspaces(config_dir)
@@ -385,7 +482,15 @@ async def bootstrap_alphaclaw(force: bool = False) -> bool:
         )
     except Exception as e:
         print(f"[alphaclaw] \u2717 gateway start failed: {e}")
-        return False
+        return asdict(
+            AlphaClawBootstrapResult(
+                ok=False,
+                gateway_ready=False,
+                error=f"gateway start failed: {e}",
+                openclaw_config=config,
+                role_routing=build_role_routing(pt_state),
+            )
+        )
 
     # Step 6: poll /health with progress bar
     ready = await _wait_for_gateway(gateway_url, timeout=30)
@@ -399,7 +504,16 @@ async def bootstrap_alphaclaw(force: bool = False) -> bool:
 
     # Step 7: autoresearch
     _ensure_autoresearch()
-    return True
+    return asdict(
+        AlphaClawBootstrapResult(
+            ok=ready,
+            gateway_ready=ready,
+            gateway_url=os.environ.get("OPENCLAW_GATEWAY_URL", gateway_url),
+            error="" if ready else "gateway did not pass readiness check",
+            role_routing=build_role_routing(pt_state),
+            openclaw_config=config,
+        )
+    )
 
 
 # ── CLI ───────────────────────────────────────────────────────────────────────
@@ -418,10 +532,14 @@ if __name__ == "__main__":
                         help="Idempotent AlphaClaw install + configure + start")
     parser.add_argument("--force", action="store_true",
                         help="Force-rewrite openclaw.json even if it already exists")
+    parser.add_argument("--json", action="store_true",
+                        help="Print structured result as JSON")
     _args = parser.parse_args()
     if _args.bootstrap:
-        ok = asyncio.run(bootstrap_alphaclaw(force=_args.force))
-        sys.exit(0 if ok else 1)
+        result = asyncio.run(bootstrap_alphaclaw(force=_args.force))
+        if _args.json:
+            print(json.dumps(result, indent=2))
+        sys.exit(0 if result.get("ok") else 1)
     else:
         parser.print_help()
         sys.exit(1)

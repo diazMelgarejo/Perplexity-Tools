@@ -26,6 +26,7 @@ import shutil
 import platform
 import subprocess
 import argparse
+import asyncio
 from pathlib import Path
 
 
@@ -64,44 +65,22 @@ def _test_perplexity_key(key: str) -> bool:
 
 
 def _resolve_perplexity_key() -> str | None:
-    """Env var \u2192 prompt \u2192 validate \u2192 save. Returns key or None (skipped)."""
-    from pathlib import Path as _Path
+    """Run shared Perplexity onboarding. Returns key or None."""
+    from orchestrator.perplexity_client import ensure_credentials
 
-    key = os.getenv("PERPLEXITY_API_KEY", "").strip()
-    if key:
-        print(f"  \u2713 PERPLEXITY_API_KEY found in environment.")
-        return key
-
-    print("  No PERPLEXITY_API_KEY found.")
-    print("  Get one at: https://www.perplexity.ai/settings/api")
-    print()
-
-    for attempt in range(3):
-        raw = input("  Paste your key (starts with pplx-, or Enter to skip): ").strip()
-        if not raw:
-            print("  \u26a0 Skipping Perplexity key \u2014 some features will be unavailable.")
-            return None
-        print("  Validating\u2026 ", end="", flush=True)
-        if _test_perplexity_key(raw):
-            print("\u2713 valid")
-            # Save to .env using python-dotenv if available
-            env_path = _Path(".") / ".env"
-            try:
-                from dotenv import set_key
-                set_key(str(env_path), "PERPLEXITY_API_KEY", raw)
-                print(f"  \u2713 Key saved to {env_path}")
-            except ImportError:
-                print(
-                    f"  \u26a0 python-dotenv not installed \u2014 add to .env manually:\n"
-                    f"    PERPLEXITY_API_KEY={raw}"
-                )
-            os.environ["PERPLEXITY_API_KEY"] = raw
-            return raw
-        else:
-            print("\u2717 invalid or network error")
-            if attempt < 2:
-                print("  Please try again.")
-    print("  \u26a0 Could not validate key after 3 attempts \u2014 continuing without.")
+    status = ensure_credentials(
+        validate=True,
+        interactive=True,
+        allow_web_fallback=True,
+    )
+    if status["ready_for_api"]:
+        print("  \u2713 Perplexity API key validated and ready for runtime calls.")
+        return os.getenv("PERPLEXITY_API_KEY", "").strip() or None
+    if status["auth_mode"] == "web-login":
+        print("  \u2713 Web-login fallback recorded.")
+        print("    Programmatic Perplexity calls will stay disabled until an API key is added.")
+        return None
+    print(f"  \u26a0 {status['message']}")
     return None
 
 
@@ -132,7 +111,7 @@ def detect_alphaclaw() -> tuple[bool, bool]:
 
 
 def _run_alphaclaw_lifecycle() -> None:
-    """Detect \u2192 bootstrap via canonical script \u2192 fallback install/start/wait."""
+    """Resolve PT routing, then run the shared AlphaClaw/OpenClaw reconciler."""
     print("\n[2.5/5] AlphaClaw gateway\u2026\n")
     installed, running = detect_alphaclaw()
 
@@ -141,23 +120,35 @@ def _run_alphaclaw_lifecycle() -> None:
         print(f"  \u2713 alphaclaw found + gateway responding on :{port}")
         return
 
-    import asyncio
-
-    # Canonical AlphaClaw lifecycle lives in alphaclaw_bootstrap.py; use it
-    # first so the wizard reuses the richer bootstrap/config logic.
     try:
-        bootstrap_script = Path(__file__).resolve().with_name("alphaclaw_bootstrap.py")
-        if bootstrap_script.exists():
-            print("  \u2192 Delegating AlphaClaw lifecycle to alphaclaw_bootstrap.py\u2026")
-            result = subprocess.run(
-                [sys.executable, str(bootstrap_script), "--bootstrap"],
-                check=False,
+        from orchestrator.control_plane import resolve_routing_state, reconcile_gateway
+
+        routing = asyncio.run(resolve_routing_state())
+        print(
+            "  \u2192 Routing resolved "
+            f"(manager={routing['manager_backend']}, coder={routing['coder_backend']})"
+        )
+        result = asyncio.run(reconcile_gateway(force=False))
+        if result.get("ok"):
+            print(
+                "  \u2713 Gateway reconciled "
+                f"({result.get('gateway_url') or 'not yet reachable'})"
             )
-            if result.returncode == 0:
-                return
-            print("  \u26a0 Bootstrap script reported failure \u2014 falling back to local lifecycle.")
+            role_routing = result.get("role_routing") or {}
+            if role_routing:
+                print(
+                    "    Topology: "
+                    f"{role_routing.get('topology', 'unknown')} "
+                    f"| manager={role_routing.get('manager', {}).get('model', 'n/a')} "
+                    f"| researcher={role_routing.get('researcher', {}).get('model', 'n/a')}"
+                )
+            return
+        print(
+            "  \u26a0 Shared gateway reconciler reported failure "
+            f"\u2014 {result.get('error', 'unknown error')}"
+        )
     except Exception as e:
-        print(f"  \u26a0 Bootstrap handoff failed: {e}")
+        print(f"  \u26a0 Shared gateway reconciler failed: {e}")
 
     if not installed:
         ans = input("  \u2192 alphaclaw not found. Install now? [Y/n]: ").strip().lower()
