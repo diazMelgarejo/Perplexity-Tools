@@ -154,9 +154,10 @@ Root cause: **the pattern was designed for Python import statements** (`from mul
 
 ### Commits
 - `0364098` (UTS) — fix(tests): restore test filenames broken by over-eager multi_agent sed
+
 ---
 
-## 2026-04-09 â€” Claude â€” PT-first orchestrator migration
+## 2026-04-09 — Claude — PT-first orchestrator migration
 
 ### What was learned
 
@@ -175,3 +176,5 @@ Root cause: **the pattern was designed for Python import statements** (`from mul
 
 - Whether the runtime payload should grow into a versioned public contract document once more external consumers depend on it.
 - Whether setup-time UX should eventually persist richer migration diagnostics for support cases.
+
+---
