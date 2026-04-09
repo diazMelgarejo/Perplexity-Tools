@@ -1,6 +1,6 @@
 # SKILL.md — Perplexity-Tools Model Selection Skill
 
-**Version:** `v0.9.9.1` · **Updated:** 2026-04-04
+**Version:** `v0.9.9.4` · **Updated:** 2026-04-08
 **Repo:** https://github.com/diazMelgarejo/Perplexity-Tools · **Branch:** `main`
 
 **Layering (all interoperable and independently configurable):**
@@ -229,6 +229,13 @@ This repo (**Perplexity-Tools**) is the **top-level orchestrator and instance ma
 ---
 
 ## Changelog
+
+### v0.9.9.4 (2026-04-08)
+- **Gateway lifecycle ownership**: setup-time AlphaClaw flow now delegates to the canonical bootstrap script first, while preserving local fallback behavior.
+- **Perplexity onboarding**: the smoke-test path can force one-time key validation without weakening the richer singleton client flow.
+- **Client ergonomics**: `PerplexityClient.get()` now accepts optional `base_url` and `timeout` overrides for alternate endpoints and test harnesses.
+- **Docs/examples**: README and smoke-test usage now show the preferred `stream()` path plus the new client/config flags.
+- **Version alignment**: runtime, package, and skill surfaces are synchronized to `v0.9.9.4`.
 
 ### v0.9.9.1 (2026-04-04)
 - **LM Studio promoted to primary backend**: Win=Qwen3.5-27B (gpu_offload=40, context 16384); Mac=Qwen3.5-9B-MLX-4bit (context 4096 conservative)
