@@ -32,7 +32,7 @@ async def main(query: str) -> int:
         return 1
 
     try:
-        client = PerplexityClient.get()
+        client = PerplexityClient.get(validate=True, interactive=True)
         print(f"[test_perplexity] \u2713 Singleton ready  (model={client.DEFAULT_MODEL})")
     except Exception as e:
         print(f"[test_perplexity] \u2717 Client init failed: {e}")
