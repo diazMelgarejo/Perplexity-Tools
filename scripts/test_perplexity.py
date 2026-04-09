@@ -10,6 +10,7 @@ with a simple query. Prints the result and exits 0 on success, 1 on failure.
 Usage:
     python scripts/test_perplexity.py
     python scripts/test_perplexity.py --query "What is the AlphaClaw gateway?"
+    python scripts/test_perplexity.py --base-url https://api.perplexity.ai --timeout 30
 """
 from __future__ import annotations
 
@@ -22,7 +23,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 
-async def main(query: str) -> int:
+async def main(query: str, base_url: str | None, timeout: float) -> int:
     print("[test_perplexity] Initialising PerplexityClient singleton\u2026")
     try:
         from orchestrator.perplexity_client import PerplexityClient
@@ -32,7 +33,12 @@ async def main(query: str) -> int:
         return 1
 
     try:
-        client = PerplexityClient.get(validate=True, interactive=True)
+        client = PerplexityClient.get(
+            validate=True,
+            interactive=True,
+            base_url=base_url,
+            timeout=timeout,
+        )
         print(f"[test_perplexity] \u2713 Singleton ready  (model={client.DEFAULT_MODEL})")
     except Exception as e:
         print(f"[test_perplexity] \u2717 Client init failed: {e}")
@@ -65,5 +71,16 @@ if __name__ == "__main__":
         default="What is the latest version of the sonar-pro model?",
         help="Query to send to Perplexity sonar-pro",
     )
+    parser.add_argument(
+        "--base-url",
+        default=None,
+        help="Optional Perplexity-compatible base URL override",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=float,
+        default=120.0,
+        help="Optional request timeout in seconds",
+    )
     args = parser.parse_args()
-    sys.exit(asyncio.run(main(args.query)))
+    sys.exit(asyncio.run(main(args.query, args.base_url, args.timeout)))

@@ -13,6 +13,12 @@ When the coordinating system reports **`task_type`** of **`autoresearch`** or **
 3. **GPU lock & metrics**: treat **`swarm_state.md`** (IDLE/BUSY) and **`log.txt` / `val_bpb`** as the source of truth for whether a run is active and whether metrics are valid.
 4. **Cross-repo stack**: Perplexity-Tools (orchestrator) → ultrathink-system (reasoning) → ECC Tools (optional parallel executors) → Karpathy autoresearch loop on the GPU host.
 
+For local setup work inside Perplexity-Tools, the Perplexity client now exposes optional `base_url` and `timeout` overrides, and the smoke-test script accepts the same values:
+
+```bash
+python scripts/test_perplexity.py --validate --base-url https://api.perplexity.ai --timeout 30
+```
+
 ---
 
 This file is a **copy-paste helper** only; edit **ultrathink-system** in its own repository.
