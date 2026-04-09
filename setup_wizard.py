@@ -132,7 +132,7 @@ def detect_alphaclaw() -> tuple[bool, bool]:
 
 
 def _run_alphaclaw_lifecycle() -> None:
-    """Detect \u2192 install \u2192 start \u2192 wait for /health."""
+    """Detect \u2192 bootstrap via canonical script \u2192 fallback install/start/wait."""
     print("\n[2.5/5] AlphaClaw gateway\u2026\n")
     installed, running = detect_alphaclaw()
 
@@ -140,6 +140,24 @@ def _run_alphaclaw_lifecycle() -> None:
         port = os.getenv("OPENCLAW_GATEWAY_PORT", "18789")
         print(f"  \u2713 alphaclaw found + gateway responding on :{port}")
         return
+
+    import asyncio
+
+    # Canonical AlphaClaw lifecycle lives in alphaclaw_bootstrap.py; use it
+    # first so the wizard reuses the richer bootstrap/config logic.
+    try:
+        bootstrap_script = Path(__file__).resolve().with_name("alphaclaw_bootstrap.py")
+        if bootstrap_script.exists():
+            print("  \u2192 Delegating AlphaClaw lifecycle to alphaclaw_bootstrap.py\u2026")
+            result = subprocess.run(
+                [sys.executable, str(bootstrap_script), "--bootstrap"],
+                check=False,
+            )
+            if result.returncode == 0:
+                return
+            print("  \u26a0 Bootstrap script reported failure \u2014 falling back to local lifecycle.")
+    except Exception as e:
+        print(f"  \u26a0 Bootstrap handoff failed: {e}")
 
     if not installed:
         ans = input("  \u2192 alphaclaw not found. Install now? [Y/n]: ").strip().lower()
@@ -173,8 +191,7 @@ def _run_alphaclaw_lifecycle() -> None:
         stderr=subprocess.DEVNULL,
     )
 
-    # Poll /health with ASCII progress bar (inline asyncio)
-    import asyncio
+    # Poll /health with ASCII progress bar using the shared bootstrap helper.
     try:
         from alphaclaw_bootstrap import _wait_for_gateway
         port = int(os.getenv("OPENCLAW_GATEWAY_PORT", "18789"))
@@ -273,10 +290,13 @@ def run_wizard(args: argparse.Namespace) -> None:
         lm_studio_exists = detect_lm_studio()
         mlx_exists = detect_mlx()
         py_env = detect_python_env()
+        ollama_status = "\u2713 " + ollama_ver if ollama_exists else "\u2717 not found"
+        lm_studio_status = "\u2713 detected" if lm_studio_exists else "\u2717 not found"
+        mlx_status = "\u2713 installed" if mlx_exists else "\u2717 not installed"
         print(f"  Python:     {py_env['version']} {'(venv)' if py_env['in_venv'] else '(system)'}")
-        print(f"  Ollama:     {'\u2713 ' + ollama_ver if ollama_exists else '\u2717 not found'}")
-        print(f"  LM Studio:  {'\u2713 detected' if lm_studio_exists else '\u2717 not found'}")
-        print(f"  MLX:        {'\u2713 installed' if mlx_exists else '\u2717 not installed'}")
+        print(f"  Ollama:     {ollama_status}")
+        print(f"  LM Studio:  {lm_studio_status}")
+        print(f"  MLX:        {mlx_status}")
         print()
     else:
         lm_studio_exists = False
