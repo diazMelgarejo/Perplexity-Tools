@@ -5,7 +5,7 @@ Perplexity officially endorses the openai-compatible endpoint, and the
 openai package is already in the stack via crewai / other deps.
 
 Public API (backward-compatible with old httpx-based client):
-    PerplexityClient.get()            # singleton accessor
+    PerplexityClient.get(validate=False, interactive=True)  # singleton accessor
     client.chat(messages, model, **kw)       -> dict (OpenAI response shape)
     client.chat_async(messages, model, **kw) -> dict
     client.stream(messages, model)           -> Iterator[str]
@@ -102,6 +102,7 @@ class PerplexityClient:
         self,
         api_key: Optional[str] = None,
         validate: bool = False,
+        interactive: bool = True,
     ) -> None:
         key = (api_key or os.getenv("PERPLEXITY_API_KEY", "")).strip()
 
@@ -109,7 +110,7 @@ class PerplexityClient:
             print("[PerplexityClient] \u26a0 stored key failed validation \u2014 re-prompting")
             key = ""
 
-        if not key:
+        if not key and interactive:
             key = _prompt_for_key()
 
         self.api_key = key
@@ -119,10 +120,14 @@ class PerplexityClient:
     # ── singleton accessor ────────────────────────────────────────────────────
 
     @classmethod
-    def get(cls) -> "PerplexityClient":
+    def get(
+        cls,
+        validate: bool = False,
+        interactive: bool = True,
+    ) -> "PerplexityClient":
         """Return the singleton instance, creating it on first call."""
         if cls._instance is None:
-            cls._instance = cls(validate=False)
+            cls._instance = cls(validate=validate, interactive=interactive)
         return cls._instance
 
     @classmethod
