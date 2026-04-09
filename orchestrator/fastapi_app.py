@@ -14,66 +14,63 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from orchestrator import autoresearch_bridge
 from orchestrator.agent_tracker import AgentTracker
 from orchestrator.connectivity import backend_health_map
+from orchestrator.control_plane import (
+    bootstrap_runtime,
+    load_runtime_payload,
+    resolve_routing_state,
+)
 from orchestrator.cost_guard import CostGuard
+from orchestrator.ecc_tools_sync import get_sync_status, sync_ecc_tools
 from orchestrator.model_registry import ModelRegistry
 from orchestrator.ultrathink_bridge import (
     call_ultrathink_mcp_or_bridge,
     parse_ultrathink_timeout,
 )
-from orchestrator import autoresearch_bridge
-from orchestrator.ecc_tools_sync import get_sync_status, sync_ecc_tools
 
 _startup_log = logging.getLogger("orchestrator.fastapi_app")
 
 
 def _run_ecc_sync_bg() -> None:
-    """Blocking ECC sync — runs in a thread so startup is not delayed."""
+    """Blocking ECC sync run in a worker thread so startup stays responsive."""
     try:
         ecc_result = sync_ecc_tools(force=False)
         _startup_log.info(
-            "ECC Tools sync: %s — %s",
+            "ECC Tools sync: %s - %s",
             ecc_result.get("status"),
             ecc_result.get("message", ""),
         )
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         _startup_log.warning("ECC Tools sync failed (non-fatal): %s", exc)
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
-    # 1. Detect hardware routing on boot — updates .state/agents.json (non-fatal).
     try:
-        import sys as _sys
-        _sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-        from agent_launcher import initialize_environment, save_routing_state
-        _routing = await initialize_environment()
-        save_routing_state(_routing)
+        routing = await resolve_routing_state()
         _startup_log.info(
-            "Routing: manager=%s  coder=%s (%s)  distributed=%s",
-            _routing["manager_endpoint"],
-            _routing["coder_endpoint"],
-            _routing.get("coder_backend", "?"),
-            _routing["distributed"],
+            "Routing: manager=%s coder=%s (%s) distributed=%s",
+            routing["manager_endpoint"],
+            routing["coder_endpoint"],
+            routing.get("coder_backend", "?"),
+            routing["distributed"],
         )
-    except Exception as _exc:
-        _startup_log.warning("Backend detection failed (non-fatal): %s", _exc)
+    except Exception as exc:  # noqa: BLE001
+        _startup_log.warning("Backend detection failed (non-fatal): %s", exc)
 
-    # 2. ECC sync in background — does not block port bind or request handling.
     asyncio.get_event_loop().run_in_executor(None, _run_ecc_sync_bg)
     yield
 
-
-# ── app ───────────────────────────────────────────────────────────────────────
 
 app = FastAPI(
     title="Perplexity-Tools Orchestrator",
     version="0.9.9.4",
     description=(
         "Top-level idempotent multi-agent orchestrator. "
-        "Repo #1 — complements ultrathink-system (Repo #2) "
-        "with per-device model selection and fallback logic."
+        "Repo #1 complements ultrathink-system with routing, runtime "
+        "reconciliation, and control-plane state."
     ),
     lifespan=_lifespan,
 )
@@ -92,15 +89,13 @@ cost_guard = CostGuard()
 _ULTRATHINK_TASK_TYPES = {"deep_reasoning", "code_analysis"}
 
 
-# ── request / response models ─────────────────────────────────────────────────
-
 class OrchestrateRequest(BaseModel):
     task: str
     task_type: str = "default"
     preferred_device: Optional[str] = None
     estimated_cost: float = 0.0
     parent_agent_id: Optional[str] = None
-    force: bool = False  # if True, skip idempotency check (user confirmed)
+    force: bool = False
 
 
 class ConflictResponse(BaseModel):
@@ -109,22 +104,27 @@ class ConflictResponse(BaseModel):
     existing_agents: List[Dict[str, Any]]
 
 
-# ── health ─────────────────────────────────────────────────────────────────────
+def _runtime_summary() -> dict[str, Any]:
+    runtime_state = load_runtime_payload()
+    if runtime_state is None:
+        return {"available": False, "gateway_ready": False, "distributed": False}
+    return {
+        "available": True,
+        "gateway_ready": bool(runtime_state.get("gateway", {}).get("gateway_ready")),
+        "distributed": bool(runtime_state.get("routing", {}).get("distributed")),
+    }
+
 
 @app.get("/ecc/status", tags=["ecc"])
 def ecc_status() -> Dict[str, Any]:
-    """Return the last ECC Tools sync status without running a new sync."""
     return get_sync_status()
 
 
 @app.post("/ecc/sync", tags=["ecc"])
 def ecc_sync(force: bool = Query(False)) -> Dict[str, Any]:
-    """
-    Trigger an idempotent ECC Tools sync. Pass force=true to copy all managed files.
-    """
     try:
         return sync_ecc_tools(force=force)
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001
         _startup_log.exception("ECC sync endpoint error")
         return {"status": "error", "message": str(exc)}
 
@@ -135,10 +135,10 @@ def health(
     lm_studio_host: str = "http://127.0.0.1:1234",
     mlx_host: str = "http://127.0.0.1:8081",
 ) -> Dict[str, Any]:
-    """Backend connectivity health check — supports Mac+Win+shared Ollama."""
     return {
         "status": "ok",
         "version": "0.9.9.4",
+        "runtime": _runtime_summary(),
         "backends": backend_health_map(
             ollama_host=ollama_host,
             lm_studio_host=lm_studio_host,
@@ -147,14 +147,33 @@ def health(
     }
 
 
-# ── budget ────────────────────────────────────────────────────────────────────
-
 @app.get("/budget", tags=["cost"])
 def budget() -> Dict[str, Any]:
     return cost_guard.snapshot()
 
 
-# ── agents ────────────────────────────────────────────────────────────────────
+@app.get("/runtime", tags=["runtime"])
+def runtime_state() -> Dict[str, Any]:
+    payload = load_runtime_payload()
+    if payload is None:
+        return {"available": False, "runtime": None}
+    return {"available": True, "runtime": payload}
+
+
+@app.post("/runtime/bootstrap", tags=["runtime"])
+async def runtime_bootstrap(
+    force_gateway: bool = Query(False),
+    autoresearch: bool = Query(True),
+    run_tag: Optional[str] = Query(None),
+) -> Dict[str, Any]:
+    return await bootstrap_runtime(
+        interactive=False,
+        force_gateway=force_gateway,
+        run_autoresearch_preflight=autoresearch,
+        run_tag=run_tag,
+        print_progress=False,
+    )
+
 
 @app.get("/agents", tags=["agents"])
 def list_agents(status: Optional[str] = None) -> Dict[str, Any]:
@@ -193,27 +212,26 @@ def gc_stopped() -> Dict[str, Any]:
 
 @app.get("/activity", tags=["agents"])
 def get_activity(limit: int = Query(50, ge=1, le=200)) -> Dict[str, Any]:
-    """Return recent researcher activity from .state/researcher_activity.jsonl."""
     from json import JSONDecodeError
+
     path = Path(".state/researcher_activity.jsonl")
     if not path.exists():
         return {"events": [], "count": 0}
-    raw_lines = [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+
+    raw_lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
     events: List[Dict[str, Any]] = []
     for line in raw_lines[-limit:]:
         try:
             events.append(json.loads(line))
         except JSONDecodeError:
             pass
-    events.sort(key=lambda e: e.get("ts", 0), reverse=True)
+    events.sort(key=lambda event: event.get("ts", 0), reverse=True)
     return {"events": events, "count": len(events)}
 
 
-# ── models ────────────────────────────────────────────────────────────────────
-
 @app.get("/models", tags=["models"])
 def list_models() -> Dict[str, Any]:
-    return {"models": [m.__dict__ for m in registry.list_models()]}
+    return {"models": [model.__dict__ for model in registry.list_models()]}
 
 
 @app.get("/models/route", tags=["models"])
@@ -222,27 +240,13 @@ def route(
     preferred_device: Optional[str] = Query(None),
 ) -> Dict[str, Any]:
     chain = registry.route_task(task_type, preferred_device=preferred_device)
-    return {"fallback_chain": [m.__dict__ for m in chain]}
+    return {"fallback_chain": [model.__dict__ for model in chain]}
 
-
-# ── orchestrate ───────────────────────────────────────────────────────────────
 
 @app.post("/orchestrate", tags=["orchestrate"])
 async def orchestrate(req: OrchestrateRequest) -> Dict[str, Any]:
-    """
-    Idempotent orchestration entrypoint.
-
-    1. Compute task_hash from task_type + task content.
-    2. Check for existing running agent with same role/hash.
-       → If found and force=False: return conflict prompt for user.
-       → If found and force=True: proceed (user confirmed).
-    3. Check budget.
-    4. Select model via ModelRegistry.route_task().
-    5. Register agent, record spend, return agent + fallback chain.
-    """
     task_hash = sha256(f"{req.task_type}:{req.task}".encode()).hexdigest()
 
-    # ── idempotency check ────────────────────────────────────────────────────
     existing = tracker.find_existing(role=req.task_type, task_hash=task_hash)
     if existing and not req.force:
         return {
@@ -254,28 +258,22 @@ async def orchestrate(req: OrchestrateRequest) -> Dict[str, Any]:
             "existing_agent": asdict(existing),
         }
 
-    # ── budget check ─────────────────────────────────────────────────────────
-    snap = cost_guard.snapshot()
+    snapshot = cost_guard.snapshot()
     if not cost_guard.can_spend(req.estimated_cost):
         raise HTTPException(
             status_code=402,
-            detail=(
-                f"Daily budget exceeded. Remaining: ${snap.get('remaining', 0):.4f}"
-            ),
+            detail=f"Daily budget exceeded. Remaining: ${snapshot.get('remaining', 0):.4f}",
         )
 
+    budget_warning = None
     if cost_guard.alert_approaching():
-        snap2 = cost_guard.snapshot()
+        budget_state = cost_guard.snapshot()
         budget_warning = (
-            f"⚠️ Budget at {snap2['daily_spend']:.2f} / {snap2['daily_budget']:.2f} (≥80%)"
+            f"Budget at {budget_state['daily_spend']:.2f} / "
+            f"{budget_state['daily_budget']:.2f} (>=80%)"
         )
-    else:
-        budget_warning = None
 
-    # ── model selection (SKILL.md → ModelRegistry → fallback chain) ──────────
-    candidates = registry.route_task(
-        req.task_type, preferred_device=req.preferred_device
-    )
+    candidates = registry.route_task(req.task_type, preferred_device=req.preferred_device)
     if not candidates:
         raise HTTPException(
             status_code=404,
@@ -283,12 +281,8 @@ async def orchestrate(req: OrchestrateRequest) -> Dict[str, Any]:
         )
 
     selected = candidates[0]
-    route = registry.routing_cfg.get("routes", {}).get(req.task_type, {})
+    route_cfg = registry.routing_cfg.get("routes", {}).get(req.task_type, {})
 
-    # ── register agent ───────────────────────────────────────────────────────
-    # This endpoint only records the routed selection; it does not run a live
-    # long-lived agent lifecycle in-process, so persist the settled state in
-    # one write instead of chaining status transitions.
     agent = tracker.register(
         role=req.task_type,
         model=selected.name,
@@ -319,52 +313,43 @@ async def orchestrate(req: OrchestrateRequest) -> Dict[str, Any]:
         },
         "fallback_chain": [
             {
-                "priority": i + 2,
-                "name": m.name,
-                "backend": m.backend,
-                "device": m.device,
-                "online": m.online,
+                "priority": index + 2,
+                "name": model.name,
+                "backend": model.backend,
+                "device": model.device,
+                "online": model.online,
             }
-            for i, m in enumerate(candidates[1:5])
+            for index, model in enumerate(candidates[1:5])
         ],
+        "runtime": _runtime_summary(),
     }
     if budget_warning:
         response["budget_warning"] = budget_warning
 
-    if (
-        req.task_type in _ULTRATHINK_TASK_TYPES
-        and route.get("endpoint")
-    ):
-        timeout = parse_ultrathink_timeout(route.get("timeout"))
+    if req.task_type in _ULTRATHINK_TASK_TYPES and route_cfg.get("endpoint"):
+        timeout = parse_ultrathink_timeout(route_cfg.get("timeout"))
         try:
             response["ultrathink_bridge"] = {
                 "enabled": True,
                 **await call_ultrathink_mcp_or_bridge(
-                    endpoint=str(route["endpoint"]),
+                    endpoint=str(route_cfg["endpoint"]),
                     timeout=timeout,
                     task=req.task,
                     task_type=req.task_type,
                 ),
             }
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             _startup_log.warning("UltraThink bridge call failed: %s", exc)
             response["ultrathink_bridge"] = {
                 "enabled": True,
                 "error": str(exc),
-                "endpoint": os.path.expandvars(str(route["endpoint"])),
+                "endpoint": os.path.expandvars(str(route_cfg["endpoint"])),
             }
     return response
 
 
-# ── autoresearch (karpathy/autoresearch foot-soldier swarm) ──────────────
-
 @app.post("/autoresearch/sync", tags=["autoresearch"])
 def autoresearch_sync(run_tag: Optional[str] = Query(None)) -> Dict[str, Any]:
-    """
-    Idempotent sync of karpathy/autoresearch on the Windows GPU runner.
-    Calls autoresearch_bridge.preflight() — bootstraps + syncs the repo,
-    and optionally initialises swarm_state.md if run_tag is supplied.
-    """
     result = autoresearch_bridge.preflight(run_tag=run_tag)
     if not result["sync_ok"]:
         raise HTTPException(
@@ -376,10 +361,6 @@ def autoresearch_sync(run_tag: Optional[str] = Query(None)) -> Dict[str, Any]:
 
 @app.get("/autoresearch/gpu_status", tags=["autoresearch"])
 def autoresearch_gpu_status() -> Dict[str, Any]:
-    """
-    Query the GPU lock status from swarm_state.md.
-    Returns {"gpu_idle": bool, "swarm_state": SwarmState} for orchestrator.
-    """
     state = autoresearch_bridge.read_swarm_state()
     return {
         "gpu_idle": state.gpu_status.upper() == "IDLE",
@@ -392,8 +373,6 @@ def autoresearch_gpu_status() -> Dict[str, Any]:
         },
     }
 
-
-# ── entry ─────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     import uvicorn
