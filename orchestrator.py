@@ -19,6 +19,7 @@ import asyncio
 import aiohttp
 import logging
 import re
+import argparse
 # Redis: Optional for MVP. PT uses file-based state (.state/agents.json) by default.
 # Redis enables distributed coordination for multi-instance deployments (v1.1+).
 # Soft import — app starts cleanly even if the redis package is not installed.
@@ -31,6 +32,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 # fix(orchestrator): migrate from deprecated Pydantic V1 @validator to V2 @field_validator
 from pydantic import BaseModel, Field, field_validator
+from orchestrator.control_plane import bootstrap_runtime_sync, load_runtime_payload
 try:
     from loguru import logger
 except ImportError:
@@ -400,6 +402,103 @@ async def health():
     return {"status": "ok", "version": VERSION, "redis": await _redis_health()}
 
 
-if __name__ == "__main__":
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Perplexity-Tools orchestrator entrypoint",
+    )
+    subparsers = parser.add_subparsers(dest="command")
+
+    bootstrap_parser = subparsers.add_parser(
+        "bootstrap",
+        help="Run the PT-first runtime reconciler and write a resolved state payload.",
+    )
+    bootstrap_parser.add_argument(
+        "--output",
+        default=".state/runtime_payload.json",
+        help="Path to write the resolved runtime payload JSON.",
+    )
+    bootstrap_parser.add_argument(
+        "--non-interactive",
+        action="store_true",
+        help="Disable prompts and reuse existing configuration only.",
+    )
+    bootstrap_parser.add_argument(
+        "--force-gateway",
+        action="store_true",
+        help="Force-regenerate OpenClaw config before gateway startup.",
+    )
+    bootstrap_parser.add_argument(
+        "--no-autoresearch",
+        action="store_true",
+        help="Skip AutoResearch preflight during bootstrap.",
+    )
+    bootstrap_parser.add_argument(
+        "--run-tag",
+        default=None,
+        help="Optional run tag for autoresearch swarm_state initialisation.",
+    )
+    bootstrap_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Print the resolved runtime payload as JSON.",
+    )
+
+    state_parser = subparsers.add_parser(
+        "state",
+        help="Print the last resolved PT runtime payload.",
+    )
+    state_parser.add_argument(
+        "--input",
+        default=".state/runtime_payload.json",
+        help="Path to a runtime payload JSON file.",
+    )
+
+    serve_parser = subparsers.add_parser(
+        "serve",
+        help="Run the legacy FastAPI app.",
+    )
+    serve_parser.add_argument("--host", default="0.0.0.0")
+    serve_parser.add_argument("--port", type=int, default=8000)
+
+    args = parser.parse_args(argv)
+
+    if args.command == "bootstrap":
+        payload = bootstrap_runtime_sync(
+            interactive=not args.non_interactive,
+            force_gateway=args.force_gateway,
+            run_autoresearch_preflight=not args.no_autoresearch,
+            runtime_state_path=args.output,
+            run_tag=args.run_tag,
+            print_progress=not args.json,
+        )
+        if args.json:
+            print(json.dumps(payload, indent=2))
+        else:
+            print(
+                "[orchestrator] Bootstrap resolved "
+                f"gateway={payload.get('gateway', {}).get('gateway_url', 'n/a')} "
+                f"distributed={payload.get('routing', {}).get('distributed', False)}"
+            )
+            print(
+                "[orchestrator] Runtime payload written to "
+                f"{payload.get('paths', {}).get('runtime_state', args.output)}"
+            )
+        return 0 if payload.get("gateway", {}).get("gateway_ready") else 1
+
+    if args.command == "state":
+        payload = load_runtime_payload(args.input)
+        if payload is None:
+            print(f"[orchestrator] No runtime payload found at {args.input}")
+            return 1
+        print(json.dumps(payload, indent=2))
+        return 0
+
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    host = getattr(args, "host", "0.0.0.0")
+    port = getattr(args, "port", 8000)
+    uvicorn.run(app, host=host, port=port)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
