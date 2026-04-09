@@ -91,8 +91,8 @@ LMS_TIMEOUT: float = float(os.getenv("LM_STUDIO_TIMEOUT", "120"))
 if not PERPLEXITY_API_KEY:
     logger.warning("PERPLEXITY_API_KEY is not set — cloud calls will be skipped")
 
-# v0.9.9.0: rate limiting + input validation + Pydantic V2 field_validator
-VERSION = "0.9.9.0"
+# v0.9.9.4: rate limiting + input validation + Pydantic V2 field_validator
+VERSION = "0.9.9.4"
 SAFE_REDIS_KEY_SEGMENT = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _redis_health_error: Optional[str] = None
 
