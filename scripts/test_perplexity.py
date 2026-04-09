@@ -4,8 +4,8 @@ scripts/test_perplexity.py
 --------------------------
 Smoke-test for the PerplexityClient singleton.
 
-Creates an Orchestrator (via PerplexityClient.get()) and calls search_async
-with a simple query. Prints the result and exits 0 on success, 1 on failure.
+Creates the validated client singleton and calls chat_async with a simple
+query. Prints the result and exits 0 on success, 1 on failure.
 
 Usage:
     python scripts/test_perplexity.py
@@ -39,7 +39,14 @@ async def main(query: str, base_url: str | None, timeout: float) -> int:
             base_url=base_url,
             timeout=timeout,
         )
-        print(f"[test_perplexity] \u2713 Singleton ready  (model={client.DEFAULT_MODEL})")
+        status = client.status()
+        print(
+            "[test_perplexity] \u2713 Singleton ready "
+            f"(model={client.DEFAULT_MODEL}, auth_mode={status['auth_mode']})"
+        )
+        if not status["ready_for_api"]:
+            print(f"[test_perplexity] \u26a0 {status['message']}")
+            return 1
     except Exception as e:
         print(f"[test_perplexity] \u2717 Client init failed: {e}")
         return 1
