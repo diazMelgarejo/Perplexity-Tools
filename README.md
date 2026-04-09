@@ -81,11 +81,36 @@ python -m orchestrator.fastapi_app
 # 4. Check health (detects all backends)
 curl "http://localhost:8000/health"
 
-# 5. Orchestrate a task (idempotent — safe to call twice)
+# 5. Smoke-test the Perplexity client
+python scripts/test_perplexity.py --validate --base-url https://api.perplexity.ai --timeout 30
+
+# 6. Orchestrate a task (idempotent — safe to call twice)
 curl -X POST http://localhost:8000/orchestrate \\
   -H "Content-Type: application/json" \\
   -d '{"task": "Refactor auth module", "task_type": "coding", "preferred_device": "mac-studio"}'
 ```
+
+---
+
+## Perplexity Client
+
+The Perplexity singleton supports a small set of ergonomic constructor options:
+
+```python
+from orchestrator.perplexity_client import PerplexityClient
+
+client = PerplexityClient.get(
+    validate=True,
+    interactive=False,
+    base_url="https://api.perplexity.ai",
+    timeout=30.0,
+)
+```
+
+- `validate=True` re-checks a stored key before reuse.
+- `interactive=False` keeps the client quiet in non-TTY automation.
+- `base_url` and `timeout` can be changed per environment or test harness.
+- Use `client.stream(...)` for streaming responses; `chat(..., stream=True)` remains a compatibility path.
 
 ---
 
