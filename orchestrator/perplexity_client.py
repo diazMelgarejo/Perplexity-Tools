@@ -5,7 +5,12 @@ Perplexity officially endorses the openai-compatible endpoint, and the
 openai package is already in the stack via crewai / other deps.
 
 Public API (backward-compatible with old httpx-based client):
-    PerplexityClient.get(validate=False, interactive=True)  # singleton accessor
+    PerplexityClient.get(
+        validate=False,
+        interactive=True,
+        base_url=None,
+        timeout=120.0,
+    )  # singleton accessor
     client.chat(messages, model, **kw)       -> dict (OpenAI response shape)
     client.chat_async(messages, model, **kw) -> dict
     client.stream(messages, model)           -> Iterator[str]
@@ -89,9 +94,14 @@ class PerplexityClient:
 
     Usage:
         client = PerplexityClient.get()   # singleton
+        client = PerplexityClient.get(base_url="https://api.perplexity.ai", timeout=30.0)
         result = client.chat([{"role": "user", "content": "hello"}])
         # or async:
         result = await client.chat_async([{"role": "user", "content": "hello"}])
+
+    Notes:
+        - `stream()` is the preferred streaming API.
+        - `chat(..., stream=True)` is kept compatibility-tolerant in this pass.
     """
 
     BASE_URL      = "https://api.perplexity.ai"
@@ -101,9 +111,13 @@ class PerplexityClient:
     def __init__(
         self,
         api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        timeout: float = 120.0,
         validate: bool = False,
         interactive: bool = True,
     ) -> None:
+        self.base_url = (base_url or self.BASE_URL).rstrip("/")
+        self.timeout = timeout
         key = (api_key or os.getenv("PERPLEXITY_API_KEY", "")).strip()
 
         if validate and key and not _validate_key(key):
@@ -114,8 +128,16 @@ class PerplexityClient:
             key = _prompt_for_key()
 
         self.api_key = key
-        self._sync  = OpenAI(api_key=key or "no-key",  base_url=self.BASE_URL)
-        self._async = AsyncOpenAI(api_key=key or "no-key", base_url=self.BASE_URL)
+        self._sync = OpenAI(
+            api_key=key or "no-key",
+            base_url=self.base_url,
+            timeout=self.timeout,
+        )
+        self._async = AsyncOpenAI(
+            api_key=key or "no-key",
+            base_url=self.base_url,
+            timeout=self.timeout,
+        )
 
     # ── singleton accessor ────────────────────────────────────────────────────
 
@@ -124,10 +146,17 @@ class PerplexityClient:
         cls,
         validate: bool = False,
         interactive: bool = True,
+        base_url: Optional[str] = None,
+        timeout: float = 120.0,
     ) -> "PerplexityClient":
         """Return the singleton instance, creating it on first call."""
         if cls._instance is None:
-            cls._instance = cls(validate=validate, interactive=interactive)
+            cls._instance = cls(
+                validate=validate,
+                interactive=interactive,
+                base_url=base_url,
+                timeout=timeout,
+            )
         return cls._instance
 
     @classmethod
@@ -145,7 +174,14 @@ class PerplexityClient:
         stream: bool = False,
         **kw: Any,
     ) -> Dict[str, Any]:
-        """Synchronous chat completion. Returns OpenAI response dict shape."""
+        """Synchronous chat completion.
+
+        Returns OpenAI response dict shape. For streaming, prefer `stream()`.
+        The `stream=True` argument is accepted here only for backward
+        compatibility and is coerced to the non-streaming path.
+        """
+        if stream:
+            print("[PerplexityClient] \u26a0 chat(..., stream=True) is compatibility mode; prefer stream().")
         r = self._sync.chat.completions.create(
             model=model or self.DEFAULT_MODEL,
             messages=messages,  # type: ignore[arg-type]
