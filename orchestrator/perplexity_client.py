@@ -35,22 +35,57 @@ try:
 except ImportError:
     _dotenv_set_key = None  # type: ignore[assignment]
 
-from openai import OpenAI, AsyncOpenAI
+try:
+    from openai import OpenAI, AsyncOpenAI
+except ImportError:  # pragma: no cover - exercised indirectly in setup flows
+    OpenAI = None  # type: ignore[assignment]
+    AsyncOpenAI = None  # type: ignore[assignment]
 
 
 _ENV_FILE = Path(".") / ".env"
+_AUTH_MODE_ENV = "PERPLEXITY_AUTH_MODE"
+_AUTH_MODE_API = "api-key"
+_AUTH_MODE_WEB = "web-login"
+
+
+def _update_env_file(key: str, value: str) -> None:
+    """Persist a key/value pair to .env, falling back to a manual rewrite."""
+    _ENV_FILE.touch(exist_ok=True)
+    if _dotenv_set_key is not None:
+        _dotenv_set_key(str(_ENV_FILE), key, value, quote_mode="never")
+        return
+
+    existing: list[str] = []
+    if _ENV_FILE.exists():
+        existing = _ENV_FILE.read_text(encoding="utf-8").splitlines()
+
+    prefix = f"{key}="
+    rewritten = [line for line in existing if not line.startswith(prefix)]
+    rewritten.append(f"{key}={value}")
+    _ENV_FILE.write_text("\n".join(rewritten).strip() + "\n", encoding="utf-8")
 
 
 def _save_key(key: str) -> None:
     """Persist key to .env. Silently skips if dotenv unavailable."""
-    if _dotenv_set_key is not None:
-        _ENV_FILE.touch(exist_ok=True)
-        _dotenv_set_key(str(_ENV_FILE), "PERPLEXITY_API_KEY", key)
+    try:
+        _update_env_file("PERPLEXITY_API_KEY", key)
+        _update_env_file(_AUTH_MODE_ENV, _AUTH_MODE_API)
         print(f"[PerplexityClient] \u2713 Key saved to {_ENV_FILE}")
-    else:
+    except Exception:
         print(
-            "[PerplexityClient] \u26a0 python-dotenv not installed \u2014 "
-            "add PERPLEXITY_API_KEY to .env manually."
+            "[PerplexityClient] \u26a0 Could not persist PERPLEXITY_API_KEY "
+            f"to {_ENV_FILE}. Add it manually."
+        )
+
+
+def _save_auth_mode(mode: str) -> None:
+    """Persist the chosen authentication mode to .env."""
+    try:
+        _update_env_file(_AUTH_MODE_ENV, mode)
+    except Exception:
+        print(
+            "[PerplexityClient] \u26a0 Could not persist PERPLEXITY_AUTH_MODE "
+            f"to {_ENV_FILE}. Add it manually."
         )
 
 
@@ -61,6 +96,90 @@ def _validate_key(key: str) -> bool:
         return test_perplexity_key(key)
     except ImportError:
         return bool(key and key.strip())
+
+
+def credential_status(validate: bool = False) -> Dict[str, Any]:
+    """Return the current Perplexity credential/onboarding state."""
+    key = os.getenv("PERPLEXITY_API_KEY", "").strip()
+    auth_mode = os.getenv(_AUTH_MODE_ENV, "").strip() or (_AUTH_MODE_API if key else "unset")
+    validated = bool(key)
+    if key and validate:
+        validated = _validate_key(key)
+    ready_for_api = bool(key) and validated
+    configured = ready_for_api or auth_mode == _AUTH_MODE_WEB
+    message = "Perplexity API key ready." if ready_for_api else ""
+    if auth_mode == _AUTH_MODE_WEB and not ready_for_api:
+        message = (
+            "Web-login fallback selected. Programmatic Perplexity API calls "
+            "remain unavailable until PERPLEXITY_API_KEY is configured."
+        )
+    elif not configured:
+        message = "Perplexity credentials are not configured."
+    elif key and validate and not validated:
+        message = "Stored PERPLEXITY_API_KEY failed validation."
+
+    return {
+        "configured": configured,
+        "ready_for_api": ready_for_api,
+        "validated": validated,
+        "auth_mode": auth_mode,
+        "has_api_key": bool(key),
+        "message": message,
+    }
+
+
+def ensure_credentials(
+    *,
+    validate: bool = False,
+    interactive: bool = True,
+    allow_web_fallback: bool = True,
+) -> Dict[str, Any]:
+    """Ensure Perplexity onboarding is complete.
+
+    Returns a structured status dict that can be reused by setup flows and the
+    runtime control plane.
+    """
+    status = credential_status(validate=validate)
+    if status["ready_for_api"]:
+        return status
+    if status["auth_mode"] == _AUTH_MODE_WEB:
+        return status
+    if not interactive or not sys.stdin.isatty():
+        return status
+
+    print("\n[PerplexityClient] Perplexity onboarding")
+    print("  API key is preferred for programmatic search and orchestration.")
+    print("  Get one at: https://www.perplexity.ai/settings/api")
+    print("  If you only plan to use the website UI for now, you can choose web-login fallback.")
+
+    for attempt in range(3):
+        raw = input("  Paste API key (pplx-..., or Enter to choose fallback): ").strip()
+        if raw:
+            print("  Validating\u2026 ", end="", flush=True)
+            if _validate_key(raw):
+                print("\u2713")
+                os.environ["PERPLEXITY_API_KEY"] = raw
+                os.environ[_AUTH_MODE_ENV] = _AUTH_MODE_API
+                _save_key(raw)
+                return credential_status(validate=False)
+            print("\u2717 invalid")
+            if attempt < 2:
+                print("  Try again.")
+            continue
+
+        if not allow_web_fallback:
+            print("  \u26a0 API key required for this flow.")
+            continue
+
+        fallback = input("  Use web-login fallback instead? [Y/n]: ").strip().lower()
+        if fallback in ("", "y", "yes"):
+            os.environ[_AUTH_MODE_ENV] = _AUTH_MODE_WEB
+            _save_auth_mode(_AUTH_MODE_WEB)
+            return credential_status(validate=False)
+        if attempt < 2:
+            print("  Okay, let's try the API key again.")
+
+    return credential_status(validate=validate)
 
 
 def _prompt_for_key() -> str:
@@ -79,6 +198,7 @@ def _prompt_for_key() -> str:
         if _validate_key(raw):
             print("\u2713")
             os.environ["PERPLEXITY_API_KEY"] = raw
+            os.environ[_AUTH_MODE_ENV] = _AUTH_MODE_API
             _save_key(raw)
             return raw
         print("\u2717 invalid")
@@ -118,25 +238,63 @@ class PerplexityClient:
     ) -> None:
         self.base_url = (base_url or self.BASE_URL).rstrip("/")
         self.timeout = timeout
-        key = (api_key or os.getenv("PERPLEXITY_API_KEY", "")).strip()
-
-        if validate and key and not _validate_key(key):
-            print("[PerplexityClient] \u26a0 stored key failed validation \u2014 re-prompting")
-            key = ""
-
-        if not key and interactive:
-            key = _prompt_for_key()
+        if api_key:
+            key = api_key.strip()
+            os.environ[_AUTH_MODE_ENV] = _AUTH_MODE_API
+            self._status = {
+                "configured": True,
+                "ready_for_api": bool(key),
+                "validated": bool(key),
+                "auth_mode": _AUTH_MODE_API,
+                "has_api_key": bool(key),
+                "message": "Perplexity API key provided directly.",
+            }
+        else:
+            self._status = ensure_credentials(
+                validate=validate,
+                interactive=interactive,
+                allow_web_fallback=True,
+            )
+            key = os.getenv("PERPLEXITY_API_KEY", "").strip()
 
         self.api_key = key
-        self._sync = OpenAI(
-            api_key=key or "no-key",
-            base_url=self.base_url,
-            timeout=self.timeout,
-        )
-        self._async = AsyncOpenAI(
-            api_key=key or "no-key",
-            base_url=self.base_url,
-            timeout=self.timeout,
+        self.auth_mode = self._status["auth_mode"]
+        if OpenAI is None or AsyncOpenAI is None:
+            self._sync = None
+            self._async = None
+        else:
+            self._sync = OpenAI(
+                api_key=key or "no-key",
+                base_url=self.base_url,
+                timeout=self.timeout,
+            )
+            self._async = AsyncOpenAI(
+                api_key=key or "no-key",
+                base_url=self.base_url,
+                timeout=self.timeout,
+            )
+
+    def status(self) -> Dict[str, Any]:
+        return dict(self._status)
+
+    def api_ready(self) -> bool:
+        return bool(self._status.get("ready_for_api"))
+
+    def _require_api_ready(self) -> None:
+        if self.api_ready():
+            if self._sync is None or self._async is None:
+                raise RuntimeError(
+                    "The openai package is not installed. Run `pip install openai`."
+                )
+            return
+        if self.auth_mode == _AUTH_MODE_WEB:
+            raise RuntimeError(
+                "Perplexity is configured for web-login fallback only. "
+                "Programmatic calls require PERPLEXITY_API_KEY."
+            )
+        raise RuntimeError(
+            "PERPLEXITY_API_KEY is not configured. Run setup_wizard.py or "
+            "PerplexityClient.get(validate=True, interactive=True)."
         )
 
     # ── singleton accessor ────────────────────────────────────────────────────
@@ -180,6 +338,7 @@ class PerplexityClient:
         The `stream=True` argument is accepted here only for backward
         compatibility and is coerced to the non-streaming path.
         """
+        self._require_api_ready()
         if stream:
             print("[PerplexityClient] \u26a0 chat(..., stream=True) is compatibility mode; prefer stream().")
         r = self._sync.chat.completions.create(
@@ -205,6 +364,7 @@ class PerplexityClient:
         **kw: Any,
     ) -> Dict[str, Any]:
         """Async chat completion."""
+        self._require_api_ready()
         r = await self._async.chat.completions.create(
             model=model or self.DEFAULT_MODEL,
             messages=messages,  # type: ignore[arg-type]
@@ -227,6 +387,7 @@ class PerplexityClient:
         **kw: Any,
     ) -> Iterator[str]:
         """Yield text deltas from a streaming chat completion."""
+        self._require_api_ready()
         for chunk in self._sync.chat.completions.create(
             model=model or self.DEFAULT_MODEL,
             messages=messages,  # type: ignore[arg-type]
