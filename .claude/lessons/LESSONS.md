@@ -154,3 +154,24 @@ Root cause: **the pattern was designed for Python import statements** (`from mul
 
 ### Commits
 - `0364098` (UTS) — fix(tests): restore test filenames broken by over-eager multi_agent sed
+---
+
+## 2026-04-09 â€” Claude â€” PT-first orchestrator migration
+
+### What was learned
+
+- PT works best when it is the only repo making orchestration decisions. The migration became cleaner once `orchestrator.py` and shared control-plane helpers became the single lifecycle authority for gateway reconciliation, Perplexity onboarding, staged readiness, and runtime payload generation.
+- Setup-time onboarding prevents silent runtime degradation. Perplexity credentials, AlphaClaw or OpenClaw readiness, and AutoResearch preflight all needed to move earlier in the user flow.
+- Role routing needs a concrete artifact, not just a narrative. The manager-local plus researcher-remote topology became testable only after PT generated explicit role-routing state and `openclaw_config`.
+- Cross-repo handoff is safest when PT exports a resolved payload and UTS consumes it without reinterpretation.
+
+### Decisions made
+
+- Added a shared PT control plane that resolves routing, reconciles gateway state, runs staged bootstrap, and writes a runtime payload.
+- Unified Perplexity client initialization around explicit credential status and validation semantics.
+- Moved more readiness reporting into PT so UTS can delegate instead of repeating lifecycle checks.
+
+### Open questions
+
+- Whether the runtime payload should grow into a versioned public contract document once more external consumers depend on it.
+- Whether setup-time UX should eventually persist richer migration diagnostics for support cases.
