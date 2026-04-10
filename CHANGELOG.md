@@ -9,10 +9,12 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ## [1.0.0-rc] - 2026-03-31 [SYNC]
 
 ### Added
+
 - `call_lmstudio()` — async LM Studio client (Win + Mac) in `orchestrator.py`
 - Mac orchestrator + Win agent routing chain
 
 ### Changed
+
 - `config/models.yml` — canonical models for v1.0 RC:
   - Mac: Qwen3.5-9B-MLX-4bit, roles=[orchestrator,final-validator,presenter], context=4096
   - Win: Qwen3.5-27B Q4_K_M, roles=[coder,checker,refiner,executor,verifier], context=16384
@@ -20,25 +22,17 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - `.env.example` — LM Studio vars with Mac/Win role comments
 
 ### Architecture (v1.0 RC) [SYNC]
+
 - Mac = Orchestrator + Final Validator/Presenter (context=4096 conservative)
 - Windows = UltraThink Agent(s) (1-4x, sequential or parallel)
 - Optional cloud verification step when online + budget allows
 - Ollama remains as fallback (same model files, different runtime)
 
 ---
-
-# Changelog — Perplexity-Tools
-
-All notable changes to this project will be documented in this file.
-Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
-Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-Cross-repo changes affecting ultrathink-system are marked with `[SYNC]`.
-
----
 ## [1.0.0-rc] - 2026-04-01 [LM Studio MCP Server] [SYNC]
 
 ### Added
+
 - `call_lmstudio()` in `orchestrator.py` — async POST to LM Studio `/api/v1/chat`,
   extracts first `type="message"` content. Reads from `LM_STUDIO_WIN_ENDPOINTS`,
   `LM_STUDIO_MAC_ENDPOINT`, `LMS_WIN_MODEL`, `LMS_MAC_MODEL`.
@@ -49,11 +43,13 @@ Cross-repo changes affecting ultrathink-system are marked with `[SYNC]`.
 - `.env.example` — LM Studio canonical model vars, multi-Win endpoint support.
 
 ### Changed
+
 - `orchestrator.py` routing:
   - `privacy_critical=True` path: UltraThink → LM Studio Win(s) → LM Studio Mac → Ollama
   - standard path: Perplexity cloud → LM Studio Win(s) → Ollama
 
 ### Synced with ultrathink-system [SYNC]
+
 - US added `lmstudio_bridge.py`, `lmstudio_mcp_server.py`, `portal_server.py`,
   `multi_agent/config/mcp.json`, updated `api_server.py` with LM Studio primary backend
 
@@ -61,6 +57,7 @@ Cross-repo changes affecting ultrathink-system are marked with `[SYNC]`.
 ## [1.0-rc] - 2026-03-30
 
 ### Added
+
 - `orchestrator/ultrathink_mcp_client.py` — MCP-Optional client infrastructure:
   async subprocess lifecycle, JSON-RPC framing over stdio, stub-response detection
 - `call_ultrathink_mcp_or_bridge()` in `orchestrator/ultrathink_bridge.py` —
@@ -72,10 +69,12 @@ Cross-repo changes affecting ultrathink-system are marked with `[SYNC]`.
 - `docs/RC_CHECKLIST.md` — explicit v1.0 RC stamp criteria and completion checklist
 
 ### Fixed
+
 - `orchestrator/ultrathink_bridge.py` was calling sync `httpx.post()` inside an async
   FastAPI route handler, blocking the event loop. New async wrapper uses `httpx.AsyncClient`.
 
 ### Notes
+
 - MCP server (`ultrathink-system`) `_solve()` is still a stub in this release.
   When `ULTRATHINK_MCP_SERVER_CMD` is set, the client will detect the stub response
   and fall back to HTTP automatically — no task is dropped. Tier 2 (real MCP pipeline)
@@ -85,18 +84,22 @@ Cross-repo changes affecting ultrathink-system are marked with `[SYNC]`.
 ## [0.9.9.0] - 2026-03-30
 
 ### Added
+
 - **v1.1+ Roadmap**: Deferred MCP-first transport documented in both repos
 - **Bridge tests**: `tests/test_ultrathink_bridge.py` — unit tests for HTTP bridge module
 
 ### Changed
+
 - **HTTP bridge always-active**: Removed `ULTRATHINK_HTTP_BACKUP_ENABLED` opt-in flag [SYNC]
 - **Renamed**: `ultrathink_http_backup` → `ultrathink_bridge` across all code and response keys
 - MCP over stdio deferred to v1.1+ as primary transport [SYNC]
 
 ### Fixed
+
 - Version alignment: all files synchronized to 0.9.9.0
 
 ### Synced with ultrathink-system
+
 - Both repos synchronized to v0.9.9.0 [SYNC]
 - ultrathink api_server.py hardened with corrected defaults [SYNC]
 
@@ -121,13 +124,14 @@ Cross-repo changes affecting ultrathink-system are marked with `[SYNC]`.
 
 ---
 
-
 ## [0.9.7.0] - 2026-03-28
 
 ### Added
+
 - **AFRP cross-reference**: ultrathink-system layer now documents AFRP (pre-router gate) in 4-layer architecture table [SYNC]
 
 ### Fixed
+
 - **orchestrator.py**: Removed git commit message fragment appended to REDIS_HOST line (syntax error)
 - **orchestrator.py**: Replaced bare IP `192.168.1.100` with `OLLAMA_WINDOWS_ENDPOINT` env var
 - **orchestrator/fastapi_app.py**: Updated stale version `0.9.0.0` → `0.9.7.0`
@@ -135,6 +139,7 @@ Cross-repo changes affecting ultrathink-system are marked with `[SYNC]`.
 - **requirements.txt**: Updated header comment version
 
 ### Synced with ultrathink-system
+
 - Both repos synchronized to v0.9.7.0 [SYNC]
 - ultrathink-system introduces AFRP as mandatory pre-router gate [SYNC]
 
@@ -143,6 +148,7 @@ Cross-repo changes affecting ultrathink-system are marked with `[SYNC]`.
 ## [0.9.6.0] - 2026-03-27
 
 ### Added
+
 - **LAN Continuity**: LAN Detect & Resume for seamless multi-computer operation [SYNC]
 - **Spawn Reconciliation**: Pre-flight spawn detection and reconciliation before model spawning [SYNC]
 - **Short Persistence Log**: `.state/session.log` for low-overhead session tracking
@@ -151,12 +157,14 @@ Cross-repo changes affecting ultrathink-system are marked with `[SYNC]`.
 - `tests/test_lan_discovery.py` — LAN discovery test coverage
 
 ### Changed
+
 - SKILL.md updated to v0.9.6.0 with hardware-aware multi-computer orchestration
 - Models updated to Qwen 3.5 series (9B MLX on Mac, 35B MoE on Dell)
 - `orchestrator.py` hardened with VRAM safety rules and hardware-bound routing
 - Adapted durable workflow and intelligent routing for multi-computer LAN [SYNC]
 
 ### Synced with ultrathink-system
+
 - Both repos synchronized to v0.9.6.0
 - ultrathink `api_server.py` updated to v0.9.6.0 with GPU reconciliation
 - Cross-repo SKILL.md references established for recursive sub-skill loading
@@ -187,20 +195,22 @@ Cross-repo changes affecting ultrathink-system are marked with `[SYNC]`.
 
 ---
 
-
 ## [0.9.4.3] - 2026-03-26
 
 ### Added
+
 - `tests/test_routing.py` — routing.yml + ultrathink route unit tests [SYNC]
 - `.github/workflows/ci.yml` — CI pipeline with pytest + routing.yml validation
 - `config/routing.yml` — `deep_reasoning` and `code_analysis` ultrathink routes [SYNC]
 - `.env.example` — full `ULTRATHINK_ENDPOINT`, `ULTRATHINK_TIMEOUT`, `ULTRATHINK_ENABLED` vars [SYNC]
 
 ### Changed
+
 - `.env.example` — updated version header to v0.9.4.3, expanded ultrathink section
 - `config/routing.yml` — added ultrathink endpoint/fallback/timeout metadata to deep reasoning routes
 
 ### Synced with ultrathink-system
+
 - Both repos now at v0.9.4.3
 - `api_server.py` added to ultrathink-system (POST /ultrathink + GET /health)
 - Shared `.env` contract documented in both repos
@@ -211,6 +221,7 @@ Cross-repo changes affecting ultrathink-system are marked with `[SYNC]`.
 ## [0.9.0.0] - 2026-03-22
 
 ### Added
+
 - Initial Perplexity-Tools release
 - Multi-model orchestrator with local Ollama + Perplexity cloud fallback
 - `.agents/skills/Perplexity-Tools/` skill bundle for Claude/Codex/Cowork
@@ -225,6 +236,6 @@ Cross-repo changes affecting ultrathink-system are marked with `[SYNC]`.
 
 ## Notes
 
-- ultrathink-system CHANGELOG: https://github.com/diazMelgarejo/ultrathink-system/blob/main/CHANGELOG.md
+- ultrathink-system CHANGELOG: <https://github.com/diazMelgarejo/ultrathink-system/blob/main/CHANGELOG.md>
 - 4-layer architecture: Perplexity-Tools → ultrathink-system → ECC Tools → autoresearch
 - Priority rule: PT SKILL.md runs first; ultrathink called for `reasoning_depth=ultra` only
