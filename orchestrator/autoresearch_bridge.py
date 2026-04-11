@@ -29,6 +29,7 @@ from __future__ import annotations
 import os
 import subprocess
 import textwrap
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -36,18 +37,33 @@ from typing import Optional
 
 # ── configuration (resolved from environment, never hard-coded secrets) ────────
 
-
-GPU_BOX: str = os.environ.get("GPU_BOX", "WINUSER@192.168.1.100")
+# GPU_BOX: SSH target for the Windows RTX 3080.
+# Uses detect_active_tilting_ip() host if GPU_BOX not set, but SSH needs user@host
+# so we keep a separate env var.  Default reflects the current 192.168.254.x subnet.
+GPU_BOX: str = os.environ.get("GPU_BOX", "WINUSER@192.168.254.100")
 GPU_REPO_PATH: str = os.environ.get("GPU_REPO_PATH", "autoresearch")
 AUTORESEARCH_REMOTE: str = "https://github.com/karpathy/autoresearch.git"
 SSH_TIMEOUT: int = int(os.environ.get("SSH_TIMEOUT", "90"))
 
-_SSH_KEY: str = os.environ.get("DELL_SSH_KEY", "")
+# WIN_SSH_KEY is the canonical name; DELL_SSH_KEY kept for backward-compat with
+# existing .env files from before the subnet rename.
+_SSH_KEY: str = os.environ.get("WIN_SSH_KEY") or os.environ.get("DELL_SSH_KEY", "")
 _SSH_OPTS: list[str] = (
     ["-i", _SSH_KEY, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new"]
     if _SSH_KEY else
     ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new"]
 )
+
+# ── Hardware Overload Prevention (HOP) — win-rtx3080:1234 slot lock ───────────
+# The RTX 3080 has limited VRAM.  Executor and Verifier/Critic agents both target
+# LM Studio on this machine.  Loading a second model while the first is still in
+# VRAM triggers repeated load/unload cycles that crash the GPU (see LESSONS.md
+# 2026-04-07 "Rapid model reload after crash burns GPU").
+# This lock serializes any call that holds the Windows LM Studio inference slot.
+# CRASH_RECOVERY_SECS matches the 30 s cooldown already used by launch_researchers.
+_WIN_LM_STUDIO_SLOT: threading.Lock = threading.Lock()
+SLOT_ACQUIRE_TIMEOUT_SECS: int = int(os.environ.get("HOP_SLOT_TIMEOUT", "120"))
+CRASH_RECOVERY_SECS: int = 30
 
 LOCAL_REPO_PATH: Path = Path(
     os.environ.get("LOCAL_AUTORESEARCH_PATH", str(Path.home() / "autoresearch"))
@@ -214,29 +230,54 @@ def is_gpu_idle() -> bool:
 # ── deploy / run / fetch ───────────────────────────────────────────────────────
 
 def deploy_train_py() -> bool:
+    """SCP train.py to the GPU runner.
+
+    Uses the HOP slot lock so a Verifier/Critic that is mid-inference on the same
+    Windows LM Studio endpoint cannot race with a new Coder dispatch.
+    """
     local_train = LOCAL_REPO_PATH / "train.py"
     if not local_train.exists():
         return False
-    result = subprocess.run(
-        ["scp", *_SSH_OPTS, str(local_train), f"{GPU_BOX}:{GPU_REPO_PATH}/train.py"],
-        capture_output=True, text=True, timeout=SSH_TIMEOUT,
-    )
-    return result.returncode == 0
+    acquired = _WIN_LM_STUDIO_SLOT.acquire(timeout=SLOT_ACQUIRE_TIMEOUT_SECS)
+    if not acquired:
+        print(f"[autoresearch] ⚠ HOP: deploy_train_py timed out waiting for win-lm-studio slot after {SLOT_ACQUIRE_TIMEOUT_SECS}s")
+        return False
+    try:
+        result = subprocess.run(
+            ["scp", *_SSH_OPTS, str(local_train), f"{GPU_BOX}:{GPU_REPO_PATH}/train.py"],
+            capture_output=True, text=True, timeout=SSH_TIMEOUT,
+        )
+        return result.returncode == 0
+    finally:
+        _WIN_LM_STUDIO_SLOT.release()
 
 
 def run_experiment_on_gpu() -> bool:
-    cmd = (
-        f"cd {GPU_REPO_PATH} && "
-        "conda run -n autoresearch uv run train.py > run.log 2>&1"
-    )
-    result = subprocess.run(
-        ["ssh", *_SSH_OPTS, GPU_BOX, cmd],
-        capture_output=True, text=True, timeout=400,
-    )
-    return result.returncode == 0
+    """Dispatch the training run on the GPU runner.
+
+    Holds the HOP slot for the full duration of the run so the Verifier/Critic
+    waits before loading its own model onto the same VRAM.
+    """
+    acquired = _WIN_LM_STUDIO_SLOT.acquire(timeout=SLOT_ACQUIRE_TIMEOUT_SECS)
+    if not acquired:
+        print(f"[autoresearch] ⚠ HOP: run_experiment timed out waiting for win-lm-studio slot after {SLOT_ACQUIRE_TIMEOUT_SECS}s")
+        return False
+    try:
+        cmd = (
+            f"cd {GPU_REPO_PATH} && "
+            "conda run -n autoresearch uv run train.py > run.log 2>&1"
+        )
+        result = subprocess.run(
+            ["ssh", *_SSH_OPTS, GPU_BOX, cmd],
+            capture_output=True, text=True, timeout=400,
+        )
+        return result.returncode == 0
+    finally:
+        _WIN_LM_STUDIO_SLOT.release()
 
 
 def fetch_run_log() -> bool:
+    """SCP run.log from the GPU runner back to Mac (read-only, no slot needed)."""
     result = subprocess.run(
         [
             "scp", *_SSH_OPTS,
