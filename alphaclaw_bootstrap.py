@@ -343,23 +343,28 @@ def _ensure_agent_workspaces(config_dir: Path) -> None:
 
 
 def _ensure_autoresearch() -> None:
-    """Idempotent clone + uv sync of ~/autoresearch."""
+    """Idempotent clone + uv sync --dev of ~/autoresearch (uditgoenka fork)."""
+    import datetime
     repo = Path.home() / "autoresearch"
     if repo.exists():
-        print("[alphaclaw] \u2713 ~/autoresearch already exists")
+        print("[alphaclaw] ✓ ~/autoresearch already exists")
         return
-    print("[alphaclaw] \u2192 Cloning karpathy/autoresearch\u2026")
+    remote = os.environ.get(
+        "AUTORESEARCH_REMOTE", "https://github.com/uditgoenka/autoresearch"
+    )
+    print(f"[alphaclaw] → Cloning {remote}…")
     try:
         subprocess.run(
-            ["git", "clone", "https://github.com/karpathy/autoresearch", str(repo)],
-            check=True, capture_output=True,
+            ["git", "clone", remote, str(repo)],
+            check=True,
         )
+        branch = f"autoresearch/{datetime.date.today().isoformat()}"
+        subprocess.run(["git", "checkout", "-b", branch], cwd=repo, check=True)
         subprocess.run(["pip", "install", "uv"], check=True, capture_output=True)
-        subprocess.run(["uv", "sync"], cwd=repo, check=True, capture_output=True)
-        print("[alphaclaw] \u2713 autoresearch ready")
+        subprocess.run(["uv", "sync", "--dev"], cwd=repo, check=True)
+        print("[alphaclaw] ✓ autoresearch ready")
     except subprocess.CalledProcessError as e:
-        print(f"[alphaclaw] \u2717 autoresearch setup failed (non-fatal): {e}")
-
+        print(f"[alphaclaw] ✗ autoresearch setup failed (non-fatal): {e}")
 
 # ── main bootstrap ────────────────────────────────────────────────────────────
 
