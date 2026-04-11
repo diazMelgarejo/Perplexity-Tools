@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 import yaml
 
@@ -62,13 +63,22 @@ class ModelRegistry:
         targets: List[ModelTarget] = []
         for item in self.models_cfg.get("models", []):
             host = _expand_env_default(str(item.get("host", "")))
+            if "," in host:
+                host = host.split(",", 1)[0].strip()
+            port = int(item["port"])
+            if host.startswith("http://") or host.startswith("https://"):
+                parsed = urlparse(host)
+                if parsed.hostname:
+                    host = f"{parsed.scheme}://{parsed.hostname}"
+                if parsed.port:
+                    port = parsed.port
             targets.append(
                 ModelTarget(
                     name=item["name"],
                     backend=item["backend"],
                     device=item["device"],
                     host=host,
-                    port=int(item["port"]),
+                    port=port,
                     context_window=item.get("context_window"),
                     roles=item.get("roles", ["general"]),
                     priority=item.get("priority", 100),

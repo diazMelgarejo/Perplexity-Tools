@@ -52,12 +52,12 @@ Add to `.env` (or `.env.local` for overrides):
 # Windows LM Studio — Gemma 4 26B
 WINDOWS_LMS_PORT=1234
 WINDOWS_LMS_MODEL=gemma-4-26B-A4B-it-Q4_K_M
-LM_STUDIO_WIN_ENDPOINTS=http://192.168.1.100:1234   # adjust to your Windows IP
+LM_STUDIO_WIN_ENDPOINTS=http://192.168.254.100:1234   # adjust to your Windows IP
 ```
 
 Override `WINDOWS_IP` if your Windows node has a different address:
 ```bash
-WINDOWS_IP=192.168.254.101   # example; see network_autoconfig.py preferred_ips
+WINDOWS_IP=192.168.254.100   # example; see network_autoconfig.py preferred_ips
 ```
 
 ---

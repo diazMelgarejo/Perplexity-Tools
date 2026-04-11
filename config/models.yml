@@ -5,6 +5,18 @@
 
 models:
 
+  # ── LOCAL OLLAMA CLIENT → GLM CLOUD (Mac orchestrator lane) ───────────────
+  - name: glm-5.1:cloud
+    backend: ollama
+    device: mac-studio
+    host: "${OLLAMA_MAC_ENDPOINT:-http://127.0.0.1}"
+    port: 11434
+    context_window: 131072
+    roles: [strategy, architecture, top-level, orchestrator]
+    priority: 8
+    online: true
+    reasoning: mac-glm-cloud
+
   # ── LOCAL: Shared Ollama (Mac or Win or dedicated server) ─────────────────
   - name: qwen3.5:35b-a3b-q4_K_M
     backend: ollama
@@ -12,10 +24,11 @@ models:
     host: "${OLLAMA_HOST:-http://127.0.0.1}"
     port: 11434
     context_window: 32768
-    roles: [general, critic, refiner, fallback, subagent]
-    priority: 10
+    roles: [general, critic, refiner, coding, fallback, subagent]
+    priority: 18
     online: false
-    reasoning: local-default
+    reasoning: local-backup
+    notes: "Known backup fallback model. Keep documented and available, but do not treat as canonical primary."
 
   # ── LOCAL: Mac MLX ────────────────────────────────────────────────────────
   - name: qwen3.5-9b-mlx
@@ -36,12 +49,12 @@ models:
   - name: Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2
     backend: lm-studio
     device: win-rtx3080
-    host: "${LM_STUDIO_WIN_ENDPOINTS:-http://192.168.1.100}"
+    host: "${LM_STUDIO_WIN_ENDPOINTS:-http://192.168.254.100:1234}"
     port: 1234
     context_window: 16384
     gpu_offload: 40
-    roles: [coder, checker, refiner, executor, verifier, subagent, fallback]
-    priority: 15
+    roles: [coder, checker, refiner, executor, verifier, subagent, fallback, coding, autoresearch-coder]
+    priority: 4
     online: false
     reasoning: windows-lmstudio
     gguf_file: Qwen3.5-27B.Q4_K_M.gguf
@@ -54,11 +67,11 @@ models:
   - name: Qwen3.5-9B-MLX-4bit
     backend: lm-studio
     device: mac-studio
-    host: "${LM_STUDIO_MAC_ENDPOINT:-http://127.0.0.1}"
+    host: "${LM_STUDIO_MAC_ENDPOINT:-http://192.168.254.103:1234}"
     port: 1234
     context_window: 4096
     gpu_offload: full
-    roles: [orchestrator, final-validator, presenter, top-level]
+    roles: [orchestrator, final-validator, presenter, top-level, verifier, fallback]
     priority: 10
     online: false
     reasoning: mac-lmstudio
@@ -71,11 +84,11 @@ models:
   - name: gemma-4-26B-A4B-it-Q4_K_M
     backend: lm-studio
     device: win-rtx3080
-    host: "${LM_STUDIO_WIN_ENDPOINTS:-http://192.168.1.100}"
+    host: "${LM_STUDIO_WIN_ENDPOINTS:-http://192.168.254.100:1234}"
     port: 1234
     context_window: 16384
     gpu_offload: 35
-    roles: [general, coding, executor, subagent, fallback]
+    roles: [general, coding, executor, subagent, fallback, autoresearch-coder]
     priority: 16
     online: false
     reasoning: windows-lmstudio-gemma4
@@ -128,23 +141,23 @@ models:
   - name: qwen3-coder-14b
     backend: ollama
     device: win-rtx3080
-    host: "${DELL_ENDPOINT:-http://192.168.1.100}"
+    host: "${OLLAMA_WINDOWS_ENDPOINT:-http://192.168.254.100:11434}"
     port: 11434
     context_window: 32768
     roles: [autoresearch-coder, coding, subagent, fallback]
-    priority: 5
+    priority: 14
     online: false
     reasoning: windows-local-coder
-    notes: "Coder agent for autoresearch swarm. Edits train.py on Mac, deploys via scp."
+    notes: "Fallback coder for autoresearch and coding when Windows LM Studio Qwen 27B is unavailable."
 
   - name: qwen3-30b-autoresearch-critic
     backend: ollama
     device: win-rtx3080
-    host: "${DELL_ENDPOINT:-http://192.168.1.100}"
+    host: "${OLLAMA_WINDOWS_ENDPOINT:-http://192.168.254.100:11434}"
     port: 11434
     context_window: 32768
     roles: [autoresearch-critic, critic, refiner, strategy, fallback]
-    priority: 6
+    priority: 15
     online: false
     reasoning: windows-local-critic
     notes: "Evaluator + Orchestrator agents for autoresearch swarm. Reads log.txt, writes swarm_state.md."
