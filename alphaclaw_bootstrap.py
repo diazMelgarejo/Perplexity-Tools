@@ -62,14 +62,14 @@ ALPHACLAW_INSTALL_DIR = Path(
 )
 
 # env-var defaults (exported by start.sh)
-MAC_IP     = os.getenv("MAC_IP",  "192.168.254.101")
-WIN_IP     = os.getenv("WIN_IP",  "192.168.254.103")
+MAC_IP     = os.getenv("MAC_IP",  "192.168.254.103")
+WIN_IP     = os.getenv("WIN_IP",  "192.168.254.100")
 OLLAMA_MAC = os.getenv("OLLAMA_MAC_ENDPOINT",    f"http://{MAC_IP}:11434")
 OLLAMA_WIN = os.getenv("OLLAMA_WINDOWS_ENDPOINT", f"http://{WIN_IP}:11434")
 LMS_MAC    = os.getenv("LM_STUDIO_MAC_ENDPOINT",  f"http://{MAC_IP}:1234")
 LMS_WIN    = os.getenv("LM_STUDIO_WIN_ENDPOINTS",  f"http://{WIN_IP}:1234")
 LMS_TOKEN  = os.getenv("LM_STUDIO_API_TOKEN", "lm-studio")
-MAC_MODEL  = os.getenv("MAC_LMS_MODEL", "qwen3:8b-instruct")
+MAC_MODEL  = os.getenv("MAC_LMS_MODEL", "Qwen3.5-9B-MLX-4bit")
 WIN_MODEL  = os.getenv("WINDOWS_LMS_MODEL",
                         "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2")
 

@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 import yaml
 
@@ -103,7 +104,7 @@ class ModelRegistry:
                     backend=item["backend"],
                     device=item["device"],
                     host=host,
-                    port=int(item["port"]),
+                    port=port,
                     context_window=item.get("context_window"),
                     roles=item.get("roles", ["general"]),
                     priority=item.get("priority", 100),

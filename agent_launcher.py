@@ -41,20 +41,20 @@ except ImportError:
 LOCAL_MAC_HOST    = os.getenv("LOCAL_MAC_HOST",    "127.0.0.1")
 LOCAL_MAC_PORT    = int(os.getenv("LOCAL_MAC_PORT", "11434"))
 LOCAL_MAC_URL     = f"http://{LOCAL_MAC_HOST}:{LOCAL_MAC_PORT}"
-MAC_MANAGER_MODEL = os.getenv("MAC_MANAGER_MODEL", "qwen3:8b-instruct")
+MAC_MANAGER_MODEL = os.getenv("MAC_MANAGER_MODEL", "glm-5.1:cloud")
 
 # Mac LM Studio (separate from local Ollama — may be on a LAN IP)
-MAC_LMS_HOST  = os.getenv("MAC_LMS_HOST",  "192.168.254.101")
+MAC_LMS_HOST  = os.getenv("MAC_LMS_HOST",  "192.168.254.103")
 MAC_LMS_PORT  = int(os.getenv("MAC_LMS_PORT", "1234"))
 MAC_LMS_URL   = f"http://{MAC_LMS_HOST}:{MAC_LMS_PORT}"
 MAC_LMS_MODEL = (os.getenv("MAC_LMS_MODEL")
                  or os.getenv("LMS_MAC_MODEL")
-                 or "qwen3:8b-instruct")
+                 or "Qwen3.5-9B-MLX-4bit")
 
-WINDOWS_IP        = os.getenv("WINDOWS_IP",   "192.168.254.103")
+WINDOWS_IP        = os.getenv("WINDOWS_IP",   "192.168.254.100")
 WINDOWS_PORT      = int(os.getenv("WINDOWS_PORT", "11434"))
 REMOTE_WINDOWS_URL   = f"http://{WINDOWS_IP}:{WINDOWS_PORT}"
-WINDOWS_CODER_MODEL  = os.getenv("WINDOWS_CODER_MODEL", "qwen3.5-35b-a3b-win")
+WINDOWS_CODER_MODEL  = os.getenv("WINDOWS_CODER_MODEL", "qwen3-coder:14b")
 
 WINDOWS_LMS_PORT      = int(os.getenv("WINDOWS_LMS_PORT", "1234"))
 REMOTE_WINDOWS_LMS_URL = f"http://{WINDOWS_IP}:{WINDOWS_LMS_PORT}"
@@ -195,7 +195,7 @@ async def initialize_environment() -> dict:
               f"(Ollama={LOCAL_MAC_URL}, LMS={MAC_LMS_URL})")
         print("  → Start Ollama ('ollama serve') or LM Studio on the Mac")
 
-    # Manager runs on Mac — prefer local Ollama, fall back to Mac LM Studio
+    # Manager runs on Mac — prefer GLM via local Ollama, fall back to Mac LM Studio
     manager_endpoint = LOCAL_MAC_URL   if mac_ok     else MAC_LMS_URL
     manager_model    = MAC_MANAGER_MODEL if mac_ok   else MAC_LMS_MODEL
     manager_backend  = "mac-ollama"    if mac_ok     else "mac-lmstudio"
@@ -204,14 +204,14 @@ async def initialize_environment() -> dict:
         "manager_endpoint":     manager_endpoint,
         "manager_model":        manager_model,
         "manager_backend":      manager_backend,
-        "coder_endpoint":       (REMOTE_WINDOWS_URL      if win_ok
-                                 else REMOTE_WINDOWS_LMS_URL if lms_ok
+        "coder_endpoint":       (REMOTE_WINDOWS_LMS_URL if lms_ok
+                                 else REMOTE_WINDOWS_URL      if win_ok
                                  else manager_endpoint),
-        "coder_model":          (WINDOWS_CODER_MODEL     if win_ok
-                                 else WINDOWS_LMS_MODEL       if lms_ok
+        "coder_model":          (WINDOWS_LMS_MODEL       if lms_ok
+                                 else WINDOWS_CODER_MODEL     if win_ok
                                  else manager_model),
-        "coder_backend":        ("windows-ollama"    if win_ok
-                                 else "windows-lmstudio" if lms_ok
+        "coder_backend":        ("windows-lmstudio" if lms_ok
+                                 else "windows-ollama"    if win_ok
                                  else "mac-degraded"),
         "mac_ollama_ok":        mac_ok,
         "mac_lmstudio_ok":      mac_lms_ok,
