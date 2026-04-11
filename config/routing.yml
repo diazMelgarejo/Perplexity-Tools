@@ -5,7 +5,7 @@ routes:
 
   default:
     description: General-purpose tasks
-    roles: [top-level, general, fallback]
+    roles: [top-level, mac_orchestrator, general, fallback]
 
   coding:
     description: Code generation, review, debugging
@@ -13,7 +13,7 @@ routes:
 
   strategy:
     description: Architecture, planning, system design
-    roles: [strategy, architecture, top-level, fallback]
+    roles: [strategy, architecture, mac_orchestrator, top-level, fallback]
 
   finance:
     description: Financial analysis, market data, real-time queries
@@ -21,7 +21,7 @@ routes:
 
   research:
     description: Web research, synthesis, long-context analysis
-    roles: [research, top-level, fallback]
+    roles: [research, long_context, top-level, fallback]
 
   critic:
     description: Refinement, quality review, elegance scoring
@@ -64,7 +64,7 @@ routes:
   # Coder runs on win-rtx3080 (CUDA); Evaluator + Orchestrator run on mac.
   autoresearch:
     description: ML experiment loop via karpathy/autoresearch on GPU runner
-    roles: [autoresearch-coder, autoresearch-critic, strategy, fallback]
+    roles: [autoresearch-coder, autoresearch, autoresearch-critic, strategy, fallback]
     notes: sync_autoresearch_idempotent() must succeed before any agent spawns
 
   autoresearch-coder:
