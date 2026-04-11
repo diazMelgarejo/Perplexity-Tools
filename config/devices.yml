@@ -7,24 +7,24 @@ devices:
     os: macos
     chip: apple-silicon
     runtimes:
-      - ollama         # shared with Windows if OLLAMA_HOST set in .env
-      - mlx            # Mac-only; mlx-lm serve on port 8081
-      - lm-studio      # optional alternative to MLX
-    default_backend: mlx
+      - ollama         # GLM-5.1:cloud via local Ollama client
+      - lm-studio      # local verifier / orchestrator fallback
+      - mlx            # Mac-only legacy local path
+    default_backend: ollama
     notes: >
-      Primary Mac device. Run MLX for best local performance.
-      Can alternatively point to shared Ollama on Windows via OLLAMA_HOST env var.
+      Primary Mac device. Prefer GLM-5.1:cloud through local Ollama for thin orchestration.
+      Fall back to Mac LM Studio when GLM is offline or rate-limited; MLX remains legacy local fallback.
 
   win-rtx3080:
     os: windows
     gpu: rtx-3080
     runtimes:
-      - ollama         # shared with Mac if OLLAMA_HOST set in .env
-      - lm-studio
-    default_backend: ollama
+      - lm-studio      # canonical Windows heavy coder / autoresearch backend
+      - ollama         # fallback coder / critic lane
+    default_backend: lm-studio
     notes: >
-      Primary Windows device. Ollama recommended; LM Studio as alternative.
-      Can host shared Ollama endpoint for Mac to consume.
+      Primary Windows device. LM Studio is the canonical heavy coder/executor/autoresearch lane.
+      Ollama remains available for qwen3-coder and critic fallbacks.
 
   shared-ollama-host:
     os: mixed

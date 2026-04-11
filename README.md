@@ -12,7 +12,7 @@ Four interoperable, independently configurable layers:
 | Repo | Role | Config |
 |------|------|--------|
 | **Perplexity-Tools** (this repo) | Top-level orchestrator, agent lifecycle, fallback routing, idempotency | `config/devices.yml`, `config/models.yml`, `config/routing.yml` |
-| **[ultrathink-system](https://github.com/diazMelgarejo/ultrathink-system)** | Reasoning methodology, 5-stage process, CIDF; routing methodology via `single_agent/SKILL.md`; multi-agent registry is separately installable | `single_agent/SKILL.md`, `multi_agent/config/` |
+| **[ultrathink-system](https://github.com/diazMelgarejo/ultrathink-system)** | Reasoning methodology, 5-stage process, CIDF; routing methodology via `bin/skills/SKILL.md`; multi-agent registry is separately installable | `bin/skills/SKILL.md`, `bin/config/` |
 | **[ECC Tools](https://github.com/affaan-m/everything-claude-code)** | Subagent auto-selection default logic for up to 5 Stage4 parallel Masterful Executor Agents (especially coders) | `.claude/ecc-tools.json` |
 | **[karpathy/autoresearch](https://github.com/karpathy/autoresearch)** | Latest idempotent sync; research automation workflows and AI-driven research tools | Per autoresearch standard |
 
@@ -29,7 +29,7 @@ Four interoperable, independently configurable layers:
 
 - **Idempotent**: checks `.state/agents.json` before spawning; if a matching running top-level agent already exists for the same role and task, **ask the user** before creating another (or pass `force=true` on `POST /orchestrate` after explicit confirmation).
 - **Fallback logic**: local → online, device-preferred → shared → cloud.
-- **Per-device**: Mac (MLX / shared Ollama), Windows (Ollama / LM Studio), or both on one shared Ollama.
+- **Per-device**: Mac (`glm-5.1:cloud` via local Ollama, with LM Studio verifier/orchestrator fallback), Windows (LM Studio primary, Ollama fallback), or both on one shared Ollama.
 - **Cost-guarded**: daily budget cap + 80% alert threshold.
 - **Interoperable**: all four layers compatible via shared config contracts; **Perplexity-Tools** remains the top-level orchestrator and instance manager.
 
@@ -156,7 +156,7 @@ POST /orchestrate
 
 ## Compatible Repos
 
-- **ultrathink-system**: install per that repo; provides reasoning layer (`single_agent/SKILL.md`) and optional multi-agent registry — **separately configurable** from this repo.
+- **ultrathink-system**: install per that repo; provides reasoning layer (`bin/skills/SKILL.md`) and optional multi-agent registry — **separately configurable** from this repo.
 - **ECC Tools** ([affaan-m/everything-claude-code](https://github.com/affaan-m/everything-claude-code)): subagents use ECC auto-selection by default for up to 5x Stage-4 parallel Masterful Executor Agents (especially coders); configured via `.claude/ecc-tools.json`.
 - **autoresearch** ([karpathy/autoresearch](https://github.com/karpathy/autoresearch)): latest idempotent sync for research automation workflows.
 - All configs live in `config/` — prefer YAML + env (e.g. `OLLAMA_HOST`) over hardcoded hosts.
