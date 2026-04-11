@@ -1,9 +1,12 @@
-# Per-device hardware configuration
+# Hardware Device Profiles (v0.9.9.5)
+# Per-device hardware configuration defined in config/devices.yml
 # Supports: Mac (Apple Silicon), Windows (NVIDIA GPU), or shared Ollama endpoint.
 # All three interoperable; each independently configurable.
 
+version: "0.9.9.5"
+
 devices:
-  mac-studio:
+  - id: "mac-studio"
     os: macos
     chip: apple-silicon
     runtimes:
@@ -11,25 +14,56 @@ devices:
       - mlx            # Mac-only; mlx-lm serve on port 8081
       - lm-studio      # optional alternative to MLX
     default_backend: mlx
+    primary_backend: "ollama"
+    secondary_backend: "lm-studio"
+    lan_ip: "192.168.254.103"
+    ports: 
+      - 11434  # Ollama
+      - 1234   # LM Studio
+      - 8081   # MLX
+    identity_method: "static_subnet"
+    description: "Mac Studio with Ollama and LM Studio backends"
     notes: >
       Primary Mac device. Run MLX for best local performance.
-      Can alternatively point to shared Ollama on Windows via OLLAMA_HOST env var.
 
-  win-rtx3080:
+  - id: "win-rtx3080"
     os: windows
     gpu: rtx-3080
     runtimes:
-      - ollama         # shared with Mac if OLLAMA_HOST set in .env
-      - lm-studio
-    default_backend: ollama
+      - lm-studio      # shared with Mac
+      - ollama 
+    default_backend: "lm-studio"
+    primary_backend: "lm-studio"
+    secondary_backend: "ollama"
+    lan_ip: "192.168.254.100"
+    ports:
+      - 1234   # LM Studio (primary)
+      - 11434  # Ollama (secondary)
+    identity_method: "active_tilting"
+    description: "Windows RTX 3080 with LM Studio primary and Ollama secondary"
+    active_tilting_required: true
     notes: >
-      Primary Windows device. Ollama recommended; LM Studio as alternative.
-      Can host shared Ollama endpoint for Mac to consume.
+      Primary Windows device. LM Studio recommended; Ollama as alternative.
+      By default LM Studio runs on this device with LM Link to Mac.
 
-  shared-ollama-host:
+  - id: "shared-ollama"
     os: mixed
     runtimes:
       - ollama
+    primary_backend: "ollama"
+    lan_ip: "$OLLAMA_HOST"
+    ports:
+      - 11434
+    identity_method: "environment_variable"
+    description: "Shared Ollama instance"
     notes: >
-      Optional dedicated Ollama server (local network or same machine).
+      Optional dedicated Ollama servers (local network or same machine).
       Set OLLAMA_HOST=http://<ip>:11434 in .env on both Mac and Win.
+
+  - id: "cloud"
+    primary_backend: "https_api"
+    lan_ip: "internet"
+    ports:
+      - 443
+    identity_method: "api_key"
+    description: "Cloud providers via HTTPS API"
