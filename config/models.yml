@@ -51,7 +51,7 @@ models:
   - name: Qwen3.5-9B-MLX-4bit
     backend: lm-studio
     device: mac-studio
-    host: "${LM_STUDIO_MAC_ENDPOINT:-http://127.0.0.1}"
+    host: "${LM_STUDIO_MAC_ENDPOINT:-http://192.168.254.103:1234}"
     port: 1234
     context_window: 4096
     gpu_offload: full
@@ -71,11 +71,11 @@ models:
   - name: gemma-4-26B-A4B-it-Q4_K_M
     backend: lm-studio
     device: win-rtx3080
-    host: "${LM_STUDIO_WIN_ENDPOINTS:-http://192.168.1.100}"
+    host: "${LM_STUDIO_WIN_ENDPOINTS:-http://192.168.254.100:1234}"
     port: 1234
     context_window: 16384
     gpu_offload: 35
-    roles: [general, coding, executor, subagent, fallback]
+    roles: [general, coding, executor, subagent, fallback, autoresearch-coder]
     priority: 16
     online: false
     reasoning: windows-lmstudio-gemma4
@@ -156,10 +156,10 @@ models:
     port: 11434
     context_window: 32768
     roles: [autoresearch-coder, coding, subagent, fallback]
-    priority: 5
+    priority: 14
     online: false
     reasoning: windows-local-coder
-    notes: "Coder agent for autoresearch swarm. Edits train.py on Mac, deploys via scp."
+    notes: "Fallback coder for autoresearch and coding when Windows LM Studio Qwen 27B is unavailable."
 
   - name: qwen3-30b-autoresearch-critic
     backend: ollama
@@ -168,7 +168,7 @@ models:
     port: 11434
     context_window: 32768
     roles: [autoresearch-critic, critic, refiner, strategy, fallback]
-    priority: 6
+    priority: 15
     online: false
     reasoning: windows-local-critic
     notes: "Evaluator + Orchestrator agents for autoresearch swarm. Reads log.txt, writes swarm_state.md."

@@ -125,7 +125,7 @@ async def _wait_with_progress(seconds: int, role: str, reason: str) -> None:
     """Async countdown progress bar — lets the GPU/model settle after a crash.
 
     Displays:
-        [mac-researcher] ⚠ model not found (HTTP 404) — qwen3:8b-instruct
+        [mac-researcher] ⚠ model not found (HTTP 404) — Qwen3.5-9B-MLX-4bit
         [mac-researcher] GPU cooldown — 30s before next attempt
         [mac-researcher] [████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 20%  (24s remaining)
     """
