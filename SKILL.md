@@ -8,7 +8,7 @@
 | Layer | Repo | Role |
 |-------|------|------|
 | **Orchestrator & instance manager** | **Perplexity-Tools** (this repo) | Top-level agent lifecycle, `ModelRegistry` / `config/*.yml`, FastAPI `/orchestrate`, idempotency |
-| **Reasoning & routing methodology** | **ultrathink-system** | `single_agent/SKILL.md`, AFRP (pre-router gate) / CIDF / process; multi-agent registry is **separately installable** and **not** required to run this orchestrator |
+| **Reasoning & routing methodology** | **ultrathink-system** | `bin/skills/SKILL.md`, AFRP (pre-router gate) / CIDF / process; multi-agent registry is **separately installable** and **not** required to run this orchestrator |
 | **Subagent auto-selection (ECC-style)** | **ECC Tools** | Default subagent routing unless the top-level orchestrator overrides roles |
 | **Karpathy AutoResearch sync** | [karpathy/autoresearch](https://github.com/karpathy/autoresearch) | Idempotent sync of the automated ML research loop; integrated via `/autoresearch/*` endpoints and `orchestrator/autoresearch_bridge.py` |
 
@@ -54,14 +54,15 @@ This orchestrator is designed for **full hardware profile awareness** [web:40] a
 Refer to [hardware/SKILL.md](https://github.com/diazMelgarejo/Perplexity-Tools/blob/main/hardware/SKILL.md) for full specs.
 
 ### Profile A — mac-studio (16GB+ Unified Memory)
+- **Primary**: `glm-5.1:cloud` via local Ollama when the live probe succeeds
 - **Primary**: `Qwen3.5-9B-MLX-4bit` (LM Studio, Metal full offload, context 4096)
-- **Roles**: Orchestrator, Final Validator, Presenter, Top-Level.
+- **Roles**: Thin Orchestrator via GLM, local verifier/orchestrator fallback via Mac LM Studio.
 - **VRAM**: N/A (Unified). LM Studio handles MLX weights natively.
 
 ### Profile B — win-rtx3080 (10GB VRAM)
 - **Primary**: `Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2` (LM Studio, gpu_offload=40)
-- **Roles**: Coder, Checker, Refiner, Executor, Verifier (UltraThink agent roles).
-- **Constraints**: gpu_offload=40 layers; `context 16384`; fallback: Ollama `qwen3.5-35b-a3b-q4`.
+- **Roles**: Coder, Checker, Refiner, Executor, Verifier, AutoResearch Coder.
+- **Constraints**: gpu_offload=40 layers; `context 16384`; fallback: `qwen3-coder:14b`, other reachable LM Studio models, then backup Ollama `qwen3.5:35b-a3b-q4_K_M`.
 
 ---
 
@@ -121,8 +122,8 @@ Task Received
 │
 ├─ Privacy Critical?
 │  └─ YES → ALWAYS local, skip cloud
-│     ├─ Code task → win-rtx3080: Qwen3.5-27B (LM Studio) → Ollama fallback
-│     └─ Standard → mac-studio: Qwen3.5-9B-MLX-4bit (LM Studio, context 4096)
+│     ├─ Code task → win-rtx3080: Qwen3.5-27B (LM Studio) → qwen3-coder:14b → local LM Studio fallbacks
+│     └─ Standard → mac-studio: glm-5.1:cloud probe → Qwen3.5-9B-MLX-4bit if GLM unavailable
 │
 ├─ Budget exhausted OR Internet offline?
 │  └─ YES → win-rtx3080: qwen3-30b-critic (FALLBACK)
@@ -138,7 +139,7 @@ Task Received
 │  └─ 500-2000 lines → win-rtx3080: Qwen3.5-27B (LM Studio)
 │
 ├─ Quick/interactive task?
-│  └─ mac-studio: qwen3-8b-instruct (Ollama, fastest)
+│  └─ mac-studio: glm-5.1:cloud if reachable, else Qwen3.5-9B-MLX-4bit
 │
 └─ Default → mac-studio: Qwen3.5-9B-MLX-4bit (LM Studio, context 4096)
 ```
@@ -199,20 +200,21 @@ critic_pass: true
 ### Mode 3: Mac + Win LAN (Full Orchestration — RECOMMENDED)
 ```yaml
 mode: lan_full
-# LM Studio endpoints (primary — v0.9.9.1+)
-lmstudio_mac: http://192.168.254.105:1234    # Qwen3.5-9B-MLX-4bit, context 4096
-lmstudio_win: http://192.168.254.101:1234    # Qwen3.5-27B, gpu_offload=40, context 16384
+# LM Studio endpoints (canonical — v0.9.9.4)
+lmstudio_mac: http://192.168.254.103:1234    # Qwen3.5-9B-MLX-4bit, verifier/orchestrator fallback
+lmstudio_win: http://192.168.254.100:1234    # Qwen3.5-27B, gpu_offload=40, context 16384
 # Portal dashboard
-portal: http://192.168.254.105:8002          # LAN status (auto-refresh 10s)
-# Ollama fallbacks
-ollama_mac: http://192.168.254.105:11434
-ollama_win: http://192.168.254.101:11434
+portal: http://192.168.254.103:8002          # LAN status (auto-refresh 10s)
+# Ollama lanes
+ollama_mac: http://192.168.254.103:11434     # glm-5.1:cloud local client
+ollama_win: http://192.168.254.100:11434     # qwen3-coder:14b / critic / backup
 cloud_enabled: true
 critic_pass: true
 fallback_chain:
-  - lmstudio_win           # primary UltraThink agent
-  - lmstudio_mac           # orchestrator + validator
-  - ollama_win             # qwen3.5-35b-a3b-q4
+  - ollama_mac_glm         # thin orchestrator when glm-5.1:cloud probe succeeds
+  - lmstudio_win           # primary heavy coder / autoresearch executor
+  - lmstudio_mac           # orchestrator + validator fallback
+  - ollama_win             # qwen3-coder:14b, qwen3-30b critic, qwen3.5:35b backup
   - ollama_mac
   - cloud_perplexity       # cost_guard checked first
 ```

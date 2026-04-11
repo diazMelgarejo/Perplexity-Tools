@@ -34,6 +34,13 @@ fallback_backend: ollama       # mlx-lm via CLI is also a valid alternative
 # M4 Pro 12-core: ~3900-4000 SC | ~20000 MC | ~90k-110k Metal (+45-55% over M2 Pro)
 
 recommended_models:
+  - id: glm-5.1:cloud
+    ollama_tag: glm-5.1:cloud
+    backend: ollama
+    roles: [orchestrator, strategy, architecture, top-level]
+    min_unified_memory_gb: 16
+    tokens_per_second_est: provider-dependent
+    notes: "Primary thin Mac orchestrator when the live probe succeeds; immediate fallback is Mac LM Studio."
   - id: Qwen3.5-9B-MLX-4bit
     hf_repo: mlx-community/Qwen3.5-9B-4bit
     backend: lm-studio
@@ -57,15 +64,15 @@ recommended_models:
     min_unified_memory_gb: 24
     tokens_per_second_est: 20-40
     notes: "Needs 24GB+ unified memory. Use as critic/refiner."
-  - id: qwen3-8b-instruct
-    ollama_tag: qwen3:8b-instruct
+  - id: qwen3.5:35b-a3b-q4_K_M
+    ollama_tag: qwen3.5:35b-a3b-q4_K_M
     backend: ollama
-    roles: [standard, subagent, synthesis]
+    roles: [fallback, subagent, critic]
     min_unified_memory_gb: 16
-    notes: "Ollama fallback for standard tasks on Mac."
+    notes: "Known backup fallback model. Keep documented, but do not treat as the primary Mac orchestrator."
 
-default_primary_model: Qwen3.5-9B-MLX-4bit
-default_fallback_model: qwen3:8b-instruct
+default_primary_model: glm-5.1:cloud
+default_fallback_model: Qwen3.5-9B-MLX-4bit
 ```
 
 ---
@@ -88,7 +95,7 @@ fallback_backend: ollama       # still valid for Ollama-compatible GGUF models
 cuda_available: true
 
 # LM STUDIO ENV — set in LM Studio UI or .env:
-# LM_STUDIO_WIN_ENDPOINTS=http://192.168.254.101:1234
+# LM_STUDIO_WIN_ENDPOINTS=http://192.168.254.100:1234
 # LMS_WIN_MODEL=Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2
 # LMS_WIN_GPU_OFFLOAD=40   # offload 40 layers to RTX 3080
 
@@ -104,8 +111,8 @@ recommended_models:
     backend: lm-studio
     gpu_offload: 40             # 40 layers to RTX 3080 10GB; remainder on CPU RAM
     lm_studio_context: 16384
-    roles: [coder, checker, refiner, executor, verifier, subagent, fallback]
-    notes: "Primary Windows UltraThink agent (v0.9.9.1+). Backend-agnostic GGUF."
+    roles: [coder, checker, refiner, executor, verifier, subagent, fallback, autoresearch-coder]
+    notes: "Primary Windows heavy coder and autoresearch executor (v0.9.9.4). Backend-agnostic GGUF."
   - id: gemma-4-26B-A4B-it-Q4_K_M
     gguf_file: gemma-4-26B-A4B-it-Q4_K_M.gguf
     hf_repo: lmstudio-community/gemma-4-26B-A4B-it-GGUF
@@ -129,7 +136,7 @@ recommended_models:
     vram_usage_gb: 6.5
     num_gpu_layers: 35
     num_ctx: 32768
-    notes: "Preferred coder for autoresearch swarm. Lower VRAM than 35B."
+    notes: "Fallback coder for autoresearch and general coding when Windows LM Studio Qwen 27B is unavailable."
   - id: qwen3-30b-critic
     ollama_tag: qwen3:30b-a3b-instruct-q4_K_M
     backend: ollama
@@ -152,13 +159,14 @@ that exceeds the profile's VRAM/RAM ceiling.
 
 | Role | Preferred Hardware | Model | Constraint |
 |---|---|---|---|
-| `orchestrator` / `final-validator` / `presenter` | mac-studio | Qwen3.5-9B-MLX-4bit (LM Studio) | context≤4096 conservative |
-| `coder` / `checker` / `executor` / `verifier` | win-rtx3080 | Qwen3.5-27B (LM Studio) | gpu_offload=40, context≤16384 |
+| `orchestrator` / `strategy` / `architecture` | mac-studio | glm-5.1:cloud via local Ollama | live probe must pass |
+| `final-validator` / `presenter` | mac-studio | Qwen3.5-9B-MLX-4bit (LM Studio) | context≤4096 conservative |
+| `coder` / `checker` / `executor` / `verifier` / `autoresearch-coder` | win-rtx3080 | Qwen3.5-27B (LM Studio) | gpu_offload=40, context≤16384 |
 | `refiner` / `subagent` | win-rtx3080 | Qwen3.5-27B (LM Studio) | gpu_offload=40 |
 | `general` / `coding` (secondary) | win-rtx3080 | gemma-4-26B-A4B-it-Q4_K_M (LM Studio) | gpu_offload=35, context≤16384 |
 | `coding` / `autoresearch-coder` | win-rtx3080 | qwen3.5-35b-a3b-q4 (Ollama fallback) | ≤10GB VRAM, num_ctx≤8192 |
 | `critic` / `refiner` (Ollama path) | win-rtx3080 | qwen3-30b-critic | ≤10GB VRAM |
-| `standard` / `subagent` | mac-studio | qwen3-8b-instruct | 16GB+ unified |
+| `standard` / `subagent` | mac-studio | Qwen3.5-9B-MLX-4bit | 16GB+ unified |
 | `synthesis` | mac-studio | Qwen3.5-9B-MLX-4bit | context≤4096 |
 | `strategy` / `architecture` | cloud or win | claude-4-5 or qwen3-30b | online or local |
 | `realtime` / `finance` | cloud | grok-4-1-thinking | online only |
@@ -169,13 +177,15 @@ that exceeds the profile's VRAM/RAM ceiling.
 ## Fallback Degradation Chain
 
 ```
-LM Studio Win (port 1234)  ← primary: Qwen3.5-27B, gpu_offload=40, context 16384
+Ollama Mac (port 11434)    ← primary thin orchestrator: glm-5.1:cloud when probe passes
+  ↓ GLM offline / rate-limited
+LM Studio Win (port 1234)  ← primary heavy coder: Qwen3.5-27B, gpu_offload=40, context 16384
   ↓ Win offline / LM Studio not running
-LM Studio Mac (port 1234)  ← orchestrator + validator: Qwen3.5-9B-MLX-4bit, context 4096
+LM Studio Mac (port 1234)  ← orchestrator + validator fallback: Qwen3.5-9B-MLX-4bit, context 4096
   ↓ Mac LM Studio unreachable
-Ollama Win (port 11434)    ← fallback: qwen3.5-35b-a3b-q4 (GGUF, Ollama path)
+Ollama Win (port 11434)    ← fallback: qwen3-coder:14b, qwen3-30b critic, qwen3.5:35b backup
   ↓ Ollama Win unreachable
-Ollama Mac (port 11434)    ← final local fallback
+Shared Ollama backup       ← qwen3.5:35b-a3b-q4_K_M
   ↓ All local backends down
 Cloud fallback (Perplexity → cost_guard check first)
   ↓ Cost limit hit
