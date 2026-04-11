@@ -54,5 +54,5 @@ PARAMETER repeat_penalty 1.05
 # hardware/SKILL.md profile_id: mac-studio
 # Role in stack: manager, synthesis, standard, realtime
 # Preferred MLX model: mlx-community/Qwen2.5-9B-Instruct-4bit
-# Preferred Ollama model: qwen3:8b-instruct
+# Preferred Ollama orchestrator model: glm-5.1:cloud
 # Heavy model (32GB+ RAM): mlx-community/Qwen2.5-30B-Instruct-4bit
