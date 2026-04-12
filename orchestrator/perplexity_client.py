@@ -31,9 +31,10 @@ class PerplexityClient:
 
     def __init__(
         self,
-        api_key:  Optional[str] = None,
-        validate: bool = False,
-        timeout:  float = 120.0,
+        api_key:     Optional[str] = None,
+        validate:    bool = False,
+        timeout:     float = 120.0,
+        interactive: bool = True,
     ) -> None:
         try:
             from openai import AsyncOpenAI, OpenAI
@@ -42,18 +43,23 @@ class PerplexityClient:
                 "openai package is required: pip install openai"
             ) from exc
 
+        # Detect web-login fallback mode — no API calls are made in this mode.
+        auth_mode = os.getenv("PERPLEXITY_AUTH_MODE", "").strip()
+        self._web_login_mode: bool = auth_mode == "web-login"
+
         key = (api_key or os.getenv("PERPLEXITY_API_KEY", "")).strip()
 
-        if validate and key:
-            if not self._test_key(key):
-                key = ""   # will trigger interactive prompt below
+        if not self._web_login_mode:
+            if validate and key:
+                if not self._test_key(key):
+                    key = ""   # will trigger interactive prompt below
 
-        if not key:
-            key = self._prompt_for_key() or ""
+            if not key and interactive:
+                key = self._prompt_for_key() or ""
 
         self.api_key = key
-        self._sync  = OpenAI(api_key=key,      base_url=self.BASE_URL, timeout=timeout)
-        self._async = AsyncOpenAI(api_key=key,  base_url=self.BASE_URL, timeout=timeout)
+        self._sync  = OpenAI(api_key=key or "placeholder",      base_url=self.BASE_URL, timeout=timeout)
+        self._async = AsyncOpenAI(api_key=key or "placeholder",  base_url=self.BASE_URL, timeout=timeout)
 
     # ── singleton accessor ─────────────────────────────────────────────────────
 
@@ -63,6 +69,11 @@ class PerplexityClient:
         if cls._instance is None:
             cls._instance = cls(**kwargs)
         return cls._instance
+
+    @classmethod
+    def reset(cls) -> None:
+        """Clear the process-wide singleton (for testing)."""
+        cls._instance = None
 
     # ── key helpers ───────────────────────────────────────────────────────────
 
@@ -182,6 +193,11 @@ class PerplexityClient:
         **kw: Any,
     ) -> Dict[str, Any]:
         """Async chat completion."""
+        if self._web_login_mode:
+            raise RuntimeError(
+                "Cannot make programmatic API calls in web-login fallback mode. "
+                "Set PERPLEXITY_API_KEY to use the API directly."
+            )
         r = await self._async.chat.completions.create(
             model=model or self.DEFAULT_MODEL,
             messages=messages,
@@ -213,19 +229,48 @@ def ensure_credentials(
     """Validate Perplexity API credentials and return a status dict.
 
     Returns a dict with keys:
-      configured     bool — True if a key is present (and valid when validate=True)
+      configured     bool — True if a key is present (or web-login mode is active)
       message        str  — human-readable status line
-      auth_mode      str  — "api_key" | "web_fallback" | "none"
-      ready_for_api  bool — True when the Perplexity API can be called
+      auth_mode      str  — "api_key" | "web-login" | "web_fallback" | "none"
+      ready_for_api  bool — True only when the Perplexity API can be called directly
 
     Called by control_plane.orchestrate() as Stage 1.
     """
+    from pathlib import Path
+
+    # If web-login mode is already configured, return immediately.
+    auth_mode_env = os.getenv("PERPLEXITY_AUTH_MODE", "").strip()
+    if auth_mode_env == "web-login":
+        return {
+            "configured": True,
+            "message": "web-login fallback active",
+            "auth_mode": "web-login",
+            "ready_for_api": False,
+        }
+
     key = os.getenv("PERPLEXITY_API_KEY", "").strip()
 
     if not key and interactive:
         key = PerplexityClient._prompt_for_key() or ""
 
     if not key:
+        if allow_web_fallback and interactive:
+            # Offer web-login fallback to the user.
+            try:
+                answer = input("  No API key — enable web-login fallback? [y/N]: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                answer = ""
+            if answer == "y":
+                env_path = Path.cwd() / ".env"
+                env_path.touch(exist_ok=True)
+                with env_path.open("a", encoding="utf-8") as fh:
+                    fh.write("PERPLEXITY_AUTH_MODE=web-login\n")
+                return {
+                    "configured": True,
+                    "message": "web-login fallback active",
+                    "auth_mode": "web-login",
+                    "ready_for_api": False,
+                }
         if allow_web_fallback:
             return {
                 "configured": False,
