@@ -59,11 +59,11 @@ routes:
     fallback: local_qwen30b
     roles: [ultrathink, coding, top-level, fallback]
 
-  # ── AUTORESEARCH: karpathy/autoresearch foot-soldier swarm ─────────────────
+  # ── AUTORESEARCH: uditgoenka/autoresearch foot-soldier swarm ─────────────────
   # Called by orchestrator/autoresearch_bridge.py only.
   # Coder runs on win-rtx3080 (CUDA); Evaluator + Orchestrator run on mac.
   autoresearch:
-    description: ML experiment loop via karpathy/autoresearch on GPU runner
+    description: ML experiment loop via uditgoenka/autoresearch on GPU runner
     roles: [autoresearch-coder, autoresearch, autoresearch-critic, strategy, fallback]
     notes: sync_autoresearch_idempotent() must succeed before any agent spawns
 

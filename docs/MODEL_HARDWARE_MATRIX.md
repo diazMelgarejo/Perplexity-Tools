@@ -1,6 +1,6 @@
 # AI Agent Model x Hardware Profile Matrix
 
-Canonical runtime summary for **Perplexity-Tools v0.9.9.4**.
+Canonical runtime summary for **Perplexity-Tools v0.9.9.6**.
 
 ## Primary Local Lanes
 
