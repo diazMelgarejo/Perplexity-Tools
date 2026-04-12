@@ -230,6 +230,69 @@ This repo (**Perplexity-Tools**) is the **top-level orchestrator and instance ma
 
 ---
 
+## Multi-Agent Collaboration Protocol
+
+> Encode these rules in every agent's SOUL.md and session start. They prevent the most common
+> conflicts when multiple AI agents work on the same codebase simultaneously.
+
+### Pre-Session (before touching any file)
+```bash
+git fetch origin main
+git log --oneline origin/main..HEAD   # uncommitted work ahead of main
+git log --oneline HEAD..origin/main   # commits by other agents since we branched
+```
+If another agent pushed recently to files you plan to touch, pull first.
+
+### Scope Claim (first write to LESSONS.md)
+Append an `[IN PROGRESS]` marker before starting work:
+```
+## [IN PROGRESS] YYYY-MM-DD — Claude — <topic>
+Files: <file1>, <file2>
+```
+Replace with a proper dated header when done. This is the lightweight coordination signal.
+
+### IP and Endpoint Defaults Rule
+- **Production code defaults**: always `127.0.0.1` (loopback) — never a real LAN IP
+- **Real LAN IPs**: live only in `.env` files (gitignored), loaded via `os.getenv()`
+- **Tests**: validate the loopback default; never assert a hardcoded LAN IP
+- LAN IPs that slip into source defaults will break CI on every machine that isn't yours
+
+### Version Bump Registry
+When bumping version, update ALL of these — no partial bumps:
+
+| File | Field |
+|------|-------|
+| `pyproject.toml` | `version` |
+| `orchestrator/__init__.py` | `__version__` |
+| `orchestrator/fastapi_app.py` (×2) | app metadata + `/health` response |
+| `orchestrator.py` | `VERSION` |
+| `config/devices.yml` | `version` |
+| `config/models.yml` | `version` |
+| `SKILL.md` | frontmatter `**Version:**` + Changelog entry |
+| `hardware/SKILL.md` | `Version:` header |
+| `README.md` | title + metadata table |
+
+**Current version: `v0.9.9.6`** — do not bump until explicitly instructed.
+
+### Commit Message Contract (for agent-to-agent communication)
+Every commit body should include:
+- Which **constants / env vars / function signatures** changed
+- Which **files other agents must re-read** before making assumptions
+- Whether any **test baselines changed** (e.g., new expected defaults)
+
+This is the primary async communication channel between agents that never share a session.
+
+### Conflict Recovery Playbook
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| `stash pop` add/add on every file | Another agent pushed to your files while you were working | `git checkout --theirs <file>` for yours, patch manually |
+| `rebase` produces add/add on ALL files | Branch has no common ancestor with main | `git reset --hard origin/main`, re-apply your files manually |
+| File appears duplicated / concatenated | Both versions of a conflict were appended | Python line-by-line surgery: keep only `lines[N:]` for the good half |
+| CI fails with `192.168.x.x` in assertion | LAN IP leaked into a source default | Replace with `127.0.0.1` in the source, not the test |
+| Module constant test contamination | `importlib.reload()` left stale env state | Add `autouse` fixture that reloads before AND after |
+
+---
+
 ## Changelog
 
 ### v0.9.9.6 (2026-04-08)

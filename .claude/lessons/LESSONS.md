@@ -228,3 +228,185 @@ optional `Verify` substrate for ML experiments.
 
 ### Commits
 - PT branch `claude/add-windows-agent-autodetect-9W3OI` — feat(autoresearch): migrate to uditgoenka plugin + uv sync --dev
+
+---
+
+## 2026-04-12 — Claude — 48-hour multi-agent sprint: collaboration patterns + version registry
+
+### Context
+Two AI agents (this Claude session + at least one other "PT-first orchestrator migration" agent) were
+pushing to the same repos simultaneously over ~48 hours. This entry documents what broke, what worked,
+and the protocol we are encoding so future agents can stay in sync.
+
+---
+
+### 1. Version Number Registry — All Canonical Locations
+
+> **Current version: `0.9.9.6`.** Do NOT bump without an explicit user instruction.
+> When a bump is requested, update **every** location in this table.
+
+#### Perplexity-Tools (PT)
+
+| File | Key / Path | Notes |
+|------|-----------|-------|
+| `pyproject.toml:12` | `version = "0.9.9.6"` | pip-installable package version |
+| `orchestrator/__init__.py:5` | `__version__ = "0.9.9.6"` | importable version constant |
+| `orchestrator/fastapi_app.py:74` | `version="0.9.9.6"` | FastAPI app metadata |
+| `orchestrator/fastapi_app.py:295` | `"version": "0.9.9.6"` | `/health` JSON response |
+| `orchestrator.py:97` | `VERSION = "0.9.9.6"` | legacy orchestrator constant |
+| `config/devices.yml:6` | `version: "0.9.9.6"` | hardware profile schema |
+| `config/models.yml:6` | `version: "0.9.9.6"` | model registry schema |
+| `SKILL.md:3` | `**Version:** \`v0.9.9.6\`` | skill surface (agent-facing) |
+| `hardware/SKILL.md:5` | `Version: 0.9.9.6` | hardware sub-skill |
+| `README.md:1,170` | `v0.9.9.6` | user-facing readme |
+
+#### ultrathink-system (UTS)
+
+| File | Key / Path | Notes |
+|------|-----------|-------|
+| `pyproject.toml:7` | `version = "0.9.9.6"` | pip-installable package version |
+| `bin/skills/SKILL.md:10` | `version: 0.9.9.6` | mother skill frontmatter |
+| `bin/config/agent_registry.json:2` | `"version": "0.9.9.6"` | agent registry |
+| `portal_server.py:26` | `VERSION = "0.9.9.6"` | portal server |
+| `bin/agents/*/agent.md:4` | `version: 0.9.9.6` | each agent YAML frontmatter |
+| `CLAUDE.md:71` | `(v0.9.9.6)` | mandatory rules reference |
+| `docs/PERPLEXITY_BRIDGE.md:3` | `Version 0.9.9.6` | bridge docs |
+
+> **Legacy markers** (intentionally lower — do not bump automatically):
+> - `api_server.py`, `bin/shared/*.py`, `bin/mcp_servers/*.py` — `0.9.9.2` (original API stable)
+> - `bin/skills/config/`, `bin/skills/afrp/README.md`, `bin/skills/templates/` — `0.9.9.0` (CIDF stable baseline)
+> - `.codex/AGENTS.md` — `0.9.9.0` (Codex-specific, updated separately)
+
+---
+
+### 2. Multi-Agent Collaboration: What Broke and How We Fixed It
+
+#### Conflict: stash pop after rebase
+**Symptom**: Another agent pushed a "PT-first orchestrator migration" commit to PT main while our
+stash was waiting. On `git stash pop`, every file we touched had add/add or modify/modify conflicts.
+
+**Resolution approach**:
+- For files where ours were correct: `git checkout --theirs <file>`
+- For files where theirs were more complete: `git checkout --ours <file>` + patch ours on top
+- alphaclaw_bootstrap.py got concatenated twice (both versions appended) — required Python
+  line-by-line surgery to extract the correct complete copy
+
+**Prevention**: Before starting work, `git fetch origin main` and check `git log --oneline -5` to
+see if other agents pushed recently. If yes, `git stash && git pull && git stash pop` before editing.
+
+#### Conflict: orphan branch history (UTS)
+**Symptom**: `git rebase origin/main` produced add/add conflicts on EVERY file because our branch
+and origin/main had no common ancestor (`git merge-base` returned exit code 1).
+
+**Resolution**: `git reset --hard origin/main` then re-apply our 5 files manually from saved copies.
+
+**Prevention**: Feature branches should always be created with `git checkout -b <branch> origin/main`.
+If a branch was force-pushed or created from an orphan, reset to main and cherry-pick instead.
+
+#### Conflict: hardcoded LAN IP broke CI test
+**Symptom**: `test_health_uses_plain_string_defaults` failed — expected `127.0.0.1`, got `192.168.254.103`
+because another agent changed the fallback default in `fastapi_app.py` to a real LAN IP.
+
+**Fix**: Restore `http://127.0.0.1:11434` and `http://127.0.0.1:1234` as env-var fallbacks.
+
+**Rule encoded**: **Never use real LAN IPs as default string literals in production code.**
+Tests validate the no-env-var baseline. LAN IPs belong in `.env` only.
+
+#### Conflict: test module state contamination
+**Symptom**: `test_uses_default_branch_not_master` saw `AUTORESEARCH_DEFAULT_BRANCH = "dev"` because
+a previous test in the same class used `importlib.reload(bridge)` + monkeypatch without restoring.
+
+**Fix**: Added `@pytest.fixture(autouse=True) restore_bridge_module` that reloads before AND after
+each test in `TestModuleConstants`. Changed assertion to use live attr `bridge.AUTORESEARCH_DEFAULT_BRANCH`
+instead of a cached import-time binding.
+
+---
+
+### 3. Embedded Git Repo in UTS: `.ecc/`
+The `.ecc/` directory is a git repository inside ultrathink-system. Git warns:
+```
+hint: You've added another git repository inside your current repository.
+```
+This is intentional: `.ecc/` is ECC tooling state designed as a gitlink (submodule stub) for shallow
+sync at runtime. The commit went through as a gitlink — contents will NOT clone automatically for
+other contributors. If you need `.ecc/` contents, run `git submodule update --init .ecc` or sync
+manually via the ECC sync workflow.
+
+**Do not delete `.ecc/`, add it to `.gitignore`, or `git rm` it** — it will be properly configured
+as a submodule when the ECC integration is formalized.
+
+---
+
+### 4. Pre-Commit and Pre-PR Checklist for All Agents
+
+#### Before every commit (add to your session start)
+```bash
+# 1. Sync with reality
+git fetch origin main
+git log --oneline origin/main..HEAD   # what hasn't landed yet?
+git log --oneline HEAD..origin/main   # what did other agents push?
+
+# 2. No hardcoded LAN IPs in source defaults (env vars only)
+grep -rn "192\.168\." --include="*.py" | grep -v "test_\|#\|LESSONS\|\.env"
+
+# 3. Run full tests before staging
+python -m pytest -q
+```
+
+#### Before every PR
+```bash
+# 1. LESSONS.md has a dated entry for this session
+grep "$(date +%Y-%m-%d)" .claude/lessons/LESSONS.md
+
+# 2. Version numbers consistent across canonical locations (see registry above)
+grep -rn "0\.9\.9\." pyproject.toml orchestrator/__init__.py orchestrator/fastapi_app.py
+
+# 3. No conflict markers leaked into committed files
+git grep "<<<<<<< \|>>>>>>> " -- '*.py' '*.md' '*.yml'
+
+# 4. Tests pass on both Python 3.11 and 3.12
+python3.11 -m pytest -q && python3.12 -m pytest -q 2>/dev/null || true
+```
+
+---
+
+### 5. Multi-Agent Synchronization Strategy
+
+The core problem: AI agents have no shared working memory. Each spawns fresh, reads LESSONS.md
+and CLAUDE.md, then executes independently — potentially stepping on each other's changes.
+
+#### Protocol: Additive-First, Scope-Claim, Announce-on-Commit
+
+1. **Read LESSONS.md first** (already mandatory in CLAUDE.md — keep enforcing this)
+
+2. **Scope claim**: At the start of any session, append a brief "working on X" marker to LESSONS.md
+   with the date and files you plan to touch. This is the lightweight "lock" signal for other agents.
+   ```
+   ## [IN PROGRESS] 2026-04-12 — Claude — <brief topic>
+   Files: orchestrator/fastapi_app.py, config/models.yml
+   ```
+   Replace `[IN PROGRESS]` with the final dated header when done.
+
+3. **Additive changes win**: Prefer appending to files over rewriting. Appending LESSONS.md entries
+   never conflicts. Rewriting whole files always conflicts. When rewriting is unavoidable, keep it
+   minimal and record which lines changed in LESSONS.md.
+
+4. **Announce in commit messages**: Use the commit body to describe WHAT CHANGED FROM A READER'S
+   PERSPECTIVE, not just what was done. Mention key constants, env vars, and function signatures that
+   other agents might depend on.
+
+5. **Never hardcode ephemeral runtime values**: LAN IPs, model names, and API endpoints belong in
+   `.env` or `os.getenv()` with a documented loopback/safe default. CI tests validate the safe default.
+
+6. **One canonical source per constant**: MAC_IP, WIN_IP, and model names must have ONE definition
+   location and be referenced everywhere else via env vars. If two files both define `MAC_IP = "192.168.254.101"`
+   as a string literal, the next agent to change one will break the other.
+
+7. **Test isolation = agent isolation**: Module-level mutable state (`importlib.reload`, module constants,
+   singleton instances) must be restored after each test. An agent's test setup should not bleed into
+   the next agent's assumption about module state.
+
+---
+
+### Commits
+- `71a15f7` (PT) — fix(health): restore 127.0.0.1 loopback defaults for ollama/lm_studio_host
