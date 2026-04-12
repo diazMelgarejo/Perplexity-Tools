@@ -286,8 +286,8 @@ def ecc_sync(force: bool = Query(False)) -> Dict[str, Any]:
 
 @app.get("/health", tags=["system"])
 def health(
-    ollama_host: str = os.getenv("OLLAMA_MAC_ENDPOINT", "http://192.168.254.103:11434"),
-    lm_studio_host: str = os.getenv("LM_STUDIO_MAC_ENDPOINT", "http://192.168.254.103:1234"),
+    ollama_host: str = os.getenv("OLLAMA_MAC_ENDPOINT", "http://127.0.0.1:11434"),
+    lm_studio_host: str = os.getenv("LM_STUDIO_MAC_ENDPOINT", "http://127.0.0.1:1234"),
     mlx_host: str = "http://127.0.0.1:8081",
 ) -> Dict[str, Any]:
     return {
