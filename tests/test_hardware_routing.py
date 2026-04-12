@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 import pytest
 from fastapi.testclient import TestClient
+from unittest.mock import patch
 
 # Ensure repo root is on PYTHONPATH
 REPO_ROOT = Path(__file__).parent.parent
@@ -19,19 +20,36 @@ os.environ["OLLAMA_HOST"] = "http://127.0.0.1"
 from orchestrator.model_registry import ModelRegistry
 from orchestrator.fastapi_app import app
 
-client = TestClient(app)
-
 @pytest.fixture
 def registry():
     return ModelRegistry(config_dir=str(REPO_ROOT / "config"))
 
+
+@pytest.fixture
+def client():
+    async def fake_resolve_routing_state():
+        return {
+            "manager_endpoint": "http://192.168.254.103:11434",
+            "manager_model": "glm-5.1:cloud",
+            "manager_backend": "mac-ollama",
+            "coder_endpoint": "http://192.168.254.100:1234",
+            "coder_model": "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2",
+            "coder_backend": "windows-lmstudio",
+            "distributed": True,
+        }
+
+    with (
+        patch("orchestrator.fastapi_app.resolve_routing_state", new=fake_resolve_routing_state),
+        patch("orchestrator.fastapi_app.sync_ecc_tools", return_value={"status": "ok", "message": "mocked"}),
+    ):
+        with TestClient(app) as test_client:
+            yield test_client
+
 def test_deep_reasoning_routing_by_hardware_profile(registry):
     """
-    Verifies that 'deep_reasoning' task_type includes mac-studio models.
+    Verifies that 'deep_reasoning' includes the Mac GLM orchestrator lane.
     deep_reasoning roles: [ultrathink, strategy, top-level, fallback]
-    qwen3.5-9b-mlx (mac-studio, top-level) must appear in the chain.
-    Note: role order determines position, not device preference alone;
-    qwen3-30b-autoresearch-critic (strategy, win-rtx3080) precedes it.
+    With preferred_device=mac-studio, glm-5.1:cloud should surface before cloud fallbacks.
     """
     chain = registry.route_task("deep_reasoning", preferred_device="mac-studio")
 
@@ -40,27 +58,22 @@ def test_deep_reasoning_routing_by_hardware_profile(registry):
 
     names = [m.name for m in chain]
 
-    # qwen3.5-9b-mlx must appear in the chain (matches top-level role)
-    assert "qwen3.5-9b-mlx" in names, "qwen3.5-9b-mlx must be in deep_reasoning chain"
+    assert "glm-5.1:cloud" in names, "glm-5.1:cloud must be in deep_reasoning chain"
+    assert "Qwen3.5-9B-MLX-4bit" in names, "Mac LM Studio fallback must remain in chain"
 
     # mac-studio models must be present
     mac_models = [m for m in chain if m.device == "mac-studio"]
     assert len(mac_models) > 0, "Should find at least one Mac model for deep reasoning roles"
 
-    # Within the top-level role pass, mac-studio model must precede general cloud fallbacks
-    # (sonar-reasoning-pro, grok-4-1-thinking are online but not strategy specialists)
-    mlx_idx = names.index("qwen3.5-9b-mlx")
+    glm_idx = names.index("glm-5.1:cloud")
     general_cloud = [i for i, m in enumerate(chain)
-                     if m.online and m.name not in ("claude-4-5-thinking",)]
-    assert all(mlx_idx < ci for ci in general_cloud), \
-        "qwen3.5-9b-mlx should appear before general cloud fallbacks"
+                     if m.online and m.name not in ("glm-5.1:cloud", "claude-4-5-thinking")]
+    assert all(glm_idx < ci for ci in general_cloud), \
+        "glm-5.1:cloud should appear before general cloud fallbacks"
 
 def test_code_analysis_routing_by_hardware_profile(registry):
     """
-    Verifies 'code_analysis' routes correctly, preferring coding-specialist models.
-    code_analysis roles: [ultrathink, coding, top-level, fallback]
-    qwen3-coder-14b (win-rtx3080, priority=5) has role 'coding' and wins
-    over qwen3.5-35b-a3b-lmstudio (priority=30, also has 'coding').
+    Verifies 'code_analysis' routes correctly, preferring Windows LM Studio Qwen 27B.
     """
     chain = registry.route_task("code_analysis", preferred_device="win-rtx3080")
 
@@ -68,12 +81,25 @@ def test_code_analysis_routing_by_hardware_profile(registry):
     first = chain[0]
     assert first.device == "win-rtx3080"
     assert "coding" in first.roles
-    assert "qwen3-coder-14b" in first.name
+    assert first.name == "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2"
 
-def test_orchestrate_hardware_selection():
+
+def test_autoresearch_prefers_windows_lmstudio(registry):
+    chain = registry.route_task("autoresearch", preferred_device="win-rtx3080")
+    assert chain[0].name == "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2"
+    assert chain[0].device == "win-rtx3080"
+    assert "autoresearch-coder" in chain[0].roles
+
+
+def test_orchestrate_hardware_selection(monkeypatch, client):
     """
     End-to-end check of /orchestrate selecting the right model per device.
     """
+    async def always_ready(_candidate):
+        return True, "mock-ready"
+
+    monkeypatch.setattr("orchestrator.fastapi_app._candidate_availability", always_ready)
+
     # Task type 'coding' should pick win-rtx3080 if preferred
     resp = client.post("/orchestrate", json={
         "task": "def fib(n): return fib(n-1) + fib(n-2)",
@@ -83,11 +109,9 @@ def test_orchestrate_hardware_selection():
     assert resp.status_code == 200
     data = resp.json()
     assert data["selected_model"]["device"] == "win-rtx3080"
-    assert "qwen3-coder-14b" in data["selected_model"]["name"] or "qwen3.5-35b-a3b-lmstudio" in data["selected_model"]["name"]
+    assert data["selected_model"]["name"] == "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2"
 
     # Task type 'default' on mac-studio
-    # Qwen3.5-9B-MLX-4bit (priority=10) outranks qwen3.5-9b-mlx (priority=20)
-    # for the top-level role on mac-studio since commit ff2275e.
     resp = client.post("/orchestrate", json={
         "task": "What is the capital of France?",
         "task_type": "default",
@@ -96,7 +120,50 @@ def test_orchestrate_hardware_selection():
     assert resp.status_code == 200
     data = resp.json()
     assert data["selected_model"]["device"] == "mac-studio"
+    assert data["selected_model"]["name"] == "glm-5.1:cloud"
+
+
+def test_orchestrate_falls_back_to_mac_lmstudio_when_glm_unavailable(monkeypatch, client):
+    async def selective_ready(candidate):
+        if candidate.name == "glm-5.1:cloud":
+            return False, "rate-limited"
+        return True, "mock-ready"
+
+    monkeypatch.setattr("orchestrator.fastapi_app._candidate_availability", selective_ready)
+
+    resp = client.post("/orchestrate", json={
+        "task": "Summarize the release plan",
+        "task_type": "default",
+        "preferred_device": "mac-studio",
+        "force": True,
+    })
+
+    assert resp.status_code == 200
+    data = resp.json()
     assert data["selected_model"]["name"] == "Qwen3.5-9B-MLX-4bit"
+    availability = data["availability"]
+    assert any(entry["detail"] == "rate-limited" for entry in availability.values())
+
+
+def test_autoresearch_returns_user_action_when_no_local_backend_reachable(monkeypatch, client):
+    async def none_ready(candidate):
+        if candidate.backend in {"ollama", "lm-studio", "mlx"}:
+            return False, "offline"
+        return True, "not-probed"
+
+    monkeypatch.setattr("orchestrator.fastapi_app._candidate_availability", none_ready)
+
+    resp = client.post("/orchestrate", json={
+        "task": "Run the next autoresearch loop",
+        "task_type": "autoresearch",
+        "preferred_device": "win-rtx3080",
+        "force": True,
+    })
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "needs_user_action"
+    assert "No viable local coder backend" in data["message"]
 
 def test_coder_routes_to_lmstudio_when_ollama_offline():
     """Regression (PR #8 P1): win_ok=False, lms_ok=True → coder uses LM Studio, not Mac."""
