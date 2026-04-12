@@ -24,7 +24,7 @@ Import instincts from local file paths or HTTP(S) URLs.
 
 ## Usage
 
-```
+```claude
 /instinct-import team-instincts.yaml
 /instinct-import https://github.com/org/repo/instincts.yaml
 /instinct-import team-instincts.yaml --dry-run
@@ -43,7 +43,7 @@ Import instincts from local file paths or HTTP(S) URLs.
 
 ## Import Process
 
-```
+```ascii
  Importing instincts from: team-instincts.yaml
 ================================================
 
@@ -76,6 +76,7 @@ Import 8 new, update 1?
 ## Merge Behavior
 
 When importing an instinct with an existing ID:
+
 - Higher-confidence import becomes an update candidate
 - Equal/lower-confidence import is skipped
 - User confirms unless `--force` is used
@@ -83,6 +84,7 @@ When importing an instinct with an existing ID:
 ## Source Tracking
 
 Imported instincts are marked with:
+
 ```yaml
 source: inherited
 scope: project
@@ -101,7 +103,8 @@ project_name: "my-project"
 ## Output
 
 After import:
-```
+
+```ascii
 PASS: Import complete!
 
 Added: 8 instincts
