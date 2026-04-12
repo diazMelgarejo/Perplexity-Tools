@@ -184,7 +184,7 @@ Root cause: **the pattern was designed for Python import statements** (`from mul
 ### Architectural Shift
 
 The autoresearch loop has been migrated from a hardcoded Python script cloned
-to a GPU runner (`karpathy/autoresearch`) to the `uditgoenka/autoresearch`
+to a GPU runner (`uditgoenka/autoresearch`) to the `uditgoenka/autoresearch`
 Claude Code plugin that can execute anywhere, with the GPU runner demoted to an
 optional `Verify` substrate for ML experiments.
 
