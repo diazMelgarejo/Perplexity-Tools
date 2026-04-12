@@ -5,6 +5,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
 import yaml
 
@@ -46,9 +47,23 @@ class ModelRegistry:
 
     def __init__(self, config_dir: str = "config") -> None:
         self.config_dir = Path(config_dir)
-        self.devices: Dict[str, Any] = self._read_yaml("devices.yml")
+        raw_devices = self._read_yaml("devices.yml")
+        self.devices: Dict[str, Any] = self._normalize_devices(raw_devices)
         self.models_cfg: Dict[str, Any] = self._read_yaml("models.yml")
         self.routing_cfg: Dict[str, Any] = self._read_yaml("routing.yml")
+
+    @staticmethod
+    def _normalize_devices(raw: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalise devices.yml list format (v0.9.9.5+) to the dict format device_info() expects.
+
+        Old format:  devices: {mac-studio: {...}, win-rtx3080: {...}}
+        New format:  devices: [{id: "mac-studio", ...}, {id: "win-rtx3080", ...}]
+        Both are handled transparently so callers never need to branch.
+        """
+        devs = raw.get("devices", {})
+        if isinstance(devs, list):
+            devs = {d["id"]: d for d in devs if "id" in d}
+        return {**raw, "devices": devs}
 
     def _read_yaml(self, name: str) -> Dict[str, Any]:
         path = self.config_dir / name
@@ -56,19 +71,40 @@ class ModelRegistry:
             return {}
         return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
+    # ── host resolution ────────────────────────────────────────────────────────
+
+    def _resolve_host(self, item: Dict[str, Any]) -> str:
+        """Resolve the host URL for a model entry.
+
+        For devices with identity_method=active_tilting (win-rtx3080), derives
+        the Windows IP from the local subnet at runtime so the config is portable
+        across 192.168.1.x (legacy) and 192.168.254.x (current) topologies without
+        any config file changes.  Explicit env-var overrides always take priority
+        (LAN_GPU_IP_OVERRIDE, LM_STUDIO_WIN_ENDPOINTS — checked inside
+        detect_active_tilting_ip).
+
+        For all other devices, falls through to the usual env-var expansion.
+        """
+        device_name = item.get("device", "")
+        dev_info = self.device_info(device_name)
+        if dev_info.get("identity_method") == "active_tilting":
+            from orchestrator.lan_discovery import detect_active_tilting_ip
+            return detect_active_tilting_ip()
+        return _expand_env_default(str(item.get("host", "")))
+
     # ── model listing ─────────────────────────────────────────────────────────
 
     def list_models(self) -> List[ModelTarget]:
         targets: List[ModelTarget] = []
         for item in self.models_cfg.get("models", []):
-            host = _expand_env_default(str(item.get("host", "")))
+            host = self._resolve_host(item)
             targets.append(
                 ModelTarget(
                     name=item["name"],
                     backend=item["backend"],
                     device=item["device"],
                     host=host,
-                    port=int(item["port"]),
+                    port=port,
                     context_window=item.get("context_window"),
                     roles=item.get("roles", ["general"]),
                     priority=item.get("priority", 100),

@@ -79,6 +79,21 @@ def client():
             return_value=[ultrathink_candidate, fallback_candidate],
         ),
         patch(
+            "orchestrator.fastapi_app.resolve_routing_state",
+            new=lambda: __import__("asyncio").sleep(
+                0,
+                result={
+                    "manager_endpoint": "http://192.168.254.103:11434",
+                    "manager_model": "glm-5.1:cloud",
+                    "manager_backend": "mac-ollama",
+                    "coder_endpoint": "http://192.168.254.100:1234",
+                    "coder_model": "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2",
+                    "coder_backend": "windows-lmstudio",
+                    "distributed": True,
+                },
+            ),
+        ),
+        patch(
             "orchestrator.cost_guard.CostGuard.can_spend",
             return_value=True,
         ),
