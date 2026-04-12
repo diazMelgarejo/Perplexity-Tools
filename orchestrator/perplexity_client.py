@@ -201,3 +201,56 @@ class PerplexityClient:
             model=model or "sonar-pro",
         )
         return result["choices"][0]["message"]["content"]
+
+
+# ── module-level credential helper ────────────────────────────────────────────
+
+def ensure_credentials(
+    validate: bool = False,
+    interactive: bool = True,
+    allow_web_fallback: bool = True,
+) -> Dict[str, Any]:
+    """Validate Perplexity API credentials and return a status dict.
+
+    Returns a dict with keys:
+      configured     bool — True if a key is present (and valid when validate=True)
+      message        str  — human-readable status line
+      auth_mode      str  — "api_key" | "web_fallback" | "none"
+      ready_for_api  bool — True when the Perplexity API can be called
+
+    Called by control_plane.orchestrate() as Stage 1.
+    """
+    key = os.getenv("PERPLEXITY_API_KEY", "").strip()
+
+    if not key and interactive:
+        key = PerplexityClient._prompt_for_key() or ""
+
+    if not key:
+        if allow_web_fallback:
+            return {
+                "configured": False,
+                "message": "No PERPLEXITY_API_KEY — web fallback active",
+                "auth_mode": "web_fallback",
+                "ready_for_api": False,
+            }
+        return {
+            "configured": False,
+            "message": "No PERPLEXITY_API_KEY configured",
+            "auth_mode": "none",
+            "ready_for_api": False,
+        }
+
+    if validate and not PerplexityClient._test_key(key):
+        return {
+            "configured": False,
+            "message": "PERPLEXITY_API_KEY present but validation failed",
+            "auth_mode": "api_key",
+            "ready_for_api": False,
+        }
+
+    return {
+        "configured": True,
+        "message": "PERPLEXITY_API_KEY configured" + (" and validated" if validate else ""),
+        "auth_mode": "api_key",
+        "ready_for_api": True,
+    }

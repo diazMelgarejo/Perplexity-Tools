@@ -1,9 +1,9 @@
-# Hardware Device Profiles (v0.9.9.5)
+# Hardware Device Profiles (v0.9.9.6)
 # Per-device hardware configuration defined in config/devices.yml
 # Supports: Mac (Apple Silicon), Windows (NVIDIA GPU), or shared Ollama endpoint.
 # All three interoperable; each independently configurable.
 
-version: "0.9.9.5"
+version: "0.9.9.6"
 
 devices:
   - id: "mac-studio"
