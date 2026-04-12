@@ -1,93 +1,80 @@
 #!/usr/bin/env python3
 """
-scripts/test_perplexity.py
---------------------------
-Smoke-test for the PerplexityClient singleton.
+test_perplexity.py — Quick smoke-test for Perplexity integration
+Run: python scripts/test_perplexity.py
 
-Creates the validated client singleton and calls chat_async with a simple
-query. Prints the result and exits 0 on success, 1 on failure.
-
-Usage:
-    python scripts/test_perplexity.py
-    python scripts/test_perplexity.py --query "What is the AlphaClaw gateway?"
-    python scripts/test_perplexity.py --base-url https://api.perplexity.ai --timeout 30
+Tests all three client modes:
+  - Perplexity sonar (cloud search)
+  - sync  via PerplexityClient.search()
+  - async via PerplexityClient.search_async()
 """
-from __future__ import annotations
-
-import argparse
 import asyncio
 import sys
-import os
+from pathlib import Path
 
-# Allow running from repo root without installing the package
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+# Ensure repo root is on path when run directly
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+try:
+    from dotenv import load_dotenv
+    load_dotenv(_REPO_ROOT / ".env")
+except ImportError:
+    pass
+
+from orchestrator.perplexity_client import PerplexityClient
 
 
-async def main(query: str, base_url: str | None, timeout: float) -> int:
-    print("[test_perplexity] Initialising PerplexityClient singleton\u2026")
+async def _run_tests() -> None:
+    print("\n" + "═" * 54)
+    print("   Perplexity-Tools  ·  Connection Smoke Test")
+    print("═" * 54)
+
+    # Singleton construction — key prompt fires here if PERPLEXITY_API_KEY missing
+    client = PerplexityClient.get()
+
+    all_ok = True
+
+    # ── Test 1: synchronous search ────────────────────────────────────────────
+    print("\n[1/2] Synchronous search (sonar-pro)…")
     try:
-        from orchestrator.perplexity_client import PerplexityClient
-    except ImportError as e:
-        print(f"[test_perplexity] \u2717 Import failed: {e}")
-        print("  Run: pip install openai python-dotenv")
-        return 1
+        result = client.search(
+            "Reply with only the single word: pong",
+            model="sonar",
+        )
+        ok = "pong" in result.lower()
+        print(f"  {'✅ PASS' if ok else '⚠  WARN'}  sync search")
+        if not ok:
+            print(f"       Got: {result[:80]}")
+        all_ok = all_ok and ok
+    except Exception as exc:
+        print(f"  ❌ FAIL  sync search → {exc}")
+        all_ok = False
 
+    # ── Test 2: async search ──────────────────────────────────────────────────
+    print("\n[2/2] Async search (sonar-pro)…")
     try:
-        client = PerplexityClient.get(
-            validate=True,
-            interactive=True,
-            base_url=base_url,
-            timeout=timeout,
+        result = await client.search_async(
+            "What are the latest benchmarks for Qwen3-Coder-480B on HumanEval?"
         )
-        status = client.status()
-        print(
-            "[test_perplexity] \u2713 Singleton ready "
-            f"(model={client.DEFAULT_MODEL}, auth_mode={status['auth_mode']})"
-        )
-        if not status["ready_for_api"]:
-            print(f"[test_perplexity] \u26a0 {status['message']}")
-            return 1
-    except Exception as e:
-        print(f"[test_perplexity] \u2717 Client init failed: {e}")
-        return 1
+        ok = len(result) > 20
+        print(f"  {'✅ PASS' if ok else '⚠  WARN'}  async search")
+        if ok:
+            print(f"       Preview: {result[:120]}…")
+        else:
+            print(f"       Got: {result!r}")
+        all_ok = all_ok and ok
+    except Exception as exc:
+        print(f"  ❌ FAIL  async search → {exc}")
+        all_ok = False
 
-    print(f"[test_perplexity] \u2192 Query: {query!r}")
-    try:
-        result = await client.chat_async(
-            messages=[{"role": "user", "content": query}]
-        )
-        content = result["choices"][0]["message"]["content"]
-        print("[test_perplexity] \u2713 Response received:")
-        print("-" * 60)
-        print(content[:800])
-        if len(content) > 800:
-            print(f"  \u2026 ({len(content) - 800} chars truncated)")
-        print("-" * 60)
-        return 0
-    except Exception as e:
-        print(f"[test_perplexity] \u2717 search_async failed: {e}")
-        return 1
+    print("\n" + "─" * 54)
+    print("  ✅ All tests passed!" if all_ok else "  ❌ One or more tests failed.")
+    print("═" * 54 + "\n")
+
+    sys.exit(0 if all_ok else 1)
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Smoke-test for PerplexityClient singleton"
-    )
-    parser.add_argument(
-        "--query",
-        default="What is the latest version of the sonar-pro model?",
-        help="Query to send to Perplexity sonar-pro",
-    )
-    parser.add_argument(
-        "--base-url",
-        default=None,
-        help="Optional Perplexity-compatible base URL override",
-    )
-    parser.add_argument(
-        "--timeout",
-        type=float,
-        default=120.0,
-        help="Optional request timeout in seconds",
-    )
-    args = parser.parse_args()
-    sys.exit(asyncio.run(main(args.query, args.base_url, args.timeout)))
+    asyncio.run(_run_tests())
