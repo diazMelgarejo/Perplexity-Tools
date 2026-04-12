@@ -35,7 +35,7 @@ models:
     port: 1234
     context_window: 16384
     gpu_offload: 40
-    roles: [coder, checker, refiner, executor, verifier, subagent, autoresearch, fallback]
+    roles: [coding, checker, refiner, executor, verifier, subagent, autoresearch-coder, autoresearch, fallback]
     priority: 5
     online: false
     reasoning: windows-lmstudio
@@ -148,18 +148,6 @@ models:
   # autoresearch-coder: Qwen3-Coder-14B on Windows RTX 3080 (CUDA executor)
   # autoresearch-critic: Qwen3-30B on Dell (evaluator + orchestrator reasoning)
   # Both are LOCAL-only; never route autoresearch tasks to cloud without explicit override.
-
-  - name: qwen3-coder-14b
-    backend: ollama
-    device: win-rtx3080
-    host: "${WIN_ENDPOINT:-http://192.168.254.100}"
-    port: 11434
-    context_window: 32768
-    roles: [autoresearch-coder, coding, subagent, fallback]
-    priority: 14
-    online: false
-    reasoning: windows-local-coder
-    notes: "Fallback coder for autoresearch and coding when Windows LM Studio Qwen 27B is unavailable."
 
   - name: qwen3-30b-autoresearch-critic
     backend: ollama
