@@ -9,7 +9,9 @@ from dataclasses import asdict
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlparse
 
+import httpx
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -31,6 +33,9 @@ from orchestrator.ultrathink_bridge import (
 )
 
 _startup_log = logging.getLogger("orchestrator.fastapi_app")
+_GLM_ORCHESTRATOR_MODEL = "glm-5.1:cloud"
+_AUTORESEARCH_TASK_TYPES = {"autoresearch", "autoresearch-coder", "ml-experiment"}
+_LOCAL_RUNTIME_BACKENDS = {"ollama", "lm-studio", "mlx"}
 
 
 def _run_ecc_sync_bg() -> None:
@@ -115,6 +120,156 @@ def _runtime_summary() -> dict[str, Any]:
     }
 
 
+def _candidate_base_url(host: str, port: int) -> str:
+    parsed = urlparse(host)
+    if parsed.scheme and parsed.hostname:
+        scheme = parsed.scheme
+        hostname = parsed.hostname
+        resolved_port = parsed.port or port
+        return f"{scheme}://{hostname}:{resolved_port}"
+    return f"{host.rstrip('/')}:{port}"
+
+
+def _normalize_model_name(value: str) -> str:
+    return value.strip().lower().replace("_", "-")
+
+
+def _model_matches(available: str, expected: str) -> bool:
+    lhs = _normalize_model_name(available)
+    rhs = _normalize_model_name(expected)
+    return lhs == rhs or lhs.startswith(rhs) or rhs.startswith(lhs) or rhs in lhs or lhs in rhs
+
+
+def _is_local_candidate(model: Any) -> bool:
+    return getattr(model, "backend", "") in _LOCAL_RUNTIME_BACKENDS and getattr(model, "device", "") != "cloud"
+
+
+async def _probe_openai_compatible(
+    base_url: str,
+    expected_model: str,
+    *,
+    timeout: float,
+    token: str = "",
+) -> tuple[bool, str]:
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.get(f"{base_url}/v1/models", headers=headers)
+        if resp.status_code >= 400:
+            return False, f"HTTP {resp.status_code}"
+        payload = resp.json()
+        models = payload.get("data", []) if isinstance(payload, dict) else []
+        ids = [
+            item.get("id") or item.get("name") or ""
+            for item in models
+            if isinstance(item, dict)
+        ]
+        if ids and any(_model_matches(model_id, expected_model) for model_id in ids):
+            return True, "model-available"
+        if ids:
+            return False, f"model-not-loaded:{expected_model}"
+        return True, "reachable"
+
+
+async def _probe_ollama_model(
+    base_url: str,
+    expected_model: str,
+    *,
+    timeout: float,
+) -> tuple[bool, str]:
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.get(f"{base_url}/api/tags")
+        if resp.status_code >= 400:
+            return False, f"HTTP {resp.status_code}"
+        payload = resp.json()
+        models = payload.get("models", []) if isinstance(payload, dict) else []
+        names = [
+            item.get("name") or item.get("model") or ""
+            for item in models
+            if isinstance(item, dict)
+        ]
+        if names and any(_model_matches(name, expected_model) for name in names):
+            return True, "model-available"
+        if names:
+            return False, f"model-not-loaded:{expected_model}"
+        return True, "reachable"
+
+
+async def _probe_glm_cloud_candidate(model: Any) -> tuple[bool, str]:
+    timeout = float(os.getenv("GLM_PROBE_TIMEOUT", "8"))
+    base_url = _candidate_base_url(model.host, model.port)
+    payload = {
+        "model": model.name,
+        "prompt": "ping",
+        "stream": False,
+        "options": {"num_predict": 1},
+    }
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.post(f"{base_url}/api/generate", json=payload)
+        if resp.status_code == 429:
+            return False, "rate-limited"
+        if resp.status_code >= 400:
+            return False, f"HTTP {resp.status_code}"
+        data = resp.json()
+        if isinstance(data, dict) and data.get("error"):
+            return False, str(data["error"])
+        if isinstance(data, dict) and (data.get("response") is not None or data.get("done") is not None):
+            return True, "glm-ready"
+        return False, "empty-response"
+
+
+async def _candidate_availability(model: Any) -> tuple[bool, str]:
+    backend = getattr(model, "backend", "")
+    name = getattr(model, "name", "")
+    if backend not in _LOCAL_RUNTIME_BACKENDS:
+        return True, "not-probed"
+
+    try:
+        base_url = _candidate_base_url(model.host, model.port)
+        timeout = float(os.getenv("MODEL_PROBE_TIMEOUT", "3"))
+        if name == _GLM_ORCHESTRATOR_MODEL:
+            return await _probe_glm_cloud_candidate(model)
+        if backend == "ollama":
+            return await _probe_ollama_model(base_url, name, timeout=timeout)
+        if backend in {"lm-studio", "mlx"}:
+            return await _probe_openai_compatible(
+                base_url,
+                name,
+                timeout=timeout,
+                token=os.getenv("LM_STUDIO_API_TOKEN", ""),
+            )
+    except Exception as exc:  # noqa: BLE001
+        return False, str(exc)
+    return True, "unhandled-backend"
+
+
+async def _resolve_candidates(
+    candidates: List[Any],
+    task_type: str,
+) -> tuple[list[Any], dict[str, dict[str, Any]]]:
+    resolved: list[Any] = []
+    availability: dict[str, dict[str, Any]] = {}
+
+    for candidate in candidates:
+        ready, detail = await _candidate_availability(candidate)
+        key = f"{getattr(candidate, 'name', 'unknown')}@{getattr(candidate, 'device', 'unknown')}"
+        availability[key] = {
+            "ready": ready,
+            "detail": detail,
+            "backend": getattr(candidate, "backend", ""),
+            "device": getattr(candidate, "device", ""),
+        }
+        if ready:
+            resolved.append(candidate)
+
+    if task_type in _AUTORESEARCH_TASK_TYPES:
+        local_ready = [candidate for candidate in resolved if _is_local_candidate(candidate)]
+        if not local_ready:
+            return [], availability
+        return local_ready, availability
+
+    return resolved or candidates, availability
+
+
 @app.get("/ecc/status", tags=["ecc"])
 def ecc_status() -> Dict[str, Any]:
     return get_sync_status()
@@ -131,8 +286,8 @@ def ecc_sync(force: bool = Query(False)) -> Dict[str, Any]:
 
 @app.get("/health", tags=["system"])
 def health(
-    ollama_host: str = "http://127.0.0.1:11434",
-    lm_studio_host: str = "http://127.0.0.1:1234",
+    ollama_host: str = os.getenv("OLLAMA_MAC_ENDPOINT", "http://192.168.254.103:11434"),
+    lm_studio_host: str = os.getenv("LM_STUDIO_MAC_ENDPOINT", "http://192.168.254.103:1234"),
     mlx_host: str = "http://127.0.0.1:8081",
 ) -> Dict[str, Any]:
     return {
@@ -273,12 +428,25 @@ async def orchestrate(req: OrchestrateRequest) -> Dict[str, Any]:
             f"{budget_state['daily_budget']:.2f} (>=80%)"
         )
 
-    candidates = registry.route_task(req.task_type, preferred_device=req.preferred_device)
-    if not candidates:
+    route_candidates = registry.route_task(req.task_type, preferred_device=req.preferred_device)
+    if not route_candidates:
         raise HTTPException(
             status_code=404,
             detail=f"No model candidates found for task_type='{req.task_type}'",
         )
+
+    candidates, availability = await _resolve_candidates(route_candidates, req.task_type)
+    if req.task_type in _AUTORESEARCH_TASK_TYPES and not candidates:
+        return {
+            "status": "needs_user_action",
+            "message": (
+                "No viable local coder backend is reachable for autoresearch. "
+                "Start Windows LM Studio Qwen 27B, qwen3-coder:14b on Windows Ollama, "
+                "or a reachable local LM Studio fallback, then retry."
+            ),
+            "runtime": _runtime_summary(),
+            "availability": availability,
+        }
 
     selected = candidates[0]
     route_cfg = registry.routing_cfg.get("routes", {}).get(req.task_type, {})
@@ -307,7 +475,7 @@ async def orchestrate(req: OrchestrateRequest) -> Dict[str, Any]:
             "name": selected.name,
             "backend": selected.backend,
             "device": selected.device,
-            "host": f"{selected.host}:{selected.port}",
+            "host": _candidate_base_url(selected.host, selected.port),
             "online": selected.online,
             "reasoning": selected.reasoning,
         },
@@ -319,9 +487,12 @@ async def orchestrate(req: OrchestrateRequest) -> Dict[str, Any]:
                 "device": model.device,
                 "online": model.online,
             }
-            for index, model in enumerate(candidates[1:5])
+            for index, model in enumerate(
+                [model for model in route_candidates if model is not selected][:5]
+            )
         ],
         "runtime": _runtime_summary(),
+        "availability": availability,
     }
     if budget_warning:
         response["budget_warning"] = budget_warning
