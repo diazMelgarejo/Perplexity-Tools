@@ -242,35 +242,35 @@ and the protocol we are encoding so future agents can stay in sync.
 
 ### 1. Version Number Registry — All Canonical Locations
 
-> **Current version: `0.9.9.6`.** Do NOT bump without an explicit user instruction.
+> **Current version: `0.9.9.7`.** Do NOT bump without an explicit user instruction.
 > When a bump is requested, update **every** location in this table.
 
 #### Perplexity-Tools (PT)
 
 | File | Key / Path | Notes |
 |------|-----------|-------|
-| `pyproject.toml:12` | `version = "0.9.9.6"` | pip-installable package version |
-| `orchestrator/__init__.py:5` | `__version__ = "0.9.9.6"` | importable version constant |
-| `orchestrator/fastapi_app.py:74` | `version="0.9.9.6"` | FastAPI app metadata |
-| `orchestrator/fastapi_app.py:295` | `"version": "0.9.9.6"` | `/health` JSON response |
-| `orchestrator.py:97` | `VERSION = "0.9.9.6"` | legacy orchestrator constant |
-| `config/devices.yml:6` | `version: "0.9.9.6"` | hardware profile schema |
-| `config/models.yml:6` | `version: "0.9.9.6"` | model registry schema |
-| `SKILL.md:3` | `**Version:** \`v0.9.9.6\`` | skill surface (agent-facing) |
-| `hardware/SKILL.md:5` | `Version: 0.9.9.6` | hardware sub-skill |
-| `README.md:1,170` | `v0.9.9.6` | user-facing readme |
+| `pyproject.toml:12` | `version = "0.9.9.7"` | pip-installable package version |
+| `orchestrator/__init__.py:5` | `__version__ = "0.9.9.7"` | importable version constant |
+| `orchestrator/fastapi_app.py:74` | `version="0.9.9.7"` | FastAPI app metadata |
+| `orchestrator/fastapi_app.py:295` | `"version": "0.9.9.7"` | `/health` JSON response |
+| `orchestrator.py:97` | `VERSION = "0.9.9.7"` | legacy orchestrator constant |
+| `config/devices.yml:6` | `version: "0.9.9.7"` | hardware profile schema |
+| `config/models.yml:6` | `version: "0.9.9.7"` | model registry schema |
+| `SKILL.md:3` | `**Version:** \`v0.9.9.7\`` | skill surface (agent-facing) |
+| `hardware/SKILL.md:5` | `Version: 0.9.9.7` | hardware sub-skill |
+| `README.md:1,170` | `v0.9.9.7` | user-facing readme |
 
 #### ultrathink-system (UTS)
 
 | File | Key / Path | Notes |
 |------|-----------|-------|
-| `pyproject.toml:7` | `version = "0.9.9.6"` | pip-installable package version |
-| `bin/skills/SKILL.md:10` | `version: 0.9.9.6` | mother skill frontmatter |
-| `bin/config/agent_registry.json:2` | `"version": "0.9.9.6"` | agent registry |
-| `portal_server.py:26` | `VERSION = "0.9.9.6"` | portal server |
-| `bin/agents/*/agent.md:4` | `version: 0.9.9.6` | each agent YAML frontmatter |
-| `CLAUDE.md:71` | `(v0.9.9.6)` | mandatory rules reference |
-| `docs/PERPLEXITY_BRIDGE.md:3` | `Version 0.9.9.6` | bridge docs |
+| `pyproject.toml:7` | `version = "0.9.9.7"` | pip-installable package version |
+| `bin/skills/SKILL.md:10` | `version: 0.9.9.7` | mother skill frontmatter |
+| `bin/config/agent_registry.json:2` | `"version": "0.9.9.7"` | agent registry |
+| `portal_server.py:26` | `VERSION = "0.9.9.7"` | portal server |
+| `bin/agents/*/agent.md:4` | `version: 0.9.9.7` | each agent YAML frontmatter |
+| `CLAUDE.md:71` | `(v0.9.9.7)` | mandatory rules reference |
+| `docs/PERPLEXITY_BRIDGE.md:3` | `Version 0.9.9.7` | bridge docs |
 
 > **Legacy markers** (intentionally lower — do not bump automatically):
 > - `api_server.py`, `bin/shared/*.py`, `bin/mcp_servers/*.py` — `0.9.9.2` (original API stable)

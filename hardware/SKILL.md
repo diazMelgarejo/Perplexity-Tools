@@ -2,7 +2,7 @@
 # hardware/SKILL.md
 # Decoupled hardware profiles for role-based agent assignment.
 # Synchronized across all repos. Governs VRAM/RAM limits for model routing.
-# Last updated: 2026-04-08 | Version: 0.9.9.6
+# Last updated: 2026-04-08 | Version: 0.9.9.7
 
 ---
 
@@ -112,7 +112,7 @@ recommended_models:
     gpu_offload: 40             # 40 layers to RTX 3080 10GB; remainder on CPU RAM
     lm_studio_context: 16384
     roles: [coder, checker, refiner, executor, verifier, subagent, fallback, autoresearch-coder]
-    notes: "Primary Windows heavy coder and autoresearch executor (v0.9.9.6). Backend-agnostic GGUF."
+    notes: "Primary Windows heavy coder and autoresearch executor (v0.9.9.7). Backend-agnostic GGUF."
   - id: gemma-4-26B-A4B-it-Q4_K_M
     gguf_file: gemma-4-26B-A4B-it-Q4_K_M.gguf
     hf_repo: lmstudio-community/gemma-4-26B-A4B-it-GGUF
