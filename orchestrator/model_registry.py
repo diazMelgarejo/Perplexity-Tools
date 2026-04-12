@@ -104,7 +104,7 @@ class ModelRegistry:
                     backend=item["backend"],
                     device=item["device"],
                     host=host,
-                    port=port,
+                    port=int(item.get("port", 0)),
                     context_window=item.get("context_window"),
                     roles=item.get("roles", ["general"]),
                     priority=item.get("priority", 100),
