@@ -1,6 +1,6 @@
 # SKILL.md — Perplexity-Tools Model Selection Skill
 
-**Version:** `v0.9.9.4` · **Updated:** 2026-04-08
+**Version:** `v0.9.9.6` · **Updated:** 2026-04-08
 **Repo:** https://github.com/diazMelgarejo/Perplexity-Tools · **Branch:** `main`
 
 **Layering (all interoperable and independently configurable):**
@@ -10,7 +10,7 @@
 | **Orchestrator & instance manager** | **Perplexity-Tools** (this repo) | Top-level agent lifecycle, `ModelRegistry` / `config/*.yml`, FastAPI `/orchestrate`, idempotency |
 | **Reasoning & routing methodology** | **ultrathink-system** | `bin/skills/SKILL.md`, AFRP (pre-router gate) / CIDF / process; multi-agent registry is **separately installable** and **not** required to run this orchestrator |
 | **Subagent auto-selection (ECC-style)** | **ECC Tools** | Default subagent routing unless the top-level orchestrator overrides roles |
-| **Karpathy AutoResearch sync** | [karpathy/autoresearch](https://github.com/karpathy/autoresearch) | Idempotent sync of the automated ML research loop; integrated via `/autoresearch/*` endpoints and `orchestrator/autoresearch_bridge.py` |
+| **Karpathy AutoResearch sync** | [uditgoenka/autoresearch](https://github.com/uditgoenka/autoresearch) | Idempotent sync of the automated ML research loop; integrated via `/autoresearch/*` endpoints and `orchestrator/autoresearch_bridge.py` |
 
 **Selection order:** Top-level model routing follows **this `SKILL.md` → `orchestrator/model_registry.py` + `config/models.yml` / `routing.yml`** first. Subagents use **ECC-tools** defaults unless overridden. **ultrathink-system** remains the methodology layer for reasoning execution, not a hard dependency of the YAML registry.
 
@@ -200,7 +200,7 @@ critic_pass: true
 ### Mode 3: Mac + Win LAN (Full Orchestration — RECOMMENDED)
 ```yaml
 mode: lan_full
-# LM Studio endpoints (canonical — v0.9.9.4)
+# LM Studio endpoints (canonical — v0.9.9.6)
 lmstudio_mac: http://192.168.254.103:1234    # Qwen3.5-9B-MLX-4bit, verifier/orchestrator fallback
 lmstudio_win: http://192.168.254.100:1234    # Qwen3.5-27B, gpu_offload=40, context 16384
 # Portal dashboard
@@ -232,12 +232,12 @@ This repo (**Perplexity-Tools**) is the **top-level orchestrator and instance ma
 
 ## Changelog
 
-### v0.9.9.4 (2026-04-08)
+### v0.9.9.6 (2026-04-08)
 - **Gateway lifecycle ownership**: setup-time AlphaClaw flow now delegates to the canonical bootstrap script first, while preserving local fallback behavior.
 - **Perplexity onboarding**: the smoke-test path can force one-time key validation without weakening the richer singleton client flow.
 - **Client ergonomics**: `PerplexityClient.get()` now accepts optional `base_url` and `timeout` overrides for alternate endpoints and test harnesses.
 - **Docs/examples**: README and smoke-test usage now show the preferred `stream()` path plus the new client/config flags.
-- **Version alignment**: runtime, package, and skill surfaces are synchronized to `v0.9.9.4`.
+- **Version alignment**: runtime, package, and skill surfaces are synchronized to `v0.9.9.6`.
 
 ### v0.9.9.1 (2026-04-04)
 - **LM Studio promoted to primary backend**: Win=Qwen3.5-27B (gpu_offload=40, context 16384); Mac=Qwen3.5-9B-MLX-4bit (context 4096 conservative)

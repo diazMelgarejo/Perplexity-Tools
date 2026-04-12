@@ -228,7 +228,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - `config/routing.yml` — task-type to model-role routing
 - `config/models.yml` — model registry with device affinity
 - `config/devices.yml` — LAN device configuration (Mac + Windows)
-- `orchestrator/autoresearch_bridge.py` — idempotent karpathy/autoresearch sync
+- `orchestrator/autoresearch_bridge.py` — idempotent uditgoenka/autoresearch sync
 - Budget controls: `MAX_DAILY_SPEND`, `MAX_PERPLEXITY_CALLS_DAY`
 - Redis state persistence for agent deduplication
 

@@ -144,7 +144,7 @@ models:
     reasoning: realtime-specialist
 
 
-  # ── AUTORESEARCH: foot-soldier agents (karpathy/autoresearch swarm) ───────────
+  # ── AUTORESEARCH: foot-soldier agents (uditgoenka/autoresearch swarm) ───────────
   # autoresearch-coder: Qwen3-Coder-14B on Windows RTX 3080 (CUDA executor)
   # autoresearch-critic: Qwen3-30B on Dell (evaluator + orchestrator reasoning)
   # Both are LOCAL-only; never route autoresearch tasks to cloud without explicit override.

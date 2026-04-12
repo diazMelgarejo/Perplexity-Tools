@@ -1,7 +1,7 @@
-# Perplexity-Tools v0.9.9.4
+# Perplexity-Tools v0.9.9.6
 
 > **Top-level idempotent multi-agent orchestrator for Mac + Windows**
-> Standardized first on `v0.9.0.0` — branch `v0.9.0.0` of [`diazMelgarejo/Perplexity-Tools`](https://github.com/diazMelgarejo/Perplexity-Tools); *`main` branch is now ahead at v0.9.9.4*
+> Standardized first on `v0.9.0.0` — branch `v0.9.0.0` of [`diazMelgarejo/Perplexity-Tools`](https://github.com/diazMelgarejo/Perplexity-Tools); *`main` branch is now ahead at v0.9.9.6*
 
 ---
 
@@ -14,7 +14,7 @@ Four interoperable, independently configurable layers:
 | **Perplexity-Tools** (this repo) | Top-level orchestrator, agent lifecycle, fallback routing, idempotency | `config/devices.yml`, `config/models.yml`, `config/routing.yml` |
 | **[ultrathink-system](https://github.com/diazMelgarejo/ultrathink-system)** | Reasoning methodology, 5-stage process, CIDF; routing methodology via `bin/skills/SKILL.md`; multi-agent registry is separately installable | `bin/skills/SKILL.md`, `bin/config/` |
 | **[ECC Tools](https://github.com/affaan-m/everything-claude-code)** | Subagent auto-selection default logic for up to 5 Stage4 parallel Masterful Executor Agents (especially coders) | `.claude/ecc-tools.json` |
-| **[karpathy/autoresearch](https://github.com/karpathy/autoresearch)** | Latest idempotent sync; research automation workflows and AI-driven research tools | Per autoresearch standard |
+| **[uditgoenka/autoresearch](https://github.com/uditgoenka/autoresearch)** | Latest idempotent sync; research automation workflows and AI-driven research tools | Per autoresearch standard |
 
 **Priority rule:**
 
@@ -158,7 +158,7 @@ POST /orchestrate
 
 - **ultrathink-system**: install per that repo; provides reasoning layer (`bin/skills/SKILL.md`) and optional multi-agent registry — **separately configurable** from this repo.
 - **ECC Tools** ([affaan-m/everything-claude-code](https://github.com/affaan-m/everything-claude-code)): subagents use ECC auto-selection by default for up to 5x Stage-4 parallel Masterful Executor Agents (especially coders); configured via `.claude/ecc-tools.json`.
-- **autoresearch** ([karpathy/autoresearch](https://github.com/karpathy/autoresearch)): latest idempotent sync for research automation workflows.
+- **autoresearch** ([uditgoenka/autoresearch](https://github.com/uditgoenka/autoresearch)): latest idempotent sync for research automation workflows.
 - All configs live in `config/` — prefer YAML + env (e.g. `OLLAMA_HOST`) over hardcoded hosts.
 
 ---
@@ -167,8 +167,8 @@ POST /orchestrate
 
 | Field | Value |
 |-------|-------|
-| Version | `0.9.9.4` |
+| Version | `0.9.9.6` |
 | Branch | `main` |
-| Compatible with | ultrathink-system (reasoning layer; version per that repo), ECC Tools standard, karpathy/autoresearch (research automation) |
+| Compatible with | ultrathink-system (reasoning layer; version per that repo), ECC Tools standard, uditgoenka/autoresearch (research automation) |
 | Python | `3.11+` |
 | Framework | FastAPI + httpx + PyYAML |
