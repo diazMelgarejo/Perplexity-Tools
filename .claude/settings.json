@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash scripts/sync-companion-instincts.sh 2>/dev/null || true",
+            "statusMessage": "Syncing companion instincts...",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}
