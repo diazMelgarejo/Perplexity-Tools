@@ -71,7 +71,7 @@ async def _lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Perplexity-Tools Orchestrator",
-    version="0.9.9.6",
+    version="0.9.9.7",
     description=(
         "Top-level idempotent multi-agent orchestrator. "
         "Repo #1 complements ultrathink-system with routing, runtime "
@@ -292,7 +292,7 @@ def health(
 ) -> Dict[str, Any]:
     return {
         "status": "ok",
-        "version": "0.9.9.6",
+        "version": "0.9.9.7",
         "runtime": _runtime_summary(),
         "backends": backend_health_map(
             ollama_host=ollama_host,

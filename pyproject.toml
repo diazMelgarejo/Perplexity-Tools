@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "perplexity-tools"
-version = "0.9.9.6"
+version = "0.9.9.7"
 description = "Top-level idempotent multi-agent orchestrator: per-device model selection, fallback routing, cost guard, and ultrathink-system integration."
 readme = "README.md"
 license = { text = "AGPL-3.0" }

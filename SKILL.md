@@ -1,6 +1,6 @@
 # SKILL.md — Perplexity-Tools Model Selection Skill
 
-**Version:** `v0.9.9.6` · **Updated:** 2026-04-08
+**Version:** `v0.9.9.7` · **Updated:** 2026-04-08
 **Repo:** https://github.com/diazMelgarejo/Perplexity-Tools · **Branch:** `main`
 
 **Layering (all interoperable and independently configurable):**
@@ -200,7 +200,7 @@ critic_pass: true
 ### Mode 3: Mac + Win LAN (Full Orchestration — RECOMMENDED)
 ```yaml
 mode: lan_full
-# LM Studio endpoints (canonical — v0.9.9.6)
+# LM Studio endpoints (canonical — v0.9.9.7)
 lmstudio_mac: http://192.168.254.103:1234    # Qwen3.5-9B-MLX-4bit, verifier/orchestrator fallback
 lmstudio_win: http://192.168.254.100:1234    # Qwen3.5-27B, gpu_offload=40, context 16384
 # Portal dashboard
@@ -272,7 +272,7 @@ When bumping version, update ALL of these — no partial bumps:
 | `hardware/SKILL.md` | `Version:` header |
 | `README.md` | title + metadata table |
 
-**Current version: `v0.9.9.6`** — do not bump until explicitly instructed.
+**Current version: `v0.9.9.7`** — do not bump until explicitly instructed.
 
 ### Commit Message Contract (for agent-to-agent communication)
 Every commit body should include:
@@ -295,12 +295,11 @@ This is the primary async communication channel between agents that never share 
 
 ## Changelog
 
-### v0.9.9.6 (2026-04-08)
-- **Gateway lifecycle ownership**: setup-time AlphaClaw flow now delegates to the canonical bootstrap script first, while preserving local fallback behavior.
-- **Perplexity onboarding**: the smoke-test path can force one-time key validation without weakening the richer singleton client flow.
-- **Client ergonomics**: `PerplexityClient.get()` now accepts optional `base_url` and `timeout` overrides for alternate endpoints and test harnesses.
-- **Docs/examples**: README and smoke-test usage now show the preferred `stream()` path plus the new client/config flags.
-- **Version alignment**: runtime, package, and skill surfaces are synchronized to `v0.9.9.6`.
+### v0.9.9.7 (2026-04-12)
+- **AlphaClaw onboarding barrier fix**: `alphaclaw_bootstrap.py` writes a `package.json` anchor before install, prompts for `SETUP_PASSWORD` via `threading.Timer` (Windows-compatible 30s timeout), pre-writes `ALPHACLAW_INSTALL_DIR/.env` to bypass the first-run wizard, passes credentials via `Popen.env`. Gateway logs redirect to `ALPHACLAW_INSTALL_DIR/logs/alphaclaw.log` (was `DEVNULL`) — silent hangs are now diagnosable.
+- **`orchestrator/onboarding.py`** (new): manages `.state/onboarding.json` for portal v1.1 forward-compat and `start.sh` security warning. `is_secure()` / `read_onboarding_state()` / `write_onboarding_state()` with deep-merge semantics.
+- **AlphaClaw env vars confirmed from source**: `SETUP_PASSWORD` (required — startup fails without it); `ALPHACLAW_ROOT_DIR` (default `~/.alphaclaw`); `PORT` (alphaclaw UI default 3000; openclaw gateway is fixed at 18789); postinstall hook is TTY-safe (no `--ignore-scripts` needed).
+- **Version alignment**: runtime, package, and skill surfaces synchronized to `v0.9.9.7`.
 
 ### v0.9.9.1 (2026-04-04)
 - **LM Studio promoted to primary backend**: Win=Qwen3.5-27B (gpu_offload=40, context 16384); Mac=Qwen3.5-9B-MLX-4bit (context 4096 conservative)

@@ -38,6 +38,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -366,6 +367,48 @@ def _ensure_autoresearch() -> None:
     except subprocess.CalledProcessError as e:
         print(f"[alphaclaw] ✗ autoresearch setup failed (non-fatal): {e}")
 
+# ── first-run credentials ─────────────────────────────────────────────────────
+
+_DEFAULT_SETUP_PASSWORD = "alpha1claw"
+
+
+def _gather_alphaclaw_credentials(timeout: int = 30) -> dict[str, object]:
+    """Prompt for SETUP_PASSWORD with *timeout*-second default fallback.
+
+    Uses a daemon thread + join(timeout) — works on Windows (no select.select).
+    Returns {"password": str, "is_default": bool}.
+    """
+    password = os.getenv("SETUP_PASSWORD", "").strip()
+    if password:
+        return {"password": password, "is_default": False}
+
+    print("\n  ┌─────────────────────────────────────────────────────────────────┐")
+    print("  │  ALPHACLAW FIRST-RUN SETUP                                      │")
+    print(f"  │  Set an admin password (default: {_DEFAULT_SETUP_PASSWORD!r} if no input in 30s)   │")
+    print("  │  ⚠  Change this password immediately after setup completes      │")
+    print("  └─────────────────────────────────────────────────────────────────┘")
+
+    result: dict[str, object] = {"value": None}
+
+    def _read() -> None:
+        try:
+            result["value"] = input("  Password (blank = use default): ").strip()
+        except (EOFError, OSError):
+            result["value"] = ""
+
+    t = threading.Thread(target=_read, daemon=True)
+    t.start()
+    t.join(timeout)
+
+    raw = result.get("value") or ""
+    password = raw if raw else _DEFAULT_SETUP_PASSWORD
+    is_default = password == _DEFAULT_SETUP_PASSWORD
+    if is_default:
+        print(f"\n  ⏰ No input — using default password: {_DEFAULT_SETUP_PASSWORD!r}")
+        print("  🔴 SECURITY: Run with SETUP_PASSWORD=<yourpassword> or set it in .env\n")
+    return {"password": password, "is_default": is_default}
+
+
 # ── main bootstrap ────────────────────────────────────────────────────────────
 
 async def bootstrap_alphaclaw(force: bool = False) -> dict[str, object]:
@@ -437,15 +480,24 @@ async def bootstrap_alphaclaw(force: bool = False) -> dict[str, object]:
             )
         )
 
+    # Step 1.5: write package.json anchor so npm postinstall (patch-package)
+    # resolves the project root to ALPHACLAW_INSTALL_DIR — not the filesystem root.
+    ALPHACLAW_INSTALL_DIR.mkdir(parents=True, exist_ok=True)
+    _pkg_json = ALPHACLAW_INSTALL_DIR / "package.json"
+    if not _pkg_json.exists():
+        _pkg_json.write_text(
+            json.dumps({"name": "alphaclaw-workspace", "version": "1.0.0", "private": True}),
+            encoding="utf-8",
+        )
+
     # Step 2: install @chrysb/alphaclaw locally if missing
     if not _is_alphaclaw_installed():
-        ALPHACLAW_INSTALL_DIR.mkdir(parents=True, exist_ok=True)
         print(
             f"[alphaclaw] \u2192 Installing @chrysb/alphaclaw into"
             f" {ALPHACLAW_INSTALL_DIR}\u2026"
         )
         try:
-            # Stream output so user sees live npm progress
+            # Stream output live; postinstall applies patches (safe, no TTY needed).
             subprocess.run(
                 ["npm", "install", "@chrysb/alphaclaw"],
                 cwd=str(ALPHACLAW_INSTALL_DIR),
@@ -474,16 +526,37 @@ async def bootstrap_alphaclaw(force: bool = False) -> dict[str, object]:
     # Step 4: agent workspaces
     _ensure_agent_workspaces(config_dir)
 
+    # Step 4.5: gather SETUP_PASSWORD + pre-write ~/.alphaclaw/.env
+    # This bypasses the AlphaClaw first-run wizard entirely.
+    # SETUP_PASSWORD is *required* by alphaclaw start — it will fail without it.
+    creds = _gather_alphaclaw_credentials(timeout=30)
+    _alphaclaw_env_file = ALPHACLAW_INSTALL_DIR / ".env"
+    if not _alphaclaw_env_file.exists() or force:
+        try:
+            from dotenv import set_key as _set_key
+            _set_key(str(_alphaclaw_env_file), "SETUP_PASSWORD", creds["password"])
+            _set_key(str(_alphaclaw_env_file), "ALPHACLAW_ROOT_DIR", str(ALPHACLAW_INSTALL_DIR))
+            print(f"[alphaclaw] \u2713 .env written \u2192 {_alphaclaw_env_file}")
+        except Exception as e:
+            print(f"[alphaclaw] \u26a0 .env write failed (non-fatal): {e}")
+
     # Step 5: start gateway
     gateway_url = f"http://127.0.0.1:{OPENCLAW_GATEWAY_PORT}"
     print("[alphaclaw] \u2192 Starting AlphaClaw gateway\u2026")
+    _log_dir = ALPHACLAW_INSTALL_DIR / "logs"
+    _log_dir.mkdir(parents=True, exist_ok=True)
     try:
         npx_bin = shutil.which("npx") or "npx"
+        # Log to file instead of DEVNULL so hangs are diagnosable.
+        _log_fh = open(_log_dir / "alphaclaw.log", "a")  # noqa: WPS515
         subprocess.Popen(
             [npx_bin, "alphaclaw", "start"],
             cwd=str(ALPHACLAW_INSTALL_DIR),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            env={**os.environ,
+                 "SETUP_PASSWORD": str(creds["password"]),
+                 "ALPHACLAW_ROOT_DIR": str(ALPHACLAW_INSTALL_DIR)},
+            stdout=_log_fh,
+            stderr=subprocess.STDOUT,
         )
     except Exception as e:
         print(f"[alphaclaw] \u2717 gateway start failed: {e}")
@@ -506,6 +579,22 @@ async def bootstrap_alphaclaw(force: bool = False) -> dict[str, object]:
         )
     else:
         os.environ["OPENCLAW_GATEWAY_URL"] = gateway_url
+
+    # Persist onboarding state for portal v1.1 + start.sh security warning
+    try:
+        from orchestrator.onboarding import write_onboarding_state
+        write_onboarding_state({
+            "alphaclaw": {
+                "password_is_default": bool(creds["is_default"]),
+                "gateway_url": gateway_url if ready else "",
+                "gateway_ready": ready,
+                "install_dir": str(ALPHACLAW_INSTALL_DIR),
+                "key_configured": bool(os.getenv("GITHUB_TOKEN")),
+                "windows_detected": bool(os.getenv("WIN_IP")),
+            }
+        })
+    except Exception as _oe:
+        print(f"[alphaclaw] \u26a0 onboarding state write failed (non-fatal): {_oe}")
 
     # Step 7: autoresearch
     _ensure_autoresearch()
