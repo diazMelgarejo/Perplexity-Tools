@@ -45,10 +45,35 @@ The canonical lessons file is `.claude/lessons/LESSONS.md` — **same relative p
 
 ## 4. AutoResearcher Integration
 
+Primary mode: **uditgoenka/autoresearch Claude Code plugin** (runs anywhere).
+Secondary mode: GPU runner via SSH for `ml-experiment` task types (optional Verify substrate).
+
+### Plugin install (one-time, idempotent)
+```bash
+claude plugin marketplace add uditgoenka/autoresearch
+claude plugin install autoresearch@autoresearch
+```
+
+### Activation (per session)
+```
+/autoresearch          # start a research loop
+/autoresearch:debug    # verbose mode with reasoning trace
+```
+
+### Bridge (secondary GPU path — ml-experiment only)
+```python
+from orchestrator.autoresearch_bridge import preflight, is_gpu_idle
+# Always check GPU lock before dispatching — Windows loads ONE model at a time
+if is_gpu_idle():
+    preflight(run_tag="my-experiment")
+```
+
 When running AutoResearcher swarms:
 - Read `.claude/lessons/LESSONS.md` for prior experiment context
 - Record new findings in `.claude/lessons/LESSONS.md` under a dated session entry
 - Cross-reference ultrathink-system's `.claude/lessons/LESSONS.md` for joint context
+- `AUTORESEARCH_REMOTE` env var selects the fork (default: uditgoenka/autoresearch)
+- `AUTORESEARCH_BRANCH` env var selects the default sync branch (default: main)
 
 ## 5. Repository Identity
 
