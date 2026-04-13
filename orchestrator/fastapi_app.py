@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import collections
 import json
 import logging
 import os
+import time
 from contextlib import asynccontextmanager
 from dataclasses import asdict
 from hashlib import sha256
@@ -51,8 +53,8 @@ def _run_ecc_sync_bg() -> None:
         _startup_log.warning("ECC Tools sync failed (non-fatal): %s", exc)
 
 
-@asynccontextmanager
-async def _lifespan(app: FastAPI):
+async def _resolve_routing_bg() -> None:
+    """Resolve routing state in background — non-blocking startup."""
     try:
         routing = await resolve_routing_state()
         _startup_log.info(
@@ -65,7 +67,12 @@ async def _lifespan(app: FastAPI):
     except Exception as exc:  # noqa: BLE001
         _startup_log.warning("Backend detection failed (non-fatal): %s", exc)
 
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    # Both background tasks fire at t=0; neither blocks port binding.
     asyncio.get_event_loop().run_in_executor(None, _run_ecc_sync_bg)
+    asyncio.create_task(_resolve_routing_bg(), name="routing-bg")
     yield
 
 
@@ -82,7 +89,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[
+        "http://localhost:3000", "http://127.0.0.1:3000",
+        "http://localhost:8002", "http://127.0.0.1:8002",  # portal
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -92,6 +102,11 @@ tracker = AgentTracker()
 registry = ModelRegistry()
 cost_guard = CostGuard()
 _ULTRATHINK_TASK_TYPES = {"deep_reasoning", "code_analysis"}
+
+# ── User-input queue ──────────────────────────────────────────────────────────
+# Shared in-process queue; agents poll GET /user-input/next to consume tasks.
+# Portal or CLI can push via POST /user-input.
+_USER_INPUT_QUEUE: collections.deque[Dict[str, Any]] = collections.deque(maxlen=50)
 
 
 class OrchestrateRequest(BaseModel):
@@ -282,6 +297,36 @@ def ecc_sync(force: bool = Query(False)) -> Dict[str, Any]:
     except Exception as exc:  # noqa: BLE001
         _startup_log.exception("ECC sync endpoint error")
         return {"status": "error", "message": str(exc)}
+
+
+class UserInputRequest(BaseModel):
+    message: str
+    source: str = "portal"  # "portal" | "cli"
+
+
+@app.post("/user-input", tags=["user-input"])
+def post_user_input(req: UserInputRequest) -> Dict[str, Any]:
+    """Queue a task message from the portal or CLI for researchers to pick up."""
+    entry = {"message": req.message, "source": req.source, "ts": time.time()}
+    _USER_INPUT_QUEUE.appendleft(entry)
+    return {"status": "queued", "queue_depth": len(_USER_INPUT_QUEUE), "entry": entry}
+
+
+@app.get("/user-input/next", tags=["user-input"])
+def get_user_input_next() -> Dict[str, Any]:
+    """Pop and return the next queued user message. Returns null message when empty."""
+    if _USER_INPUT_QUEUE:
+        return {"message": _USER_INPUT_QUEUE.pop()}
+    return {"message": None}
+
+
+@app.get("/user-input/status", tags=["user-input"])
+def get_user_input_status() -> Dict[str, Any]:
+    """Return queue depth and all pending messages (without consuming them)."""
+    return {
+        "queue_depth": len(_USER_INPUT_QUEUE),
+        "pending": list(_USER_INPUT_QUEUE),
+    }
 
 
 @app.get("/health", tags=["system"])
