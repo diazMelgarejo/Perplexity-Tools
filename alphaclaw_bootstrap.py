@@ -382,6 +382,14 @@ def _gather_alphaclaw_credentials(timeout: int = 30) -> dict[str, object]:
     if password:
         return {"password": password, "is_default": False}
 
+    # Non-interactive guard: when stdin is not a tty (e.g. start.sh </dev/null),
+    # skip the daemon thread entirely to prevent the stdin BufferedReader deadlock
+    # that causes "Abort trap: 6" at interpreter shutdown.
+    if not sys.stdin.isatty():
+        print("  [credentials] non-interactive — using default password"
+              " (set SETUP_PASSWORD= in .env to override)")
+        return {"password": _DEFAULT_SETUP_PASSWORD, "is_default": True}
+
     print("\n  ┌─────────────────────────────────────────────────────────────────┐")
     print("  │  ALPHACLAW FIRST-RUN SETUP                                      │")
     print(f"  │  Set an admin password (default: {_DEFAULT_SETUP_PASSWORD!r} if no input in 30s)   │")
@@ -552,6 +560,7 @@ async def bootstrap_alphaclaw(force: bool = False) -> dict[str, object]:
         subprocess.Popen(
             [npx_bin, "alphaclaw", "start"],
             cwd=str(ALPHACLAW_INSTALL_DIR),
+            stdin=subprocess.DEVNULL,  # prevent stdin inheritance from parent shell
             env={**os.environ,
                  "SETUP_PASSWORD": str(creds["password"]),
                  "ALPHACLAW_ROOT_DIR": str(ALPHACLAW_INSTALL_DIR)},
