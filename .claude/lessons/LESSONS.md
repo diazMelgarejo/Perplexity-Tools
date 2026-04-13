@@ -449,6 +449,56 @@ and CLAUDE.md, then executes independently — potentially stepping on each othe
 
 ---
 
+## 2026-04-13 — Claude — alphaclaw macOS compatibility patches + idempotent setup automation
+
+### Context
+`alphaclaw` (`@chrysb/alphaclaw` npm v0.9.3) assumes Linux/Docker with root. On macOS, 4 EACCES/ENOENT
+errors fire on every startup. The OpenClaw gateway also timed out (port 18789 never opened) due to
+`openclaw.json` schema validation failure — missing required `models[]` arrays under `ollama-mac` and
+`ollama-win`. Gateway process exits immediately on validation error; alphaclaw polls for 30 s and gives up.
+
+### Error → Root Cause Map
+
+| Startup error | Root cause | Fix |
+| -------------- | ---------- | --- |
+| `gog install skipped: Permission denied /usr/local/bin/gog` | `/usr/local/bin/` is `root:wheel` on macOS | Change dest to `~/.local/bin/gog` |
+| `Cron setup skipped: ENOENT /etc/cron.d/openclaw-hourly-sync` | `/etc/cron.d/` is Linux-only | macOS: use `crontab -l` user crontab |
+| `systemctl shim skipped: EACCES /usr/local/bin/systemctl` | Linux/Docker-only shim | Wrap in `if (os.platform() !== "darwin")` |
+| `git auth shim skipped: EACCES /usr/local/bin/git` | git shim dest hardcoded to root-owned path | Change to `~/.local/bin/git` |
+| `Gateway timed out after 30s` | `openclaw gateway run` exits on JSON schema error (`models` array undefined) | Add `models[]` arrays to ollama providers in `openclaw.json` |
+
+### Diagnosis Sequence for Gateway Timeout
+
+1. Check if port is open: `nc -z 127.0.0.1 18789` — if nothing → gateway never started
+2. Run directly: `openclaw gateway run` (or `openclaw gateway --help`) — schema errors print immediately
+3. Run `openclaw doctor` to see validation errors; `openclaw doctor --fix` fixes permissions + session dirs but does NOT repair missing `models[]` arrays (manual JSON edit required)
+4. Once `openclaw.json` is valid, port 18789 opens within ~4 seconds
+
+### `~/.local/bin` Precedence Pattern
+
+This machine's PATH order: `~/.local/bin` (pos 4) → `/usr/local/bin` (pos 9).
+Installing to `~/.local/bin` = user-writable shadow of system paths. No `sudo` required.
+This is the correct macOS pattern for any npm/pip tool that tries to write to `/usr/local/bin/`.
+
+### Idempotent Setup Automation
+
+`ultrathink-system/setup_macos.py` (called from `start.sh` on every boot):
+
+- Creates `~/.local/bin`, adds it to PATH in `~/.zshrc`
+- Validates `openclaw.json` — adds missing `models[]` arrays (queries live Ollama, falls back to defaults)
+- Re-applies 6 alphaclaw.js patches if npm overwrote them (each has `detect`/`old`/`new` triplet)
+- Writes `~/.alphaclaw/.macos_patches.json` marker for audit trail
+
+### Prevention Rules
+
+1. **Test `openclaw gateway run` directly** before blaming alphaclaw polling code — gateway config errors are silent from the outside but loud from the command line
+2. **`models[]` is required** in every provider entry in `openclaw.json` — `undefined` fails schema validation, process exits, port never opens
+3. **npm node_modules patches are ephemeral** — write a re-apply script, not a one-time manual fix
+4. **All setup scripts must be idempotent** — check the "already done" state before applying; never require a clean environment to work correctly
+5. **`openclaw doctor --fix`** handles: LaunchAgent install, `chmod 700` on `~/.openclaw`, missing session dirs — does NOT handle: JSON schema errors, missing models arrays, stale IPs
+
+---
+
 ## 2026-04-13 — Claude — Startup fix: PT port delay, user-input gate, portal visibility
 
 ### What was learned
