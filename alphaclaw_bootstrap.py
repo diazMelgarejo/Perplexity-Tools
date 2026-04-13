@@ -63,8 +63,8 @@ ALPHACLAW_INSTALL_DIR = Path(
 )
 
 # env-var defaults (exported by start.sh)
-MAC_IP     = os.getenv("MAC_IP",  "192.168.254.103")
-WIN_IP     = os.getenv("WIN_IP",  "192.168.254.100")
+MAC_IP     = os.getenv("MAC_IP",  "192.168.254.110")   # Mac LM Studio host
+WIN_IP     = os.getenv("WIN_IP",  "192.168.254.108")   # Windows host
 OLLAMA_MAC = os.getenv("OLLAMA_MAC_ENDPOINT",    f"http://{MAC_IP}:11434")
 OLLAMA_WIN = os.getenv("OLLAMA_WINDOWS_ENDPOINT", f"http://{WIN_IP}:11434")
 LMS_MAC    = os.getenv("LM_STUDIO_MAC_ENDPOINT",  f"http://{MAC_IP}:1234")
@@ -73,6 +73,75 @@ LMS_TOKEN  = os.getenv("LM_STUDIO_API_TOKEN", "lm-studio")
 MAC_MODEL  = os.getenv("MAC_LMS_MODEL", "Qwen3.5-9B-MLX-4bit")
 WIN_MODEL  = os.getenv("WINDOWS_LMS_MODEL",
                         "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2")
+
+
+def _find_npx_v22plus() -> str:
+    """Return path to npx that runs Node >= 22.5 (required for node:sqlite builtin).
+
+    Search order:
+    1. Current npx in PATH — if its node >= 22.5, use it immediately.
+    2. nvm directories: ~/.nvm/versions/node/v{22,23,24,...}/bin/npx
+    3. Homebrew node@22+ paths (/opt/homebrew, /usr/local)
+    4. Fallback to whatever npx is in PATH with a printed warning.
+    """
+    def _node_semver(npx_path: str) -> tuple[int, int]:
+        node_exe = str(Path(npx_path).parent / "node")
+        try:
+            out = subprocess.check_output(
+                [node_exe, "--version"], timeout=3, stderr=subprocess.DEVNULL, text=True
+            ).strip()             # "v24.14.1"
+            parts = out.lstrip("v").split(".")
+            return int(parts[0]), int(parts[1])
+        except Exception:
+            return (0, 0)
+
+    current_npx = shutil.which("npx") or "npx"
+    maj, min_ = _node_semver(current_npx)
+    if maj > 22 or (maj == 22 and min_ >= 5):
+        return current_npx
+
+    # nvm search — pick highest installed version >= 22.5
+    nvm_dir = Path(os.environ.get("NVM_DIR", Path.home() / ".nvm")) / "versions" / "node"
+    if nvm_dir.is_dir():
+        candidates: list[tuple[int, int, str]] = []
+        for node_dir in nvm_dir.iterdir():
+            if not node_dir.name.startswith("v"):
+                continue
+            try:
+                parts = node_dir.name[1:].split(".")
+                v_maj, v_min = int(parts[0]), int(parts[1])
+            except (ValueError, IndexError):
+                continue
+            if v_maj > 22 or (v_maj == 22 and v_min >= 5):
+                npx_cand = node_dir / "bin" / "npx"
+                if npx_cand.is_file():
+                    candidates.append((v_maj, v_min, str(npx_cand)))
+        if candidates:
+            candidates.sort(reverse=True)
+            found = candidates[0][2]
+            print(f"[alphaclaw] ℹ  Node v{maj}.{min_} in PATH is < 22.5"
+                  f" — using nvm node v{candidates[0][0]}.{candidates[0][1]}"
+                  f" ({found})")
+            return found
+
+    # Homebrew fallbacks
+    for brew_path in [
+        "/opt/homebrew/opt/node@24/bin/npx",
+        "/opt/homebrew/opt/node@22/bin/npx",
+        "/usr/local/opt/node@24/bin/npx",
+        "/usr/local/opt/node@22/bin/npx",
+    ]:
+        if Path(brew_path).is_file():
+            print(f"[alphaclaw] ℹ  Using Homebrew Node at {brew_path}")
+            return brew_path
+
+    # Warn and fall back — the gateway will crash with a clear error
+    print(
+        f"[alphaclaw] ⚠  Node.js v22.5+ is required (node:sqlite); "
+        f"current node is v{maj}.{min_}.\n"
+        f"           Install: brew install node  OR  nvm install 24"
+    )
+    return current_npx
 
 
 @dataclass
@@ -479,7 +548,7 @@ async def bootstrap_alphaclaw(force: bool = False) -> dict[str, object]:
 
     # Step 1: npm check
     if not shutil.which("npm"):
-        print("[alphaclaw] \u2717 npm not found \u2014 install Node 20+ from https://nodejs.org/")
+        print("[alphaclaw] \u2717 npm not found \u2014 install Node 22.5+ from https://nodejs.org/ or: nvm install 24")
         return asdict(
             AlphaClawBootstrapResult(
                 ok=False,
@@ -554,7 +623,7 @@ async def bootstrap_alphaclaw(force: bool = False) -> dict[str, object]:
     _log_dir = ALPHACLAW_INSTALL_DIR / "logs"
     _log_dir.mkdir(parents=True, exist_ok=True)
     try:
-        npx_bin = shutil.which("npx") or "npx"
+        npx_bin = _find_npx_v22plus()   # node:sqlite needs >= 22.5
         # Log to file instead of DEVNULL so hangs are diagnosable.
         _log_fh = open(_log_dir / "alphaclaw.log", "a")  # noqa: WPS515
         subprocess.Popen(

@@ -181,7 +181,7 @@ def _pull_latest() -> tuple[str, str]:
         ["git", "-C", str(VENDOR_DIR), "pull", "--ff-only", "origin", ECC_REPO_BRANCH],
         capture_output=True,
         text=True,
-        timeout=60,
+        timeout=8,   # Fail fast — ECC sync is non-fatal; 8 s is enough on any reachable network
     )
     if result.returncode != 0:
         logger.warning(f"[ECC Sync] git pull warning: {result.stderr.strip()}")
