@@ -33,9 +33,26 @@ except ImportError:
     print("[agent_launcher] ERROR: httpx not installed. Run: pip install httpx")
     sys.exit(1)
 
+# Load .env files so vars are available whether called from start.sh or directly.
+# .env.local overrides .env (machine-local settings take precedence).
+try:
+    from dotenv import load_dotenv as _load_dotenv
+    _here = Path(__file__).parent
+    _load_dotenv(_here / ".env",       override=False)
+    _load_dotenv(_here / ".env.local", override=True)
+except ImportError:
+    pass  # python-dotenv not installed — rely on shell env vars
+
+
 # ---------------------------------------------------------------------------
 # Default hardware endpoints (from hardware/SKILL.md profiles)
 # Override via environment variables or --configure flag
+#
+# Priority for each endpoint (highest → lowest):
+#   1. Machine-local .env.local  (e.g. MAC_LMS_HOST, WINDOWS_IP)
+#   2. Shared .env               (LM_STUDIO_MAC_ENDPOINT, LM_STUDIO_WIN_ENDPOINTS)
+#   3. Shell environment vars    (exported by start.sh from network_autoconfig)
+#   4. Hard-coded LAN defaults   (.110 = Mac LM Studio, .108 = Windows)
 # ---------------------------------------------------------------------------
 
 LOCAL_MAC_HOST    = os.getenv("LOCAL_MAC_HOST",    "127.0.0.1")
@@ -43,15 +60,32 @@ LOCAL_MAC_PORT    = int(os.getenv("LOCAL_MAC_PORT", "11434"))
 LOCAL_MAC_URL     = f"http://{LOCAL_MAC_HOST}:{LOCAL_MAC_PORT}"
 MAC_MANAGER_MODEL = os.getenv("MAC_MANAGER_MODEL", "glm-5.1:cloud")
 
-# Mac LM Studio (separate from local Ollama — may be on a LAN IP)
-MAC_LMS_HOST  = os.getenv("MAC_LMS_HOST",  "192.168.254.103")
-MAC_LMS_PORT  = int(os.getenv("MAC_LMS_PORT", "1234"))
+# Mac LM Studio — parse LM_STUDIO_MAC_ENDPOINT if set (canonical form in .env),
+# then fall back to explicit MAC_LMS_HOST/PORT vars, then hard-coded LAN default.
+_mac_lms_ep = os.getenv("LM_STUDIO_MAC_ENDPOINT", "").strip()
+if _mac_lms_ep:
+    _p = urlparse(_mac_lms_ep)
+    MAC_LMS_HOST = os.getenv("MAC_LMS_HOST", _p.hostname or "192.168.254.110")
+    MAC_LMS_PORT = int(os.getenv("MAC_LMS_PORT", str(_p.port or 1234)))
+else:
+    MAC_LMS_HOST = os.getenv("MAC_LMS_HOST", "192.168.254.110")
+    MAC_LMS_PORT = int(os.getenv("MAC_LMS_PORT", "1234"))
 MAC_LMS_URL   = f"http://{MAC_LMS_HOST}:{MAC_LMS_PORT}"
 MAC_LMS_MODEL = (os.getenv("MAC_LMS_MODEL")
                  or os.getenv("LMS_MAC_MODEL")
                  or "Qwen3.5-9B-MLX-4bit")
 
-WINDOWS_IP        = os.getenv("WINDOWS_IP",   "192.168.254.100")
+# Windows — WINDOWS_IP exported by start.sh; if absent parse LM_STUDIO_WIN_ENDPOINTS
+# (first entry), then fall back to hard-coded LAN default.
+_win_lms_eps = os.getenv("LM_STUDIO_WIN_ENDPOINTS", "").strip()
+_win_lms_first = _win_lms_eps.split(",")[0].strip() if _win_lms_eps else ""
+if not os.getenv("WINDOWS_IP") and _win_lms_first:
+    _pw = urlparse(_win_lms_first)
+    _win_ip_default = _pw.hostname or "192.168.254.108"
+else:
+    _win_ip_default = "192.168.254.108"
+
+WINDOWS_IP        = os.getenv("WINDOWS_IP",   _win_ip_default)
 WINDOWS_PORT      = int(os.getenv("WINDOWS_PORT", "11434"))
 REMOTE_WINDOWS_URL   = f"http://{WINDOWS_IP}:{WINDOWS_PORT}"
 WINDOWS_CODER_MODEL  = os.getenv("WINDOWS_CODER_MODEL", "qwen3-coder:14b")
@@ -141,33 +175,178 @@ async def check_lmstudio_worker(base_url: str, timeout: int = DETECT_TIMEOUT) ->
 
 
 # ---------------------------------------------------------------------------
+# Helpers: logging, model discovery, missing-backend prompt, routing builder
+# ---------------------------------------------------------------------------
+
+def _log_backend(label: str, ok: bool, url: str) -> None:
+    status = "✓" if ok else "✗"
+    print(f"[agent_launcher]   {status}  {label:<18} {url}")
+
+
+async def _fetch_models(
+    mac_ok: bool,
+    mac_url: str,
+    mac_lms_ok: bool,
+    lms_url: str,
+) -> dict[str, list[str]]:
+    """Query live local backends for their actual loaded model names.
+
+    Runs while LAN probes are still in flight — adds no extra latency.
+    Falls back to an empty list on any error; callers use env-var constants.
+    """
+    async def _ollama_tags(url: str) -> list[str]:
+        try:
+            async with httpx.AsyncClient(timeout=DETECT_TIMEOUT) as c:
+                r = await c.get(f"{url}/api/tags")
+                return [m["name"] for m in r.json().get("models", [])]
+        except Exception:
+            return []
+
+    async def _lms_models(url: str) -> list[str]:
+        hdrs = {"Authorization": f"Bearer {LMS_API_TOKEN}"} if LMS_API_TOKEN else {}
+        try:
+            async with httpx.AsyncClient(timeout=DETECT_TIMEOUT) as c:
+                r = await c.get(f"{url.rstrip('/')}/v1/models", headers=hdrs)
+                return [m["id"] for m in r.json().get("data", [])]
+        except Exception:
+            return []
+
+    coros: dict[str, object] = {}
+    if mac_ok:
+        coros["mac-ollama"] = _ollama_tags(mac_url)
+    if mac_lms_ok:
+        coros["mac-lmstudio"] = _lms_models(lms_url)
+    if not coros:
+        return {}
+    gathered = await asyncio.gather(*coros.values(), return_exceptions=True)
+    return {
+        key: val if isinstance(val, list) else []
+        for key, val in zip(coros.keys(), gathered)
+    }
+
+
+def _prompt_missing(items: list[str]) -> None:
+    """Print a diagnostic table and ask the user whether to continue offline.
+
+    Non-interactive (stdin not a tty): warns and returns to continue.
+    Interactive: calls sys.exit(1) if the user declines.
+    """
+    print("\n" + "─" * 64)
+    print("  SETUP INCOMPLETE — could not reach:")
+    for item in items:
+        print(f"    ✗  {item}")
+    print("─" * 64)
+    if not sys.stdin.isatty():
+        print("  [non-interactive] continuing offline — fix backends and restart")
+        return
+    ans = input("  Continue offline anyway? [y/N]: ").strip().lower()
+    if ans != "y":
+        sys.exit(1)
+
+
+def _build_routing_state(
+    mac_ok: bool,
+    mac_lms_ok: bool,
+    win_ok: bool,
+    lms_ok: bool,
+    local_models: dict[str, list[str]],
+    mac_lms_is_local: bool,
+    local_ips: frozenset[str],
+) -> dict:
+    """Construct the routing state dict.
+
+    Agent assignment happens here — only after hardware is confirmed and
+    actual model names have been queried from live backends.
+    """
+    def _first(key: str, fallback: str) -> str:
+        models = local_models.get(key, [])
+        return models[0] if models else fallback
+
+    # Manager: Mac Ollama first, then Mac LM Studio
+    if mac_ok:
+        manager_endpoint = LOCAL_MAC_URL
+        manager_model    = _first("mac-ollama", MAC_MANAGER_MODEL)
+        manager_backend  = "mac-ollama"
+    else:
+        manager_endpoint = MAC_LMS_URL
+        manager_model    = _first("mac-lmstudio", MAC_LMS_MODEL)
+        manager_backend  = "mac-lmstudio"
+
+    mac_any = mac_ok or mac_lms_ok
+
+    return {
+        "manager_endpoint":      manager_endpoint,
+        "manager_model":         manager_model,
+        "manager_backend":       manager_backend,
+        "coder_endpoint":        (REMOTE_WINDOWS_LMS_URL if lms_ok
+                                  else REMOTE_WINDOWS_URL  if win_ok
+                                  else manager_endpoint),
+        "coder_model":           (WINDOWS_LMS_MODEL       if lms_ok
+                                  else WINDOWS_CODER_MODEL  if win_ok
+                                  else manager_model),
+        "coder_backend":         ("windows-lmstudio" if lms_ok
+                                  else "windows-ollama" if win_ok
+                                  else "mac-degraded"),
+        "mac_ollama_ok":         mac_ok,
+        "mac_lmstudio_ok":       mac_lms_ok,
+        "windows_ollama_ok":     win_ok,
+        "windows_lm_studio_ok":  lms_ok,
+        "distributed":           win_ok or lms_ok,
+        "mac_only":              not win_ok and not lms_ok,
+        "mac_reachable":         mac_any,
+        "windows_ip":            WINDOWS_IP,
+        "lmstudio_endpoint":     REMOTE_WINDOWS_LMS_URL if lms_ok else None,
+        "lmstudio_model":        WINDOWS_LMS_MODEL if lms_ok else None,
+        "lmstudio_detected":     lms_ok,
+        "mac_lmstudio_endpoint": MAC_LMS_URL if mac_lms_ok else None,
+        "mac_lmstudio_model":    MAC_LMS_MODEL if mac_lms_ok else None,
+        "mac_lmstudio_is_local": mac_lms_is_local,
+        "local_ips":             sorted(local_ips),
+        "discovered_models":     local_models,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Core: detect hardware and build routing state
 # ---------------------------------------------------------------------------
 
 async def initialize_environment() -> dict:
-    """
-    Detect available hardware and return agent routing state.
+    """Detect available hardware and return agent routing state.
 
-    Returns:
-        dict with keys:
-            manager_endpoint  - Ollama base URL for the manager/synthesis agent (Mac)
-            coder_endpoint    - Ollama base URL for the coder/heavy-reasoning agent
-            coder_model       - Model tag for the coder agent
-            manager_model     - Model tag for the manager agent
-            distributed       - True if Windows worker is reachable
-            mac_only          - True if running in Mac-only degraded mode
-    """
-    mac_ok, mac_lms_ok, win_ok, lms_ok = await asyncio.gather(
-        check_remote_worker(LOCAL_MAC_URL),
-        check_lmstudio_worker(MAC_LMS_URL),
-        check_remote_worker(REMOTE_WINDOWS_URL),
-        check_lmstudio_worker(REMOTE_WINDOWS_LMS_URL),
-    )
+    All four backend probes fire concurrently at t=0. Local (Mac) results are
+    awaited first and gate agent-role commitment. LAN results (Win LM Studio is
+    always online) are collected as soon as they arrive — no sequential blocking.
 
-    # ── device-identity guard: one role per physical machine ─────────────────
-    # The OS routing table reveals which IPs belong to this machine.  If a
-    # "remote" Windows URL resolves to a local IP, the user mis-configured
-    # WINDOWS_IP and we must NOT spawn a second researcher on the same device.
+    Returns a dict suitable for writing to .state/routing.json.
+    """
+    # ── All probes start at t=0 ───────────────────────────────────────────
+    t_mac_ol  = asyncio.create_task(check_remote_worker(LOCAL_MAC_URL),            name="mac-ollama")
+    t_mac_lms = asyncio.create_task(check_lmstudio_worker(MAC_LMS_URL),            name="mac-lmstudio")
+    t_win_ol  = asyncio.create_task(check_remote_worker(REMOTE_WINDOWS_URL),       name="win-ollama")
+    t_win_lms = asyncio.create_task(check_lmstudio_worker(REMOTE_WINDOWS_LMS_URL), name="win-lmstudio")
+
+    # ── Step 1: await local results — they gate agent-role commitment ─────
+    print("[agent_launcher] Probing backends…")
+    mac_ok, mac_lms_ok = await asyncio.gather(t_mac_ol, t_mac_lms)
+    _log_backend("Mac Ollama",    mac_ok,    LOCAL_MAC_URL)
+    _log_backend("Mac LM Studio", mac_lms_ok, MAC_LMS_URL)
+
+    # ── Step 2: identify actual models on live local backends ─────────────
+    # Runs while LAN tasks are still in flight — no extra wall-clock cost.
+    local_models = await _fetch_models(mac_ok, LOCAL_MAC_URL, mac_lms_ok, MAC_LMS_URL)
+    for backend, models in local_models.items():
+        if models:
+            preview = ", ".join(models[:3]) + (" …" if len(models) > 3 else "")
+            print(f"[agent_launcher]   ↳ {backend}: {preview}")
+
+    # ── Step 3: collect LAN results (Win LM Studio usually already done) ──
+    win_ok, lms_ok = await asyncio.gather(t_win_ol, t_win_lms)
+    _log_backend("Win Ollama",    win_ok, REMOTE_WINDOWS_URL)
+    _log_backend("Win LM Studio", lms_ok, REMOTE_WINDOWS_LMS_URL)
+
+    # ── Step 4: device-identity guard ────────────────────────────────────
+    # If a "remote" URL resolves to a local IP, the user mis-configured
+    # WINDOWS_IP — do NOT spawn a second researcher on the same device.
     local_ips = _get_local_ips()
 
     if win_ok and _is_local_endpoint(REMOTE_WINDOWS_URL, local_ips):
@@ -187,50 +366,77 @@ async def initialize_environment() -> dict:
         print(f"[agent_launcher] ℹ  Mac LM Studio ({MAC_LMS_URL}) is on this device"
               f" — Ollama takes precedence (one role per device)")
         mac_lms_ok = False
-    # ─────────────────────────────────────────────────────────────────────────
 
+    # ── Step 5: prompt if no local backend found ──────────────────────────
     mac_any = mac_ok or mac_lms_ok
     if not mac_any:
-        print(f"[agent_launcher] WARNING: No Mac backend reachable "
-              f"(Ollama={LOCAL_MAC_URL}, LMS={MAC_LMS_URL})")
-        print("  → Start Ollama ('ollama serve') or LM Studio on the Mac")
+        _prompt_missing([
+            f"Mac Ollama      → {LOCAL_MAC_URL}  (run: ollama serve)",
+            f"Mac LM Studio   → {MAC_LMS_URL}  (start LM Studio server)",
+        ])
 
-    # Manager runs on Mac — prefer GLM via local Ollama, fall back to Mac LM Studio
-    manager_endpoint = LOCAL_MAC_URL   if mac_ok     else MAC_LMS_URL
-    manager_model    = MAC_MANAGER_MODEL if mac_ok   else MAC_LMS_MODEL
-    manager_backend  = "mac-ollama"    if mac_ok     else "mac-lmstudio"
+    # ── Step 6: assign agents — hardware confirmed, models identified ─────
+    return _build_routing_state(
+        mac_ok, mac_lms_ok, win_ok, lms_ok, local_models, mac_lms_is_local, local_ips
+    )
 
-    routing_state = {
-        "manager_endpoint":     manager_endpoint,
-        "manager_model":        manager_model,
-        "manager_backend":      manager_backend,
-        "coder_endpoint":       (REMOTE_WINDOWS_LMS_URL if lms_ok
-                                 else REMOTE_WINDOWS_URL      if win_ok
-                                 else manager_endpoint),
-        "coder_model":          (WINDOWS_LMS_MODEL       if lms_ok
-                                 else WINDOWS_CODER_MODEL     if win_ok
-                                 else manager_model),
-        "coder_backend":        ("windows-lmstudio" if lms_ok
-                                 else "windows-ollama"    if win_ok
-                                 else "mac-degraded"),
-        "mac_ollama_ok":        mac_ok,
-        "mac_lmstudio_ok":      mac_lms_ok,
-        "windows_ollama_ok":    win_ok,
-        "windows_lm_studio_ok": lms_ok,
-        "distributed":          win_ok or lms_ok,
-        "mac_only":             not win_ok and not lms_ok,
-        "mac_reachable":        mac_any,
-        "windows_ip":           WINDOWS_IP,
-        "lmstudio_endpoint":    REMOTE_WINDOWS_LMS_URL if lms_ok else None,
-        "lmstudio_model":       WINDOWS_LMS_MODEL if lms_ok else None,
-        "lmstudio_detected":    lms_ok,
-        "mac_lmstudio_endpoint": MAC_LMS_URL if mac_lms_ok else None,
-        "mac_lmstudio_model":    MAC_LMS_MODEL if mac_lms_ok else None,
-        "mac_lmstudio_is_local": mac_lms_is_local,
-        "local_ips":            sorted(local_ips),
-    }
 
-    return routing_state
+# ---------------------------------------------------------------------------
+# Auto-write detected IPs back to .env so future runs are pre-configured
+# ---------------------------------------------------------------------------
+
+def _persist_detected_ips(state: dict) -> None:
+    """Write confirmed live endpoints back into .env so the next run is pre-configured.
+
+    Only updates lines that already exist in the file (safe, non-destructive).
+    Skips writing if both endpoints are already correct to keep the file stable.
+    """
+    env_path = Path(__file__).parent / ".env"
+    if not env_path.exists():
+        return
+
+    mac_lms_url = state.get("mac_lmstudio_endpoint") or MAC_LMS_URL
+    win_lms_url = state.get("lmstudio_endpoint") or REMOTE_WINDOWS_LMS_URL
+
+    try:
+        lines = env_path.read_text(encoding="utf-8").splitlines(keepends=True)
+    except OSError:
+        return
+
+    updated = False
+    new_lines = []
+    for line in lines:
+        stripped = line.rstrip("\n").rstrip()
+        if stripped.startswith("LM_STUDIO_MAC_ENDPOINT="):
+            want = f"LM_STUDIO_MAC_ENDPOINT={mac_lms_url}\n"
+            if line != want:
+                line = want
+                updated = True
+        elif stripped.startswith("LM_STUDIO_WIN_ENDPOINTS="):
+            # Preserve comma-separated extras; replace first entry only
+            rest = stripped[len("LM_STUDIO_WIN_ENDPOINTS="):]
+            parts = [p.strip() for p in rest.split(",")]
+            if parts[0] != win_lms_url:
+                parts[0] = win_lms_url
+                want = "LM_STUDIO_WIN_ENDPOINTS=" + ",".join(parts) + "\n"
+                line = want
+                updated = True
+        elif stripped.startswith("WINDOWS_IP="):
+            want = f"WINDOWS_IP={WINDOWS_IP}\n"
+            if line != want:
+                line = want
+                updated = True
+        new_lines.append(line)
+
+    if updated:
+        try:
+            env_path.write_text("".join(new_lines), encoding="utf-8")
+            print(f"[agent_launcher] ✎  .env updated with live endpoints"
+                  f" (Mac LMS: {mac_lms_url}  Win LMS: {win_lms_url})")
+        except OSError as e:
+            print(f"[agent_launcher] ⚠  could not write .env: {e}")
+    else:
+        print(f"[agent_launcher] ✔  .env already has correct endpoints — no update needed")
 
 
 # ---------------------------------------------------------------------------
@@ -309,20 +515,22 @@ async def main(args: argparse.Namespace) -> None:
     # Interactive prompt — skip in --write-state (non-interactive) mode
     if not args.write_state:
         if state["windows_ollama_ok"]:
-            # Explicit confirmation only for primary Ollama path
+            # Explicit confirmation only when primary Win Ollama path is active
             proceed = input("\nProceed with distributed mode? [Y/n]: ").strip().lower()
             if proceed == "n":
                 print("  To set up the Windows instance first, run: python setup_wizard.py")
                 return
         elif state["windows_lm_studio_ok"]:
-            pass  # Silent fallback — LM Studio is the active coder backend
-        else:
+            pass  # LM Studio is the active coder backend — no prompt needed
+        elif state["mac_reachable"]:
             print("\nWindows worker not detected. Running in Mac-only mode.")
             print("  To configure Windows: python agent_launcher.py --configure")
             print("  To install on Windows first: python setup_wizard.py")
 
     # Persist routing state for orchestrator consumers
     save_routing_state(state)
+    # Write confirmed live endpoints back to .env so future runs start correctly
+    _persist_detected_ips(state)
 
     if args.write_state:
         # Machine-readable one-liner for start.sh

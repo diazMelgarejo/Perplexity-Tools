@@ -31,6 +31,42 @@ Import command: `/instinct-import .claude/homunculus/instincts/inherited/Perplex
 
 ---
 
+## 2026-04-13 — Claude — Startup fix: IP detection, stdin deadlock, concurrent backend probing
+
+### Learned
+
+- **Abort trap: 6 root cause**: `_gather_alphaclaw_credentials()` spawned a daemon thread calling `input()`. After `t.join(30)` timed out the thread was still alive and held the stdin `BufferedReader` lock; Python interpreter shutdown then tried to flush/close that reader → SIGABRT. Three-layer fix: (1) `sys.stdin.isatty()` guard in Python skips the daemon thread in non-interactive mode, (2) `</dev/null` in start.sh redirects stdin so `input()` gets instant EOFError, (3) `stdin=subprocess.DEVNULL` on the AlphaClaw gateway `Popen` prevents the node process from inheriting the broken fd.
+
+- **IP misconfiguration was silent**: `agent_launcher.py` read `MAC_LMS_HOST` / `WINDOWS_IP` from env but neither was exported by start.sh or present in `.env`. The fallback hard-coded defaults (`.103`, `.100`) were always used. Actual LAN addresses are `.110` (Mac LM Studio) and `.108` (Windows).
+
+- **`.env.local` had wrong values**: `WINDOWS_IP=192.168.254.101` (off by several octets), `WINDOWS_PORT=1234` (LM Studio port mistakenly overriding the Ollama port → `REMOTE_WINDOWS_URL` pointed at LM Studio instead of Ollama). Fixed to `.108` / `11434`.
+
+- **`agent_launcher.py` never called `load_dotenv()`** — it only saw shell-exported vars. Added `load_dotenv(".env")` + `load_dotenv(".env.local", override=True)` so `.env` files are always loaded regardless of how the script is invoked.
+
+- **No `MAC_LMS_HOST` in any .env file**: Added parsing of `LM_STUDIO_MAC_ENDPOINT` (the canonical .env key) to extract host/port for Mac LMS probing.
+
+- **`asyncio.create_task()` vs `gather()`**: tasks fire at creation; `gather()` blocks. Using `create_task()` for all 4 backend probes at t=0 and awaiting in two phases (local first, then LAN) gives correct ordering without sequential delay.
+
+### Decided
+
+- Hard-coded defaults in `agent_launcher.py` updated to match the real LAN: `.110` Mac, `.108` Windows.
+
+- `network_autoconfig.py` `preferred_ips` updated to `.110` / `.108` so start.sh IP autodetect produces the right `WIN_IP` / `MAC_IP` even without netifaces.
+
+- `_persist_detected_ips()` added: after each probe run, confirmed live endpoints are written back to `.env` so future runs are self-correcting.
+
+- Agent assignment is strictly downstream of hardware confirmation + model name discovery (local models queried while LAN probes are still in flight — no extra wall-clock cost).
+
+- `_prompt_missing()` handles both interactive (asks user) and non-interactive (warns + continues) modes.
+
+### Open
+
+- Windows Ollama (`http://192.168.254.108:11434`) is not expected to be running — verify `windows_ollama_ok: false` path is handled cleanly in routing.json.
+
+- If Mac LM Studio at `.110` is the Mac's own LAN IP, `mac_lms_is_local` will be True. Verify the device-identity guard does NOT wrongly disable it when Mac Ollama is also down (guard condition is `mac_lms_is_local AND mac_ok AND mac_lms_ok` — should be safe).
+
+---
+
 ## 2026-04-07 — Claude — Idempotent installs: subprocess permissions + model auto-discovery
 
 ### What was learned
