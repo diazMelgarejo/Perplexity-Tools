@@ -55,6 +55,10 @@ POLL_INTERVAL        = int(os.getenv("RESEARCHER_POLL_INTERVAL", "30"))
 CRASH_RECOVERY_SECS  = int(os.getenv("RESEARCHER_CRASH_RECOVERY", "30"))
 MAX_EVENTS           = 200
 REQUEST_TIMEOUT      = 90.0
+INPUT_POLL_INTERVAL  = int(os.getenv("RESEARCHER_INPUT_POLL_INTERVAL", "5"))
+
+# PT orchestrator endpoint — researchers poll here for user tasks
+PT_ENDPOINT = os.getenv("ORCHESTRATOR_ENDPOINT", "http://localhost:8000")
 
 DEFAULT_TASK = (
     "You are an autoresearcher agent. Briefly state your current hardware context, "
@@ -188,6 +192,42 @@ async def _resolve_lmstudio_model(endpoint: str, preferred: str) -> str | None:
 
 # ── researcher coroutine ──────────────────────────────────────────────────────
 
+async def _poll_user_input() -> str | None:
+    """Poll PT for a queued user task. Returns message string or None."""
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            r = await client.get(f"{PT_ENDPOINT}/user-input/next")
+            r.raise_for_status()
+            return r.json().get("message") or None
+    except Exception:
+        return None
+
+
+async def _wait_for_user_input(role: str, agent_id: str, model: str, backend: str) -> str:
+    """Block until a user message arrives via PT queue or stdin (if tty).
+
+    Prints a CLI hint the first time so both portal and terminal users know how to proceed.
+    """
+    _append_event(agent_id, role, model, backend, "waiting_for_input",
+                  "Handshake rounds complete — waiting for user task")
+    tracker.update_status(agent_id, "idle")
+
+    print(f"\n  [{role}] ✋ Handshake rounds complete — waiting for user instruction.")
+    print(f"  [{role}]    Portal:  submit via textbox at http://localhost:8002")
+    print(f"  [{role}]    CLI:     curl -sX POST {PT_ENDPOINT}/user-input "
+          f"-H 'Content-Type: application/json' -d '{{\"message\":\"your task\"}}'")
+    print(f"  [{role}]    Polling every {INPUT_POLL_INTERVAL}s…", flush=True)
+
+    while True:
+        msg = await _poll_user_input()
+        if msg:
+            log.info("[%s] received user task: %s", role, msg[:120])
+            _append_event(agent_id, role, model, backend, "user_task_received", msg)
+            tracker.update_status(agent_id, "running")
+            return msg
+        await asyncio.sleep(INPUT_POLL_INTERVAL)
+
+
 async def run_researcher(
     role: str,
     endpoint: str,
@@ -196,8 +236,17 @@ async def run_researcher(
     task: str,
     loop_once: bool,
     interval: int,
+    rounds: int = 3,
 ) -> None:
-    """Register and run a single researcher agent loop."""
+    """Register and run a single researcher agent loop.
+
+    After ``rounds`` successful iterations the agent stops its autonomous loop
+    and waits for a user-supplied task via the PT /user-input queue (or portal
+    textbox).  It then executes that task and waits again — acting as an
+    interactive agent rather than an endless autonomous loop.
+
+    Set rounds=0 to disable the stop (original autonomous behaviour).
+    """
     use_lmstudio = "lmstudio" in backend or ":1234" in endpoint
 
     # Discover the actually-loaded model before committing to it
@@ -222,11 +271,14 @@ async def run_researcher(
         metadata={"endpoint": endpoint},
         status="running",
     )
-    log.info("[%s] started  agent_id=%s  model=%s  backend=%s", role, agent.agent_id, model, backend)
+    log.info("[%s] started  agent_id=%s  model=%s  backend=%s  rounds=%d",
+             role, agent.agent_id, model, backend, rounds)
     _append_event(agent.agent_id, role, model, backend, "started",
-                  f"endpoint={endpoint} model={model}")
+                  f"endpoint={endpoint} model={model} rounds={rounds}")
 
     iteration = 0
+    successes = 0
+    current_task = task
 
     try:
         while True:
@@ -237,17 +289,17 @@ async def run_researcher(
             error_reason: str | None = None
             try:
                 if use_lmstudio:
-                    reply = await _lmstudio_chat(endpoint, model, task)
+                    reply = await _lmstudio_chat(endpoint, model, current_task)
                 else:
-                    reply = await _ollama_chat(endpoint, model, task)
+                    reply = await _ollama_chat(endpoint, model, current_task)
 
                 tracker.update_status(agent.agent_id, "idle")
                 _append_event(agent.agent_id, role, model, backend, "reply", reply)
                 log.info("[%s] reply: %s", role, reply[:140])
+                successes += 1
             except Exception as exc:
                 tracker.update_status(agent.agent_id, "error")
                 _append_event(agent.agent_id, role, model, backend, "error", str(exc))
-                # Classify the error so the user sees a clear crash message
                 status_code = getattr(getattr(exc, "response", None), "status_code", None)
                 exc_str = str(exc)
                 if status_code == 503:
@@ -268,12 +320,22 @@ async def run_researcher(
 
             if loop_once:
                 break
-            # After a crash: 30-second GPU cooldown with progress bar.
-            # After a successful reply: normal poll interval sleep.
+
+            # After a crash: GPU cooldown.
             if error_reason is not None:
                 await _wait_with_progress(CRASH_RECOVERY_SECS, role, error_reason)
-            else:
-                await asyncio.sleep(interval)
+                continue
+
+            # After N successful rounds: stop autonomous loop, wait for user input.
+            if rounds > 0 and successes >= rounds:
+                current_task = await _wait_for_user_input(
+                    role, agent.agent_id, model, backend
+                )
+                successes = 0  # reset counter after each user-directed run
+                iteration = 0
+                continue
+
+            await asyncio.sleep(interval)
     except asyncio.CancelledError:
         pass
     finally:
@@ -284,7 +346,7 @@ async def run_researcher(
 
 # ── entry ─────────────────────────────────────────────────────────────────────
 
-async def main(task: str, loop_once: bool, interval: int) -> None:
+async def main(task: str, loop_once: bool, interval: int, rounds: int) -> None:
     # Detect live backends via agent_launcher
     from agent_launcher import initialize_environment
 
@@ -308,6 +370,7 @@ async def main(task: str, loop_once: bool, interval: int) -> None:
             task=task,
             loop_once=loop_once,
             interval=interval,
+            rounds=rounds,
         )))
     else:
         log.warning("Mac Ollama not reachable at %s — skipping mac-researcher",
@@ -323,6 +386,7 @@ async def main(task: str, loop_once: bool, interval: int) -> None:
             task=task,
             loop_once=loop_once,
             interval=interval,
+            rounds=rounds,
         )))
     else:
         log.warning("Windows backend not reachable — running mac-researcher only (degraded mode)")
@@ -346,9 +410,17 @@ if __name__ == "__main__":
     parser.add_argument("--once",     action="store_true",  help="Single pass then exit")
     parser.add_argument("--interval", type=int, default=POLL_INTERVAL,
                         help="Seconds between iterations (default: %(default)s)")
+    parser.add_argument("--rounds",   type=int, default=3,
+                        help="Successful rounds before stopping to await user input "
+                             "(0 = disable, loop forever) (default: 3)")
     args = parser.parse_args()
 
     try:
-        asyncio.run(main(task=args.task, loop_once=args.once, interval=args.interval))
+        asyncio.run(main(
+            task=args.task,
+            loop_once=args.once,
+            interval=args.interval,
+            rounds=args.rounds,
+        ))
     except KeyboardInterrupt:
         pass
