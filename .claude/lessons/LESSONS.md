@@ -446,3 +446,40 @@ and CLAUDE.md, then executes independently — potentially stepping on each othe
 
 ### Commits
 - `71a15f7` (PT) — fix(health): restore 127.0.0.1 loopback defaults for ollama/lm_studio_host
+
+---
+
+## 2026-04-13 — Claude — Startup fix: PT port delay, user-input gate, portal visibility
+
+### What was learned
+
+1. **FastAPI lifespan blocks port binding**: `resolve_routing_state()` awaited BEFORE `yield` in `_lifespan`
+   prevented uvicorn from accepting connections until all backend probes completed (~6-9s) or ECC sync
+   timed out (60s in old code). Rule: NEVER await slow async work before `yield` in an `@asynccontextmanager`
+   lifespan. Use `asyncio.create_task()` so it runs concurrently AFTER port is bound.
+
+2. **ECC sync 60→8s already committed** (previous session `f83be77`). The old 60s showed up because
+   it was SYNCHRONOUSLY inside lifespan — even a fast 8s timeout would still block startup. The real fix
+   was making it background in both cases.
+
+3. **Win researcher "backend unreachable" errors** are Windows LM Studio going offline intermittently.
+   The researcher already has 30s cooldown + retry logic. No code change needed; the issue is hardware uptime.
+
+4. **portal_server.py default IPs were stale** (`.100`/`.103`) because `.env` was never loaded.
+   Always add dotenv loading to any service that uses `os.getenv()` for LAN IPs.
+
+5. **User-input gate pattern**: agents should NOT loop forever autonomously. After N confirmation rounds,
+   stop and poll `GET /user-input/next` every 5s. This converts researchers from autonomous loops to
+   interactive agents without needing stdin (which causes Abort trap: 6 in daemon threads).
+
+### Decisions made
+
+- `fastapi_app.py` lifespan: both ECC sync and routing resolution now background — zero-blocking startup.
+- Added `POST /user-input`, `GET /user-input/next`, `GET /user-input/status` to PT.
+- Researchers stop after `--rounds 3` (default) and poll PT for user input; `--rounds 0` = infinite loop.
+- Portal proxies user input via `POST /api/user-input` → PT; textbox shown on dashboard with CLI hint.
+- Portal now shows: Routing State card, Active Agents pills, waiting/user-task event tags.
+
+### Commits
+- `5678cac` (PT) — fix(startup): non-blocking lifespan, user-input queue, 3-round researcher stop
+- `691787a` (UTS) — fix(portal): dotenv load, correct IPs, routing card, agent state, user input textbox
