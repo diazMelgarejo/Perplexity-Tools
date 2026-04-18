@@ -36,12 +36,19 @@ Or use the `/ecc-sync` command (`.claude/commands/ecc-sync.md`).
 
 ## 3. Shared Lessons Path
 
-The canonical lessons file is `.claude/lessons/LESSONS.md` — **same relative path in both PT and ultrathink-system**.
+The canonical lessons file is **`docs/LESSONS.md`** (previously `.claude/lessons/LESSONS.md`, which now redirects here).
 
 - ECC agents: read + write
 - AutoResearcher agents: read + write
 - Claude sessions: read at start, append before exit
 - Auditable on GitHub at all times
+
+| Resource | Purpose |
+| --- | --- |
+| [`SKILL.md`](SKILL.md) | Model selection rules + agent behavioral rules |
+| [`docs/LESSONS.md`](docs/LESSONS.md) | Chronological session log — all agents, all dates |
+| [`docs/wiki/README.md`](docs/wiki/README.md) | Wiki index — links to all lesson deep-dives |
+| [`docs/wiki/07-multi-agent-collab.md`](docs/wiki/07-multi-agent-collab.md) | Version registry, scope claims, conflict recovery |
 
 ## 4. AutoResearcher Integration
 
