@@ -1,13 +1,14 @@
-# Lessons — Shared Knowledge Base
+# Lessons — Perplexity-Tools
 
-> **Canonical path**: `.claude/lessons/LESSONS.md` (same in PT and ultrathink-system)
-> **Purpose**: GitHub-auditable persistent memory across all ECC, AutoResearcher, and Claude sessions.
+> **MOVED**: The canonical lessons file is now **[docs/LESSONS.md](../../docs/LESSONS.md)**.
+>
+> This file is kept for backwards compatibility with ECC and AutoResearcher agents that reference `.claude/lessons/LESSONS.md`. All new entries go to `docs/LESSONS.md`.
 >
 > **Rules**:
-> - Read this file at the start of every session
-> - Append new learnings before ending a session
+> - Read `docs/LESSONS.md` at the start of every session
+> - Append new learnings to `docs/LESSONS.md` before ending a session
 > - Keep entries dated and agent-tagged
-> - Cross-reference companion repo: [ultrathink-system/.claude/lessons/LESSONS.md](https://github.com/diazMelgarejo/ultrathink-system/blob/main/.claude/lessons/LESSONS.md)
+> - Cross-reference companion repo: [ultrathink-system/docs/LESSONS.md](https://github.com/diazMelgarejo/ultrathink-system/blob/main/docs/LESSONS.md)
 
 ## continuous-learning-v2
 
