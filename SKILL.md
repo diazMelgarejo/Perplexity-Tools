@@ -336,3 +336,52 @@ This is the primary async communication channel between agents that never share 
 - Added Perplexity API integration (Claude Sonnet 4.5 + Grok 4.1)
 - Added 4 runtime modes (Mac-only, Dell-only, LAN-full, LM-Studio-MLX)
 - Integrated with ultrathink-system and ECC-tools
+
+---
+
+## Agent Behavioral Rules (Session-Level)
+
+> Rules derived from real bugs — every "never" has a root-cause story in the wiki.
+> For deep dives: **[docs/wiki/README.md](docs/wiki/README.md)**
+> For the session log: **[docs/LESSONS.md](docs/LESSONS.md)**
+
+### Before any code change
+
+```bash
+# 1. Read the session log — scope claims and version updates live here
+cat docs/LESSONS.md
+
+# 2. Sync with other agents' recent pushes
+git fetch origin main
+git log --oneline HEAD..origin/main
+
+# 3. Tests must be green before new work starts
+python -m pytest -q
+```
+
+### Hard rules (every session)
+
+1. **Never `capture_output=True` in bootstrap subprocess calls** — silences all install output
+2. **After `npm install -g`, verify and fix execute bits** — `PermissionError ≠ CalledProcessError`; catch separately
+3. **Never hardcode model names** — query `/v1/models` (LM Studio) or `/api/tags` (Ollama) at runtime; `Qwen3.5-27B-Instruct` **does not exist**
+4. **One inference backend per physical device** — `_get_local_ips()` before trusting any "remote" endpoint
+5. **Crash recovery ≥ 30 seconds** — GPU model load/unload cycles need this buffer
+6. **Probe before starting any gateway** — commandeer a running service rather than launching a duplicate
+7. **`load_dotenv(".env")` + `load_dotenv(".env.local", override=True)` at module level** — shell-exported vars alone are unreliable
+8. **Never `input()` in a daemon thread** — `sys.stdin.isatty()` guard + `</dev/null` in start.sh + `stdin=subprocess.DEVNULL` on gateway Popen
+9. **`uv sync --dev`** in all bootstrap paths — never bare `pip install`
+
+### Pre-commit checklist
+
+```bash
+# No LAN IPs in source defaults
+grep -rn "192\.168\." --include="*.py" | grep -v "test_\|#\|LESSONS\|\.env"
+
+# All required modules importable
+python -c "import fastapi, httpx, uvicorn, pydantic, slowapi, pytest, hatchling, build"
+
+# No conflict markers in committed files
+git grep "<<<<<<< \|>>>>>>> " -- '*.py' '*.md' '*.yml'
+```
+
+→ Full wiki: [docs/wiki/README.md](docs/wiki/README.md)
