@@ -1,0 +1,21 @@
+{
+  "name": "@diazmelgarejo/alphaclaw-mcp",
+  "version": "0.1.0",
+  "description": "TypeScript MCP server wrapping the AlphaClaw HTTP adapter",
+  "main": "build/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node build/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.6.1",
+    "@diazmelgarejo/alphaclaw-adapter": "file:../alphaclaw-adapter"
+  },
+  "devDependencies": {
+    "@types/node": "^22.14.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.8.2"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "lmstudio-agent": {
+    "command": "node",
+    "args": [
+      "../../local-agents/src/orchestrator.js",
+      "--backend",
+      "lmstudio"
+    ],
+    "description": "MCP process for LM Studio (Old-way adapter via .mcpb config)",
+    "capabilities": {
+      "tools": {}
+    }
+  }
+}
