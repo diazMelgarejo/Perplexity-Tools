@@ -64,6 +64,55 @@ Import command: `/instinct-import .claude/homunculus/instincts/inherited/Perplex
 
 ---
 
+## 2026-04-20 — Claude — Gate 1: Three-repo adapter, AlphaClaw HTTP client, alphaclaw_manager.py
+
+### Learned
+
+**Architecture decisions (do not re-debate):**
+- `"type": "module"` in `packages/alphaclaw-adapter/package.json` conflicted with `require()` in all source files (copied from AlphaClaw, which is CJS). Fix: remove `"type": "module"`. Keep everything CommonJS in this package.
+- `spawnSync` with `detached:true` does NOT actually detach — the parent blocks until the child exits. Always use `spawn` (not `spawnSync`) then `child.unref()` for detached background processes.
+- Session cookies from AlphaClaw's `/api/auth/login` arrive in `res.headers["set-cookie"]` as an array. Must `map(c => c.split(";")[0]).join("; ")` to extract the key=value without attributes (Secure, HttpOnly, Path).
+
+**AlphaClaw auth model (SETUP_API_PREFIXES):**
+- Two auth tiers exist: "setup-allowlisted" (`/api/status`, `/api/gateway*`, `/api/restart-status`) accessible without a full session, and "session²" (`/api/models`, `/api/env`, `/api/watchdog/*`) requiring a cookie from `POST /api/auth/login`. Always probe via `/health` first (no auth), then setup-allowlisted endpoints, then login before calling session² endpoints.
+
+**orchestrator/alphaclaw_manager.py pattern:**
+- The `--env-only` flag pattern (print `export KEY='val'` lines, caller does `eval "$(...)"`) is the cleanest way to propagate PT-resolved env vars into a bash script without a temp file or JSON parsing in bash.
+- `--resolve --env-only` pipes through `tee /dev/stderr` so progress messages appear in the terminal while `grep '^export '` captures only the eval-able lines.
+- `subprocess.run()` with `capture_output=False` lets the Python child's stdout/stderr stream to the terminal in real time — critical for long-running operations like AlphaClaw bootstrap.
+
+**start.sh thinning rule:**
+- Sections 2a (backend probe) and 2c (mode determination) were gateway decision logic — they belong in PT, not in orama. If a shell script is making gateway routing decisions, it violates the PT-is-authoritative invariant.
+- The thinned start.sh pattern: resolve via PT (`eval "$PT_ENV_EXPORTS"`), then unconditionally start services. The shell script is now a pure process manager, not a policy engine.
+
+**Smoke test structure:**
+- Group tests by auth tier (no-auth → setup-allowlisted → session-auth → watchdog) to match the contract document. This makes it obvious which section a failure belongs to.
+- Mark destructive tests (restartGateway, watchdogRepair) as `null` (SKIP) by default; gate behind `SMOKE_DESTRUCTIVE=1` env var.
+- Exit code 1 on any FAIL so CI can catch regressions.
+
+**FUSE mount git limitations (still applies at Gate 1):**
+- `git add`, `git commit`, `git push` in the sandbox FUSE-mounted paths often fail with `index.lock` or `Resource deadlock avoided`. Always provide Mac terminal commands for git operations.
+
+### Decisions Made
+
+- `packages/alphaclaw-adapter/src/index.js` is the **authoritative Node.js HTTP client** — 20+ exported functions, module-level session state, commandeer-first `discoverPort()`, proper detached `startServer()`.
+- `orchestrator/alphaclaw_manager.py` is the **authoritative Python lifecycle manager** — absorbs start.sh §2a (backend probe) and §2c (mode determination). orama delegates entirely to this module.
+- `packages/alphaclaw-adapter/scripts/smoke-test.js` is the **Gate 1 acceptance test** — run against live AlphaClaw before marking Gate 1 fully verified.
+- Gate 1 is structurally complete. The one remaining step before Gate 1 is "fully" done: run smoke-test.js against a live AlphaClaw instance and register the MCP server in claude mcp.
+
+### Open
+
+- MCP server registration still pending: `claude mcp add --transport stdio alphaclaw -- node packages/alphaclaw-adapter/src/mcp/server.js`
+- `packages/local-agents/tests/client.test.js` (Vitest) not yet run — pending Gate 1 verification step
+- `lib/mcp/` and `lib/agents/` in AlphaClaw `feature/MacOS-post-install` not yet tagged for removal (wait for smoke-test green)
+- `openclaw_bootstrap.py` in orama scope-down to apply-config only is Gate 2 work
+
+→ [docs/MIGRATION.md §Gate 1](MIGRATION.md)
+→ [docs/adapter-interface-contract.md](adapter-interface-contract.md)
+→ [docs/adr/ADR-001-three-repo-adapter-architecture.md](adr/ADR-001-three-repo-adapter-architecture.md)
+
+---
+
 ## 2026-04-07 — Claude — Idempotent installs: subprocess permissions + model auto-discovery
 
 ### What was learned

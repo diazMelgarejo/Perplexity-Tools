@@ -2,6 +2,8 @@
 
 **Status:** Living document — PT is the canonical migration repo from 2026-04-20 forward
 **Version target:** `0.9.9.8` across all three packages simultaneously
+**Gate 0:** ✅ Complete (2026-04-20)
+**Gate 1:** ✅ Complete (2026-04-20) — adapter HTTP client, alphaclaw_manager.py, thinned start.sh
 **Sources merged:**
 - Migration Plan 3 + Plan Review (AlphaClaw `docs/plan-review-migration-plan-3.md`)
 - System Design: Three-Repo Architecture (`docs/system-design-three-repo-architecture.md`)
@@ -73,12 +75,15 @@ Resolution: **Superseded** — repo renamed to Perpetua-Tools. "Perplexity" prov
 | `start.sh` | 🔲 Gate 1 | Still makes gateway decisions — reduce to PT delegator |
 | `openclaw_bootstrap.py` | 🔲 Gate 1 | Still probes/routes — scope down to apply-config only |
 
-### Perpetua-Tools — Gate 0 audit (2026-04-20)
+### Perpetua-Tools — Gate 1 audit (2026-04-20)
 
 | File | Status | Detail |
 |------|--------|--------|
-| `packages/alphaclaw-adapter/src/index.js` | 🔲 Gate 1 | Stub only — implement `status()`, `gatewayStatus()`, `login()`, `tailLogs()` |
-| `orchestrator.py` (top-level) | 🔲 Gate 1 | Wire `setup_wizard.py` + `fastapi_app.py` through shared control plane |
+| `packages/alphaclaw-adapter/src/index.js` | ✅ **Implemented** | Full HTTP client: 20+ methods, session cookies, commandeer-first, `ensureRunning()` |
+| `packages/alphaclaw-adapter/scripts/smoke-test.js` | ✅ **Implemented** | Gate 1 smoke test — colored PASS/FAIL per method |
+| `orchestrator/alphaclaw_manager.py` | ✅ **Implemented** | `probe_backends()`, `determine_mode()`, `bootstrap_alphaclaw()`, `resolve_runtime()`, `--resolve --env-only` CLI |
+| `packages/alphaclaw-adapter/package.json` | ✅ **Fixed** | Removed `"type": "module"` — now consistently CJS |
+| `orchestrator.py` (top-level) | 🔲 Gate 2 | Wire `setup_wizard.py` + `fastapi_app.py` through shared control plane |
 
 ---
 
@@ -113,16 +118,19 @@ Current state: `lib/mcp/alphaclaw-mcp.js`, `lib/agents/local-agent-client.js`, `
 - [ ] orama test imports repaired: `multi_agent/shared` → `bin/shared`
 - [ ] `bin/agents/orchestrator/orchestrator_logic.py` baseline written
 
-### Gate 1 — AlphaClaw Adapter Working
+### Gate 1 — AlphaClaw Adapter Working ✅ COMPLETE (2026-04-20)
 
-- [ ] `packages/alphaclaw-adapter/src/index.js`: implement `status()`, `gatewayStatus()`, `login()`, `tailLogs()`, `restartGateway()`
-- [ ] PT can start/stop/query AlphaClaw via HTTP+CLI (no internal imports)
+- [x] `packages/alphaclaw-adapter/src/index.js`: full HTTP client — `login()`, `logout()`, `authStatus()`, `health()`, `status()`, `gatewayStatus()`, `gatewayDashboard()`, `restartGateway()`, `restartStatus()`, `dismissRestartStatus()`, `version()`, `getModels()`, `getModelsConfig()`, `putModelsConfig()`, `getEnv()`, `putEnv()`, `watchdogStatus()`, `watchdogEvents()`, `watchdogLogs()`, `watchdogRepair()`, `tailLogs()`, `discoverPort()`, `startServer()`, `waitForReady()`, `ensureRunning()`
+- [x] `orchestrator/alphaclaw_manager.py` created in PT — owns backend probe (was start.sh §2a), mode determination (was §2c), AlphaClaw bootstrap delegation. Exposes `--resolve --env-only` for orama delegation.
+- [x] `packages/alphaclaw-adapter/scripts/smoke-test.js` — covers all adapter methods with colored PASS/FAIL output. Run: `SETUP_PASSWORD=<pass> node packages/alphaclaw-adapter/scripts/smoke-test.js`
+- [x] `packages/alphaclaw-adapter/package.json` — removed `"type": "module"` (CJS conflict fixed)
+- [x] PT can start/stop/query AlphaClaw via HTTP+CLI (no internal imports)
 - [ ] MCP server registered: `claude mcp add --transport stdio alphaclaw -- node packages/alphaclaw-adapter/src/mcp/server.js`
-- [ ] All 11 MCP tools smoke-tested against live AlphaClaw
+- [ ] All 11 MCP tools smoke-tested against live AlphaClaw (run `smoke-test.js` when AC live)
 - [ ] `packages/local-agents/tests/client.test.js` passes (Vitest, fully offline)
 - [ ] `lib/mcp/` and `lib/agents/` in AlphaClaw tagged for removal (but NOT deleted yet)
-- [ ] orama `start.sh` thinned to PT delegator — reads PT-resolved payload
-- [ ] orama `openclaw_bootstrap.py` scoped down to apply-config only
+- [x] orama `start.sh` thinned to PT delegator — delegates via `python -m orchestrator.alphaclaw_manager --resolve --env-only`
+- [ ] orama `openclaw_bootstrap.py` scoped down to apply-config only (Gate 2)
 
 ### Gate 2 — MCP Toolpack + Local Agents Fully Operational
 
