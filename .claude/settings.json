@@ -5,9 +5,35 @@
         "hooks": [
           {
             "type": "command",
+            "command": "bash scripts/discover-lm-studio.sh 2>&1 | grep -v '^$' || true",
+            "statusMessage": "Discovering LM Studio endpoints...",
+            "async": true
+          },
+          {
+            "type": "command",
             "command": "bash scripts/sync-companion-instincts.sh 2>/dev/null || true",
             "statusMessage": "Syncing companion instincts...",
             "async": true
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "file=$(python3 -c \"import sys,json,os; print(json.loads(os.environ.get('CLAUDE_TOOL_INPUT','{}')).get('file_path',''))\" 2>/dev/null || echo ''); [[ \"$file\" == *.py ]] && ruff check \"$file\" 2>&1 | head -10 || true"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[[ -f pyproject.toml ]] && python -m pytest tests/ -x -q --tb=short 2>&1 | tail -12 || true"
           }
         ]
       }
