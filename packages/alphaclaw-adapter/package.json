@@ -2,7 +2,6 @@
   "name": "@diazmelgarejo/alphaclaw-adapter",
   "version": "0.9.9.8",
   "description": "AlphaClaw HTTP+CLI adapter and MCP server for Perpetua-Tools",
-  "type": "module",
   "main": "src/index.js",
   "scripts": {
     "test": "node --experimental-vm-modules ../../node_modules/.bin/vitest run",
