@@ -1,0 +1,14 @@
+{
+  "ollama-agent": {
+    "command": "node",
+    "args": [
+      "../../local-agents/src/orchestrator.js",
+      "--backend",
+      "ollama"
+    ],
+    "description": "MCP process for Ollama (Old-way adapter via .mcpb config)",
+    "capabilities": {
+      "tools": {}
+    }
+  }
+}
