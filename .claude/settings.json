@@ -14,6 +14,12 @@
             "command": "bash scripts/sync-companion-instincts.sh 2>/dev/null || true",
             "statusMessage": "Syncing companion instincts...",
             "async": true
+          },
+          {
+            "type": "command",
+            "command": "echo '\ud83d\udca1 Skills: /self-discovery  /agent-run  /model-routing-check' || true",
+            "statusMessage": "Skills ready",
+            "async": true
           }
         ]
       }
