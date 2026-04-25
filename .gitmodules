@@ -1,7 +1,9 @@
 [submodule "packages/agentic-stack"]
 	path = packages/agentic-stack
 	url = https://github.com/codejunkie99/agentic-stack
+	ignore = dirty
 
 [submodule "vendor/ecc-tools"]
 	path = vendor/ecc-tools
 	url = https://github.com/affaan-m/everything-claude-code.git
+	ignore = dirty
