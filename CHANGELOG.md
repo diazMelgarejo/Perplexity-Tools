@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Perplexity-Tools are documented here.
+All notable changes to Perpetua-Tools are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versioning follows [Semantic Versioning](https://semver.org/).
 
@@ -29,6 +29,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Ollama remains as fallback (same model files, different runtime)
 
 ---
+
 ## [1.0.0-rc] - 2026-04-01 [LM Studio MCP Server] [SYNC]
 
 ### Added
@@ -54,6 +55,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   `multi_agent/config/mcp.json`, updated `api_server.py` with LM Studio primary backend
 
 ---
+
 ## [1.0-rc] - 2026-03-30
 
 ### Added
@@ -81,6 +83,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   is tracked in `docs/ROADMAP_v1.1.md`.
 
 ---
+
 ## [0.9.9.0] - 2026-03-30
 
 ### Added
@@ -104,6 +107,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - ultrathink api_server.py hardened with corrected defaults [SYNC]
 
 ---
+
 ## [0.9.8.0] - 2026-03-29
 
 ### Security
@@ -222,9 +226,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Initial Perplexity-Tools release
+- Initial Perpetua-Tools release
 - Multi-model orchestrator with local Ollama + Perplexity cloud fallback
-- `.agents/skills/Perplexity-Tools/` skill bundle for Claude/Codex/Cowork
+- `.agents/skills/Perpetua-Tools/` skill bundle for Claude/Codex/Cowork
 - `config/routing.yml` — task-type to model-role routing
 - `config/models.yml` — model registry with device affinity
 - `config/devices.yml` — LAN device configuration (Mac + Windows)
@@ -237,5 +241,5 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 ## Notes
 
 - ultrathink-system CHANGELOG: <https://github.com/diazMelgarejo/ultrathink-system/blob/main/CHANGELOG.md>
-- 4-layer architecture: Perplexity-Tools → ultrathink-system → ECC Tools → autoresearch
+- 4-layer architecture: Perpetua-Tools → ultrathink-system → ECC Tools → autoresearch
 - Priority rule: PT SKILL.md runs first; ultrathink called for `reasoning_depth=ultra` only

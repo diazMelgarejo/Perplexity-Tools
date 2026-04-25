@@ -2,7 +2,7 @@
 """
 setup_wizard.py
 ---------------
-Idempotent installation wizard for Perplexity-Tools multi-agent orchestration.
+Idempotent installation wizard for Perpetua-Tools multi-agent orchestration.
 
 Detects existing AI software (Ollama, LM Studio, MLX, Python env) and reuses
 it without redundant installations. Guides users through hardware-aware setup
@@ -262,7 +262,7 @@ def _install_alphaclaw_interactive() -> bool:
 
 def run_wizard(args: argparse.Namespace) -> None:
     print("\n" + "=" * 60)
-    print("    Perplexity-Tools Setup Wizard")
+    print("    Perpetua-Tools Setup Wizard")
     print("    Idempotent Hardware-Aware Installation")
     print("=" * 60 + "\n")
 
@@ -435,7 +435,7 @@ def run_wizard(args: argparse.Namespace) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Idempotent installation wizard for Perplexity-Tools"
+        description="Idempotent installation wizard for Perpetua-Tools"
     )
     parser.add_argument(
         "--skip-scan", action="store_true",

@@ -4,7 +4,7 @@
 > All rules below are **non-negotiable** for every agent (ECC, AutoResearcher, Claude).
 >
 > **Repo renamed**: Perplexity-Tools → Perpetua-Tools (2026-04-20, trademark risk eliminated)
-> GitHub: https://github.com/diazMelgarejo/Perpetua-Tools
+> GitHub: <https://github.com/diazMelgarejo/Perpetua-Tools>
 
 ---
 
@@ -14,7 +14,7 @@ Every session **must** use [continuous-learning-v2](https://github.com/affaan-m/
 
 - **Read first**: Load `.claude/lessons/LESSONS.md` at session start — this is the shared knowledge base across all agents and sessions.
 - **Write back**: Append meaningful discoveries, patterns, and decisions to `.claude/lessons/LESSONS.md` before ending a session.
-- **Instinct path**: Repo instincts live at `.claude/homunculus/instincts/inherited/Perplexity-Tools-instincts.yaml`.
+- **Instinct path**: Repo instincts live at `.claude/homunculus/instincts/inherited/Perpetua-Tools-instincts.yaml`.
 
 ## 2. ECC Post-Merge Workflow (Mandatory)
 
@@ -25,7 +25,7 @@ After **any** ECC Tools PR is merged into this repo, immediately run:
 git pull origin main
 
 # 2. Import instincts (run in Claude Code)
-/instinct-import .claude/homunculus/instincts/inherited/Perplexity-Tools-instincts.yaml
+/instinct-import .claude/homunculus/instincts/inherited/Perpetua-Tools-instincts.yaml
 
 # 3. Verify
 /instinct-status
@@ -59,18 +59,21 @@ Primary mode: **uditgoenka/autoresearch Claude Code plugin** (runs anywhere).
 Secondary mode: GPU runner via SSH for `ml-experiment` task types (optional Verify substrate).
 
 ### Plugin install (one-time, idempotent)
+
 ```bash
 claude plugin marketplace add uditgoenka/autoresearch
 claude plugin install autoresearch@autoresearch
 ```
 
 ### Activation (per session)
-```
+
+```ascii
 /autoresearch          # start a research loop
 /autoresearch:debug    # verbose mode with reasoning trace
 ```
 
 ### Bridge (secondary GPU path — ml-experiment only)
+
 ```python
 from orchestrator.autoresearch_bridge import preflight, is_gpu_idle
 # Always check GPU lock before dispatching — Windows loads ONE model at a time
@@ -79,6 +82,7 @@ if is_gpu_idle():
 ```
 
 When running AutoResearcher swarms:
+
 - Read `.claude/lessons/LESSONS.md` for prior experiment context
 - Record new findings in `.claude/lessons/LESSONS.md` under a dated session entry
 - Cross-reference orama-system's `.claude/lessons/LESSONS.md` for joint context
@@ -93,12 +97,12 @@ When running AutoResearcher swarms:
 - **Companion repos**:
   - [AlphaClaw](https://github.com/diazMelgarejo/AlphaClaw) (Layer 1 — infrastructure, managed dependency)
   - [orama-system](https://github.com/diazMelgarejo/orama-system) (Layer 3 — orchestration, meta-intelligence)
-- **Skill**: `.claude/skills/Perplexity-Tools/SKILL.md`
+- **Skill**: `.claude/skills/Perpetua-Tools/SKILL.md`
 - **Mother skill**: n/a (PT is the adapter/middleware layer)
 
 ## 6. Three-Repo Architecture (read before any significant work)
 
-```
+```ascii
 AlphaClaw (Layer 1 — infrastructure)
     │  CLI + HTTP only (no internal imports)
     ▼
@@ -149,6 +153,7 @@ node --experimental-vm-modules ../../node_modules/.bin/vitest run
 gstack v1.3 is the agent skill framework for web browsing, planning, and review.
 
 **Rules:**
+
 - ALWAYS use `/browse` for web browsing — NEVER `mcp__Claude_in_Chrome__*` directly
 - Use `/plan-eng-review` before any Gate 0→1 transition
 - Use `/ship` before any `npm publish`
