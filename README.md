@@ -1,7 +1,7 @@
-# Perplexity-Tools v0.9.9.7
+# Perpetua-Tools v0.9.9.7
 
 > **Top-level idempotent multi-agent orchestrator for Mac + Windows**
-> Standardized first on `v0.9.0.0` — branch `v0.9.0.0` of [`diazMelgarejo/Perplexity-Tools`](https://github.com/diazMelgarejo/Perplexity-Tools); *`main` branch is now ahead at v0.9.9.7*
+> Standardized first on `v0.9.0.0` — branch `v0.9.0.0` of [`diazMelgarejo/Perpetua-Tools`](https://github.com/diazMelgarejo/Perpetua-Tools); *`main` branch is now ahead at v0.9.9.7*
 
 ---
 
@@ -11,8 +11,8 @@ Four interoperable, independently configurable layers:
 
 | Repo | Role | Config |
 |------|------|--------|
-| **Perplexity-Tools** (this repo) | Top-level orchestrator, agent lifecycle, fallback routing, idempotency | `config/devices.yml`, `config/models.yml`, `config/routing.yml` |
-| **[ultrathink-system](https://github.com/diazMelgarejo/ultrathink-system)** | Reasoning methodology, 5-stage process, CIDF; routing methodology via `bin/skills/SKILL.md`; multi-agent registry is separately installable | `bin/skills/SKILL.md`, `bin/config/` |
+| **Perpetua-Tools** (this repo) | Top-level orchestrator, agent lifecycle, fallback routing, idempotency | `config/devices.yml`, `config/models.yml`, `config/routing.yml` |
+| **[orama-system](https://github.com/diazMelgarejo/orama-system)** | Reasoning methodology, 5-stage process, CIDF; routing methodology via `bin/skills/SKILL.md`; multi-agent registry is separately installable | `bin/skills/SKILL.md`, `bin/config/` |
 | **[ECC Tools](https://github.com/affaan-m/everything-claude-code)** | Subagent auto-selection default logic for up to 5 Stage4 parallel Masterful Executor Agents (especially coders) | `.claude/ecc-tools.json` |
 | **[uditgoenka/autoresearch](https://github.com/uditgoenka/autoresearch)** | Latest idempotent sync; research automation workflows and AI-driven research tools | Per autoresearch standard |
 
@@ -20,7 +20,7 @@ Four interoperable, independently configurable layers:
 
 - Top-level agents on Mac + Windows: **this repo's `SKILL.md` → `ModelRegistry` → fallback chain** (top-level model selection runs first).
 - Subagents: **ECC-tools default logic** for ECC-style auto-selection (unless the top-level orchestrator overrides role assignment); supports up to 5 Stage4 parallel Masterful Executor Agents, especially coders.
-- **ultrathink-system** supplies reasoning and routing methodology; keep it **independently configurable** from this orchestrator's device/model YAML.
+- **orama-system** supplies reasoning and routing methodology; keep it **independently configurable** from this orchestrator's device/model YAML.
 - **autoresearch** provides latest research automation workflows with idempotent sync.
 
 ---
@@ -31,14 +31,14 @@ Four interoperable, independently configurable layers:
 - **Fallback logic**: local → online, device-preferred → shared → cloud.
 - **Per-device**: Mac (`glm-5.1:cloud` via local Ollama, with LM Studio verifier/orchestrator fallback), Windows (LM Studio primary, Ollama fallback), or both on one shared Ollama.
 - **Cost-guarded**: daily budget cap + 80% alert threshold.
-- **Interoperable**: all four layers compatible via shared config contracts; **Perplexity-Tools** remains the top-level orchestrator and instance manager.
+- **Interoperable**: all four layers compatible via shared config contracts; **Perpetua-Tools** remains the top-level orchestrator and instance manager.
 
 ---
 
 ## Repository Structure
 
 ```
-Perplexity-Tools/
+Perpetua-Tools/
 ├── SKILL.md                          ← Top-level model-selection skill
 ├── orchestrator/
 │   ├── __init__.py
@@ -65,8 +65,8 @@ Perplexity-Tools/
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/diazMelgarejo/Perplexity-Tools
-cd Perplexity-Tools
+git clone https://github.com/diazMelgarejo/Perpetua-Tools
+cd Perpetua-Tools
 git checkout
 pip install -r requirements.txt
 
@@ -156,7 +156,7 @@ POST /orchestrate
 
 ## Compatible Repos
 
-- **ultrathink-system**: install per that repo; provides reasoning layer (`bin/skills/SKILL.md`) and optional multi-agent registry — **separately configurable** from this repo.
+- **orama-system**: install per that repo; provides reasoning layer (`bin/skills/SKILL.md`) and optional multi-agent registry — **separately configurable** from this repo.
 - **ECC Tools** ([affaan-m/everything-claude-code](https://github.com/affaan-m/everything-claude-code)): subagents use ECC auto-selection by default for up to 5x Stage-4 parallel Masterful Executor Agents (especially coders); configured via `.claude/ecc-tools.json`.
 - **autoresearch** ([uditgoenka/autoresearch](https://github.com/uditgoenka/autoresearch)): latest idempotent sync for research automation workflows.
 - All configs live in `config/` — prefer YAML + env (e.g. `OLLAMA_HOST`) over hardcoded hosts.
@@ -169,6 +169,6 @@ POST /orchestrate
 |-------|-------|
 | Version | `0.9.9.7` |
 | Branch | `main` |
-| Compatible with | ultrathink-system (reasoning layer; version per that repo), ECC Tools standard, uditgoenka/autoresearch (research automation) |
+| Compatible with | orama-system (reasoning layer; version per that repo), ECC Tools standard, uditgoenka/autoresearch (research automation) |
 | Python | `3.11+` |
 | Framework | FastAPI + httpx + PyYAML |

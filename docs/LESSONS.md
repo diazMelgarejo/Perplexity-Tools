@@ -1,9 +1,9 @@
-# Lessons — Perplexity-Tools
+# Lessons — Perpetua-Tools
 
 > **Canonical path**: `docs/LESSONS.md`
 > **Previous path**: `.claude/lessons/LESSONS.md` (now redirects here)
 > **Purpose**: GitHub-auditable persistent memory across all ECC, AutoResearcher, and Claude sessions.
-> **Cross-repo companion**: [ultrathink-system/docs/LESSONS.md](https://github.com/diazMelgarejo/ultrathink-system/blob/main/docs/LESSONS.md)
+> **Cross-repo companion**: [orama-system/docs/LESSONS.md](https://github.com/diazMelgarejo/orama-system/blob/main/docs/LESSONS.md)
 >
 > **Rules**:
 > - Read this file at the start of every session
@@ -17,8 +17,8 @@
 ## continuous-learning-v2
 
 This repo uses [continuous-learning-v2](https://github.com/affaan-m/everything-claude-code/tree/main/skills/continuous-learning-v2).
-Instincts: `.claude/homunculus/instincts/inherited/Perplexity-Tools-instincts.yaml`
-Import command: `/instinct-import .claude/homunculus/instincts/inherited/Perplexity-Tools-instincts.yaml`
+Instincts: `.claude/homunculus/instincts/inherited/Perpetua-Tools-instincts.yaml`
+Import command: `/instinct-import .claude/homunculus/instincts/inherited/Perpetua-Tools-instincts.yaml`
 
 ---
 
@@ -219,7 +219,7 @@ Import command: `/instinct-import .claude/homunculus/instincts/inherited/Perplex
 
 **Current version: `0.9.9.7`.** Do NOT bump without explicit user instruction.
 
-#### Perplexity-Tools (PT)
+#### Perpetua-Tools (PT)
 
 | File | Field |
 |------|-------|
@@ -284,7 +284,7 @@ PATH order on macOS: `~/.local/bin` (pos 4) → `/usr/local/bin` (pos 9). Instal
 
 ### Idempotent Setup
 
-`ultrathink-system/setup_macos.py` (called from `start.sh` on every boot):
+`orama-system/setup_macos.py` (called from `start.sh` on every boot):
 - Creates `~/.local/bin`, adds it to PATH in `~/.zshrc`
 - Validates `~/.openclaw/openclaw.json` — adds `models[]` if missing
 - Applies 6 alphaclaw.js patches idempotently (detect string guards)

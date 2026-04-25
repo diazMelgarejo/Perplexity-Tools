@@ -68,4 +68,4 @@ def _resolve_ollama_model(host, port, preferred):
 ## Related
 
 - [Session log 2026-04-07](../LESSONS.md#2026-04-07--claude--idempotent-installs-subprocess-permissions--model-auto-discovery)
-- [UTS/02](https://github.com/diazMelgarejo/ultrathink-system/blob/main/docs/wiki/02-idempotent-installs.md) — same topic with UTS-specific files
+- [UTS/02](https://github.com/diazMelgarejo/orama-system/blob/main/docs/wiki/02-idempotent-installs.md) — same topic with UTS-specific files

@@ -75,4 +75,4 @@ python "$SCRIPT_DIR/orchestrator.py" </dev/null
 ## Related
 
 - [Session log 2026-04-13](../LESSONS.md#2026-04-13--claude--startup-fix-ip-detection-stdin-deadlock-concurrent-backend-probing)
-- [UTS/07](https://github.com/diazMelgarejo/ultrathink-system/blob/main/docs/wiki/07-startup-ip-detection.md) — full code samples
+- [UTS/07](https://github.com/diazMelgarejo/orama-system/blob/main/docs/wiki/07-startup-ip-detection.md) — full code samples

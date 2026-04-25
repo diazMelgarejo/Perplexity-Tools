@@ -123,7 +123,7 @@ orama-system (Layer 3 — orchestration/meta-intelligence)
 | `packages/local-agents/tests/client.test.js` | Vitest unit tests (fully offline) |
 | `packages/mcpb-agents/` | Gate 2: `.mcpb` process-per-model definitions |
 | `orchestrator/` | Python orchestration: control_plane, model_registry, lan_discovery, cost_guard |
-| `orchestrator/ultrathink_bridge.py` | Bridge to orama-system (rename target: orama_bridge.py) |
+| `orchestrator/orama_bridge.py` | Bridge to orama-system |
 | `config/` | devices.yml, models.yml, routing.yml |
 | `docs/adapter-interface-contract.md` | Living API contract — update after every AlphaClaw upstream merge |
 

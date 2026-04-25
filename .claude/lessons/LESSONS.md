@@ -1,4 +1,4 @@
-# Lessons — Perplexity-Tools
+# Lessons — Perpetua-Tools
 
 > **MOVED**: The canonical lessons file is now **[docs/LESSONS.md](../../docs/LESSONS.md)**.
 >
@@ -8,13 +8,13 @@
 > - Read `docs/LESSONS.md` at the start of every session
 > - Append new learnings to `docs/LESSONS.md` before ending a session
 > - Keep entries dated and agent-tagged
-> - Cross-reference companion repo: [ultrathink-system/docs/LESSONS.md](https://github.com/diazMelgarejo/ultrathink-system/blob/main/docs/LESSONS.md)
+> - Cross-reference companion repo: [orama-system/docs/LESSONS.md](https://github.com/diazMelgarejo/orama-system/blob/main/docs/LESSONS.md)
 
 ## continuous-learning-v2
 
 This repo uses [continuous-learning-v2](https://github.com/affaan-m/everything-claude-code/tree/main/skills/continuous-learning-v2) for all agents.
-Instincts: `.claude/homunculus/instincts/inherited/Perplexity-Tools-instincts.yaml`
-Import command: `/instinct-import .claude/homunculus/instincts/inherited/Perplexity-Tools-instincts.yaml`
+Instincts: `.claude/homunculus/instincts/inherited/Perpetua-Tools-instincts.yaml`
+Import command: `/instinct-import .claude/homunculus/instincts/inherited/Perpetua-Tools-instincts.yaml`
 
 ---
 
@@ -282,7 +282,7 @@ and the protocol we are encoding so future agents can stay in sync.
 > **Current version: `0.9.9.7`.** Do NOT bump without an explicit user instruction.
 > When a bump is requested, update **every** location in this table.
 
-#### Perplexity-Tools (PT)
+#### Perpetua-Tools (PT)
 
 | File | Key / Path | Notes |
 |------|-----------|-------|
@@ -297,7 +297,7 @@ and the protocol we are encoding so future agents can stay in sync.
 | `hardware/SKILL.md:5` | `Version: 0.9.9.7` | hardware sub-skill |
 | `README.md:1,170` | `v0.9.9.7` | user-facing readme |
 
-#### ultrathink-system (UTS)
+#### orama-system (UTS)
 
 | File | Key / Path | Notes |
 |------|-----------|-------|
@@ -360,7 +360,7 @@ instead of a cached import-time binding.
 ---
 
 ### 3. Embedded Git Repo in UTS: `.ecc/`
-The `.ecc/` directory is a git repository inside ultrathink-system. Git warns:
+The `.ecc/` directory is a git repository inside orama-system. Git warns:
 ```
 hint: You've added another git repository inside your current repository.
 ```
@@ -483,7 +483,7 @@ This is the correct macOS pattern for any npm/pip tool that tries to write to `/
 
 ### Idempotent Setup Automation
 
-`ultrathink-system/setup_macos.py` (called from `start.sh` on every boot):
+`orama-system/setup_macos.py` (called from `start.sh` on every boot):
 
 - Creates `~/.local/bin`, adds it to PATH in `~/.zshrc`
 - Validates `openclaw.json` — adds missing `models[]` arrays (queries live Ollama, falls back to defaults)
