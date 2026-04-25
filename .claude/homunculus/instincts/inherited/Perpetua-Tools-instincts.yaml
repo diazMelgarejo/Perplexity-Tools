@@ -1,16 +1,16 @@
-# Instincts generated from https://github.com/diazMelgarejo/Perplexity-Tools
+# Instincts generated from https://github.com/diazMelgarejo/Perpetua-Tools
 # Generated: 2026-03-23T00:53:51.288Z
 # Version: 2.0
 # NOTE: This file supplements (does not replace) any existing curated instincts.
 # High-confidence manually curated instincts should be preserved alongside these.
 
 ---
-id: Perplexity-Tools-commit-length
+id: Perpetua-Tools-commit-length
 trigger: "when writing a commit message"
 confidence: 0.6
 domain: git
 source: repo-analysis
-source_repo: https://github.com/diazMelgarejo/Perplexity-Tools
+source_repo: https://github.com/diazMelgarejo/Perpetua-Tools
 ---
 
 # Perplexity Tools Commit Length
@@ -25,12 +25,12 @@ Write moderate-length commit messages (~64 characters)
 - Based on 16 commits
 
 ---
-id: Perplexity-Tools-naming-files
+id: Perpetua-Tools-naming-files
 trigger: "when creating a new file"
 confidence: 0.8
 domain: code-style
 source: repo-analysis
-source_repo: https://github.com/diazMelgarejo/Perplexity-Tools
+source_repo: https://github.com/diazMelgarejo/Perpetua-Tools
 ---
 
 # Perplexity Tools Naming Files
@@ -45,12 +45,12 @@ Use snake_case naming convention
 - Dominant pattern: snake_case
 
 ---
-id: Perplexity-Tools-import-relative
+id: Perpetua-Tools-import-relative
 trigger: "when importing modules"
 confidence: 0.75
 domain: code-style
 source: repo-analysis
-source_repo: https://github.com/diazMelgarejo/Perplexity-Tools
+source_repo: https://github.com/diazMelgarejo/Perpetua-Tools
 ---
 
 # Perplexity Tools Import Relative
@@ -65,12 +65,12 @@ Use relative imports for project files
 - Example: import { x } from '../lib/x'
 
 ---
-id: Perplexity-Tools-export-style
+id: Perpetua-Tools-export-style
 trigger: "when exporting from a module"
 confidence: 0.7
 domain: code-style
 source: repo-analysis
-source_repo: https://github.com/diazMelgarejo/Perplexity-Tools
+source_repo: https://github.com/diazMelgarejo/Perpetua-Tools
 ---
 
 # Perplexity Tools Export Style
@@ -85,12 +85,12 @@ Prefer named exports
 - Dominant style: named
 
 ---
-id: Perplexity-Tools-test-separate
+id: Perpetua-Tools-test-separate
 trigger: "when writing tests"
 confidence: 0.8
 domain: testing
 source: repo-analysis
-source_repo: https://github.com/diazMelgarejo/Perplexity-Tools
+source_repo: https://github.com/diazMelgarejo/Perpetua-Tools
 ---
 
 # Perplexity Tools Test Separate
@@ -105,12 +105,12 @@ Place tests in the tests/ or __tests__/ directory, mirroring src structure
 - Tests live in dedicated test folders
 
 ---
-id: Perplexity-Tools-workflow-feature-development
+id: Perpetua-Tools-workflow-feature-development
 trigger: "when implementing a new feature"
 confidence: 0.9
 domain: workflow
 source: repo-analysis
-source_repo: https://github.com/diazMelgarejo/Perplexity-Tools
+source_repo: https://github.com/diazMelgarejo/Perpetua-Tools
 ---
 
 # Perplexity Tools Workflow Feature Development
@@ -129,12 +129,12 @@ Follow the feature-development workflow:
 - Files: **/*.test.*, **/api/**
 
 ---
-id: Perplexity-Tools-workflow-add-new-api-endpoint
+id: Perpetua-Tools-workflow-add-new-api-endpoint
 trigger: "when doing add new api endpoint"
 confidence: 0.6
 domain: workflow
 source: repo-analysis
-source_repo: https://github.com/diazMelgarejo/Perplexity-Tools
+source_repo: https://github.com/diazMelgarejo/Perpetua-Tools
 ---
 
 # Perplexity Tools Workflow Add New Api Endpoint
@@ -153,12 +153,12 @@ Follow the add-new-api-endpoint workflow:
 - Files: orchestrator/fastapi_app.py, config/routing.yml, SKILL.md
 
 ---
-id: Perplexity-Tools-workflow-integrate-new-agent-or-model
+id: Perpetua-Tools-workflow-integrate-new-agent-or-model
 trigger: "when doing integrate new agent or model"
 confidence: 0.6
 domain: workflow
 source: repo-analysis
-source_repo: https://github.com/diazMelgarejo/Perplexity-Tools
+source_repo: https://github.com/diazMelgarejo/Perpetua-Tools
 ---
 
 # Perplexity Tools Workflow Integrate New Agent Or Model
@@ -178,12 +178,12 @@ Follow the integrate-new-agent-or-model workflow:
 - Files: config/models.yml, orchestrator/model_registry.py, SKILL.md
 
 ---
-id: Perplexity-Tools-workflow-feature-development-with-documentation
+id: Perpetua-Tools-workflow-feature-development-with-documentation
 trigger: "when doing feature development with documentation"
 confidence: 0.6
 domain: workflow
 source: repo-analysis
-source_repo: https://github.com/diazMelgarejo/Perplexity-Tools
+source_repo: https://github.com/diazMelgarejo/Perpetua-Tools
 ---
 
 # Perplexity Tools Workflow Feature Development With Documentation

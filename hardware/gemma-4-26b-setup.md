@@ -96,7 +96,7 @@ priority: 16   # secondary to Qwen 27B (priority 15)
 Gemma 4 26B A4B is well-suited for:
 - General chat and instruction following
 - Code generation and review
-- Executor / subagent tasks in the ultrathink 7-agent network
+- Executor / subagent tasks in the orama 7-agent network
 - Fallback when the primary Windows model is unavailable
 
 ---
