@@ -109,59 +109,59 @@
     "workflow-pack"
   ],
   "managedFiles": [
-    ".claude/skills/Perplexity-Tools/SKILL.md",
-    ".agents/skills/Perplexity-Tools/SKILL.md",
-    ".agents/skills/Perplexity-Tools/agents/openai.yaml",
+    ".claude/skills/Perpetua-Tools/SKILL.md",
+    ".agents/skills/Perpetua-Tools/SKILL.md",
+    ".agents/skills/Perpetua-Tools/agents/openai.yaml",
     ".claude/identity.json",
     ".codex/config.toml",
     ".codex/AGENTS.md",
     ".codex/agents/explorer.toml",
     ".codex/agents/reviewer.toml",
     ".codex/agents/docs-researcher.toml",
-    ".claude/homunculus/instincts/inherited/Perplexity-Tools-instincts.yaml"
+    ".claude/homunculus/instincts/inherited/Perpetua-Tools-instincts.yaml"
   ],
   "packageFiles": {
     "runtime-core": [
-      ".claude/skills/Perplexity-Tools/SKILL.md",
-      ".agents/skills/Perplexity-Tools/SKILL.md",
-      ".agents/skills/Perplexity-Tools/agents/openai.yaml",
+      ".claude/skills/Perpetua-Tools/SKILL.md",
+      ".agents/skills/Perpetua-Tools/SKILL.md",
+      ".agents/skills/Perpetua-Tools/agents/openai.yaml",
       ".claude/identity.json",
       ".codex/config.toml",
       ".codex/AGENTS.md",
       ".codex/agents/explorer.toml",
       ".codex/agents/reviewer.toml",
       ".codex/agents/docs-researcher.toml",
-      ".claude/homunculus/instincts/inherited/Perplexity-Tools-instincts.yaml"
+      ".claude/homunculus/instincts/inherited/Perpetua-Tools-instincts.yaml"
     ]
   },
   "moduleFiles": {
     "runtime-core": [
-      ".claude/skills/Perplexity-Tools/SKILL.md",
-      ".agents/skills/Perplexity-Tools/SKILL.md",
-      ".agents/skills/Perplexity-Tools/agents/openai.yaml",
+      ".claude/skills/Perpetua-Tools/SKILL.md",
+      ".agents/skills/Perpetua-Tools/SKILL.md",
+      ".agents/skills/Perpetua-Tools/agents/openai.yaml",
       ".claude/identity.json",
       ".codex/config.toml",
       ".codex/AGENTS.md",
       ".codex/agents/explorer.toml",
       ".codex/agents/reviewer.toml",
       ".codex/agents/docs-researcher.toml",
-      ".claude/homunculus/instincts/inherited/Perplexity-Tools-instincts.yaml"
+      ".claude/homunculus/instincts/inherited/Perpetua-Tools-instincts.yaml"
     ]
   },
   "files": [
     {
       "moduleId": "runtime-core",
-      "path": ".claude/skills/Perplexity-Tools/SKILL.md",
+      "path": ".claude/skills/Perpetua-Tools/SKILL.md",
       "description": "Repository-specific Claude Code skill generated from git history."
     },
     {
       "moduleId": "runtime-core",
-      "path": ".agents/skills/Perplexity-Tools/SKILL.md",
+      "path": ".agents/skills/Perpetua-Tools/SKILL.md",
       "description": "Codex-facing copy of the generated repository skill."
     },
     {
       "moduleId": "runtime-core",
-      "path": ".agents/skills/Perplexity-Tools/agents/openai.yaml",
+      "path": ".agents/skills/Perpetua-Tools/agents/openai.yaml",
       "description": "Codex skill metadata so the repo skill appears cleanly in the skill interface."
     },
     {
@@ -196,21 +196,21 @@
     },
     {
       "moduleId": "runtime-core",
-      "path": ".claude/homunculus/instincts/inherited/Perplexity-Tools-instincts.yaml",
+      "path": ".claude/homunculus/instincts/inherited/Perpetua-Tools-instincts.yaml",
       "description": "Continuous-learning instincts derived from repository patterns."
     }
   ],
   "workflows": [],
   "adapters": {
     "claudeCode": {
-      "skillPath": ".claude/skills/Perplexity-Tools/SKILL.md",
+      "skillPath": ".claude/skills/Perpetua-Tools/SKILL.md",
       "identityPath": ".claude/identity.json",
       "commandPaths": []
     },
     "codex": {
       "configPath": ".codex/config.toml",
       "agentsGuidePath": ".codex/AGENTS.md",
-      "skillPath": ".agents/skills/Perplexity-Tools/SKILL.md"
+      "skillPath": ".agents/skills/Perpetua-Tools/SKILL.md"
     }
   }
 }
