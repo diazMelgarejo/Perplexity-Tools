@@ -1,9 +1,9 @@
-# Perplexity-Tools — Knowledge Wiki
+# Perpetua-Tools — Knowledge Wiki
 
 > **TL;DR for agents:** Read `docs/LESSONS.md` for the session log. Read pages here for deep dives.
 > For quick behavioral rules: **[SKILL.md →](../../SKILL.md)**
 
-This wiki organizes hard-won lessons by topic. Each page contains root cause, exact fix, verification commands, and prevention rules. Derived from [docs/LESSONS.md](../LESSONS.md) and cross-linked with the [ultrathink-system wiki](https://github.com/diazMelgarejo/ultrathink-system/blob/main/docs/wiki/README.md).
+This wiki organizes hard-won lessons by topic. Each page contains root cause, exact fix, verification commands, and prevention rules. Derived from [docs/LESSONS.md](../LESSONS.md) and cross-linked with the [orama-system wiki](https://github.com/diazMelgarejo/orama-system/blob/main/docs/wiki/README.md).
 
 ---
 
@@ -45,7 +45,7 @@ This wiki organizes hard-won lessons by topic. Each page contains root cause, ex
 
 ## Related
 - [Session log entry](../LESSONS.md#anchor)
-- [UTS companion lesson](https://github.com/diazMelgarejo/ultrathink-system/blob/main/docs/wiki/README.md)
+- [UTS companion lesson](https://github.com/diazMelgarejo/orama-system/blob/main/docs/wiki/README.md)
 ```
 
 3. Add a row to the index table above
@@ -59,8 +59,8 @@ Some lessons are shared across PT and UTS. Canonical entry lives where the bug w
 
 | Session | PT Lesson | UTS Companion |
 | --- | --- | --- |
-| 2026-04-07 | [Idempotent Installs](02-idempotent-installs.md) | [UTS/02](https://github.com/diazMelgarejo/ultrathink-system/blob/main/docs/wiki/02-idempotent-installs.md) |
-| 2026-04-07 | [Device Identity](03-device-identity.md) | [UTS/03](https://github.com/diazMelgarejo/ultrathink-system/blob/main/docs/wiki/03-device-identity.md) |
-| 2026-04-07 | [Gateway Discovery](04-gateway-discovery.md) | [UTS/04](https://github.com/diazMelgarejo/ultrathink-system/blob/main/docs/wiki/04-gateway-discovery.md) |
-| 2026-04-12 | [Multi-Agent Collab](07-multi-agent-collab.md) | [UTS/06](https://github.com/diazMelgarejo/ultrathink-system/blob/main/docs/wiki/06-multi-agent-collab.md) |
-| 2026-04-13 | [Startup IP Detection](06-startup-ip-detection.md) | [UTS/07](https://github.com/diazMelgarejo/ultrathink-system/blob/main/docs/wiki/07-startup-ip-detection.md) |
+| 2026-04-07 | [Idempotent Installs](02-idempotent-installs.md) | [UTS/02](https://github.com/diazMelgarejo/orama-system/blob/main/docs/wiki/02-idempotent-installs.md) |
+| 2026-04-07 | [Device Identity](03-device-identity.md) | [UTS/03](https://github.com/diazMelgarejo/orama-system/blob/main/docs/wiki/03-device-identity.md) |
+| 2026-04-07 | [Gateway Discovery](04-gateway-discovery.md) | [UTS/04](https://github.com/diazMelgarejo/orama-system/blob/main/docs/wiki/04-gateway-discovery.md) |
+| 2026-04-12 | [Multi-Agent Collab](07-multi-agent-collab.md) | [UTS/06](https://github.com/diazMelgarejo/orama-system/blob/main/docs/wiki/06-multi-agent-collab.md) |
+| 2026-04-13 | [Startup IP Detection](06-startup-ip-detection.md) | [UTS/07](https://github.com/diazMelgarejo/orama-system/blob/main/docs/wiki/07-startup-ip-detection.md) |

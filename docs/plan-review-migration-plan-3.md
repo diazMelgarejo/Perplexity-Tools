@@ -41,10 +41,10 @@ This is 3–4 weeks of real engineering compressed into 72 hours. The plan corre
 
 ### 2. Name confusion is live right now
 
-The plan body says "Perpetua-Tools" and "ὅραμα System" (orama-system). Section B links say `diazMelgarejo/Perplexity-Tools` and `diazMelgarejo/ultrathink-system`. The user's GitHub repos currently have the old names. Until the GitHub rename happens, every reference to PT and UTS in docs, scripts, and `package.json` will be ambiguous. The rename needs to happen (and be recorded) before any scaffolding code references the new names.
+The plan body says "Perpetua-Tools" and "ὅραμα System" (orama-system). Section B links say `diazMelgarejo/Perpetua-Tools` and `diazMelgarejo/orama-system`. The user's GitHub repos currently have the old names. Until the GitHub rename happens, every reference to PT and UTS in docs, scripts, and `package.json` will be ambiguous. The rename needs to happen (and be recorded) before any scaffolding code references the new names.
 
-- PT = `diazMelgarejo/Perplexity-Tools` renamed → <https://github.com/diazMelgarejo/Perpetua-Tools>
-- UTS = `diazMelgarejo/ultrathink-system` renamed → <https://github.com/diazMelgarejo/orama-system>
+- PT = `diazMelgarejo/Perpetua-Tools` renamed → <https://github.com/diazMelgarejo/Perpetua-Tools>
+- UTS = `diazMelgarejo/orama-system` renamed → <https://github.com/diazMelgarejo/orama-system>
 
 Update all references to these 2 repos — now **Perpetua** and **orama**\!
 
@@ -120,7 +120,7 @@ The plan explicitly says: draft adapter API and types first, get a design doc re
 
 ### 5. The rename is necessary and should happen now
 
-"Perplexity" is the name of a well-funded AI company with active branding in the exact same market space. Using it in a public npm package (`@perplexity-tools/...`) is a trademark risk that grows with visibility. "Perpetua-Tools" and "ὅραμα System" (orama-system) are ownable, clear, and distinctive. Do the rename before any public package publication — the plan is right to flag this.
+"Perplexity" is the name of a well-funded AI company with active branding in the exact same market space. Using it in a public npm package (`@perpetua-tools/...`) is a trademark risk that grows with visibility. "Perpetua-Tools" and "ὅραμα System" (orama-system) are ownable, clear, and distinctive. Do the rename before any public package publication — the plan is right to flag this.
 
 ### 6. The local-agent-client.js architecture is correct even if the location is wrong
 
@@ -138,7 +138,7 @@ Tag before removals. Strangler-fig. Green tests before cutover. These three cons
 
 ## Recommended modifications to the plan
 
-1. **Do the GitHub rename first** (Perplexity-Tools → Perpetua-Tools, ultrathink-system → orama-system) before any scaffolding references the new names.
+1. **Do the GitHub rename first** (Perpetua-Tools → Perpetua-Tools, orama-system → orama-system) before any scaffolding references the new names.
 
 2. **Replace the 3-day timeline with milestone gates:**
    - Gate 0: Repos exist, CI scaffolded, adapter contract written (one-page interface doc)

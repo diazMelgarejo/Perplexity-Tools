@@ -42,7 +42,7 @@ Installing binaries to `~/.local/bin` shadows system paths without `sudo`. This 
 
 ---
 
-## `ultrathink-system/setup_macos.py`
+## `orama-system/setup_macos.py`
 
 Called from `start.sh` on every boot via:
 ```bash
