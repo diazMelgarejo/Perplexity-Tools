@@ -32,6 +32,13 @@ repos:
         pass_filenames: false
         types: [yaml, markdown]
 
+      - id: no-hallucinated-model-ids
+        name: "Reject hallucinated model IDs in executable config"
+        entry: python scripts/check_no_hallucinated_models.py
+        language: system
+        pass_filenames: false
+        types: [python, yaml, json]
+
       - id: pytest-gate
         name: "Run tests before commit (Python changes only)"
         entry: pytest -q tests/
