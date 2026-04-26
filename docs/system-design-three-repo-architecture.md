@@ -35,7 +35,7 @@ AlphaClaw (`diazMelgarejo/AlphaClaw`) is a macOS ARM64 port of `chrysb/alphaclaw
 ┌───────────────────────────▼─────────────────────────────────────────┐
 │  LAYER 2 — Middleware / Adapters / Tooling                          │
 │  @diazmelgarejo/perpetua-tools  (github: diazMelgarejo/Perpetua-Tools) │
-│  (renamed from Perplexity-Tools — trademark risk eliminated)        │
+│  (renamed from Perpetua-Tools — trademark risk eliminated)        │
 │  Contains: AlphaClaw adapter · MCP toolpack · local-agent clients   │
 │            (Ollama + LM Studio) · Xcode integration scripts         │
 │            · .agent/ portable folder skeleton · CI for adapters     │
@@ -44,7 +44,7 @@ AlphaClaw (`diazMelgarejo/AlphaClaw`) is a macOS ARM64 port of `chrysb/alphaclaw
 ┌───────────────────────────▼─────────────────────────────────────────┐
 │  LAYER 3 — Application / Orchestration / Meta-Intelligence          │
 │  @diazmelgarejo/orama-system  (github: diazMelgarejo/orama-system)  │
-│  (renamed from ultrathink-system — ὅραμα = vision/revelation)      │
+│  (renamed from orama-system — ὅραμα = vision/revelation)      │
 │  Contains: Orchestrator service · Planning/execution flows          │
 │            · Session management · Knowledge routing                 │
 │            · E2E tests · OTel observability stack                   │
@@ -432,6 +432,6 @@ B. The Repo Links we are working on (where it will land):
 
 i. <https://github.com/diazMelgarejo/AlphaClaw> the branch "feature/MacOS-post-install" will be our home to prepare the thin custom add-ons and configuration on top of it for PT & UTS use (dependency)
 
-ii. old PT = `diazMelgarejo/Perplexity-Tools` renamed → <https://github.com/diazMelgarejo/Perpetua-Tools> main
+ii. old PT = `diazMelgarejo/Perpetua-Tools` renamed → <https://github.com/diazMelgarejo/Perpetua-Tools> main
 
-iii. old UTS = `diazMelgarejo/ultrathink-system` renamed → <https://github.com/diazMelgarejo/orama-system> main
+iii. old UTS = `diazMelgarejo/orama-system` renamed → <https://github.com/diazMelgarejo/orama-system> main

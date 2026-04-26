@@ -1,12 +1,12 @@
 ---
 name: integrate-new-agent-or-model
-description: Workflow command scaffold for integrate-new-agent-or-model in Perplexity-Tools.
+description: Workflow command scaffold for integrate-new-agent-or-model in Perpetua-Tools.
 allowed_tools: ["Bash", "Read", "Write", "Grep", "Glob"]
 ---
 
 # /integrate-new-agent-or-model
 
-Use this workflow when working on **integrate-new-agent-or-model** in `Perplexity-Tools`.
+Use this workflow when working on **integrate-new-agent-or-model** in `Perpetua-Tools`.
 
 ## Goal
 

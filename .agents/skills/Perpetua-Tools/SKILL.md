@@ -1,15 +1,15 @@
 ---
-name: perplexity-tools-conventions
-description: Development conventions and patterns for Perplexity-Tools. Python project with mixed commits.
+name: perpetua-tools-conventions
+description: Development conventions and patterns for Perpetua-Tools. Python project with mixed commits.
 ---
 
 # Perplexity Tools Conventions
 
-> Generated from [diazMelgarejo/Perplexity-Tools](https://github.com/diazMelgarejo/Perplexity-Tools) on 2026-03-23
+> Generated from [diazMelgarejo/Perpetua-Tools](https://github.com/diazMelgarejo/Perpetua-Tools) on 2026-03-23
 
 ## Overview
 
-This skill teaches Claude the development patterns and conventions used in Perplexity-Tools.
+This skill teaches Claude the development patterns and conventions used in Perpetua-Tools.
 
 ## Tech Stack
 

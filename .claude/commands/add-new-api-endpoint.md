@@ -1,12 +1,12 @@
 ---
 name: add-new-api-endpoint
-description: Workflow command scaffold for add-new-api-endpoint in Perplexity-Tools.
+description: Workflow command scaffold for add-new-api-endpoint in Perpetua-Tools.
 allowed_tools: ["Bash", "Read", "Write", "Grep", "Glob"]
 ---
 
 # /add-new-api-endpoint
 
-Use this workflow when working on **add-new-api-endpoint** in `Perplexity-Tools`.
+Use this workflow when working on **add-new-api-endpoint** in `Perpetua-Tools`.
 
 ## Goal
 

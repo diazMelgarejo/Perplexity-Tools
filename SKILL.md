@@ -1,28 +1,28 @@
-# SKILL.md — Perplexity-Tools Model Selection Skill
+# SKILL.md — Perpetua-Tools Model Selection Skill
 
 **Version:** `v0.9.9.7` · **Updated:** 2026-04-08
-**Repo:** https://github.com/diazMelgarejo/Perplexity-Tools · **Branch:** `main`
+**Repo:** https://github.com/diazMelgarejo/Perpetua-Tools · **Branch:** `main`
 
 **Layering (all interoperable and independently configurable):**
 
 | Layer | Repo | Role |
 |-------|------|------|
-| **Orchestrator & instance manager** | **Perplexity-Tools** (this repo) | Top-level agent lifecycle, `ModelRegistry` / `config/*.yml`, FastAPI `/orchestrate`, idempotency |
-| **Reasoning & routing methodology** | **ultrathink-system** | `bin/skills/SKILL.md`, AFRP (pre-router gate) / CIDF / process; multi-agent registry is **separately installable** and **not** required to run this orchestrator |
+| **Orchestrator & instance manager** | **Perpetua-Tools** (this repo) | Top-level agent lifecycle, `ModelRegistry` / `config/*.yml`, FastAPI `/orchestrate`, idempotency |
+| **Reasoning & routing methodology** | **orama-system** | `bin/skills/SKILL.md`, AFRP (pre-router gate) / CIDF / process; multi-agent registry is **separately installable** and **not** required to run this orchestrator |
 | **Subagent auto-selection (ECC-style)** | **ECC Tools** | Default subagent routing unless the top-level orchestrator overrides roles |
 | **Karpathy AutoResearch sync** | [uditgoenka/autoresearch](https://github.com/uditgoenka/autoresearch) | Idempotent sync of the automated ML research loop; integrated via `/autoresearch/*` endpoints and `orchestrator/autoresearch_bridge.py` |
 
-**Selection order:** Top-level model routing follows **this `SKILL.md` → `orchestrator/model_registry.py` + `config/models.yml` / `routing.yml`** first. Subagents use **ECC-tools** defaults unless overridden. **ultrathink-system** remains the methodology layer for reasoning execution, not a hard dependency of the YAML registry.
+**Selection order:** Top-level model routing follows **this `SKILL.md` → `orchestrator/model_registry.py` + `config/models.yml` / `routing.yml`** first. Subagents use **ECC-tools** defaults unless overridden. **orama-system** remains the methodology layer for reasoning execution, not a hard dependency of the YAML registry.
 
 ---
 
 ## State Ownership & Redis Strategy
 
-> **Canonical MVP wording:** For MVP/v1.0, ultrathink remains stateless and has no Redis requirement. PT is the sole orchestration layer and owns agent instantiation, tracking, queueing, budget enforcement, and file-based runtime state. Redis-backed coordination is a future PT-only enhancement planned for multi-instance distributed deployments in v1.1 and above.
+> **Canonical MVP wording:** For MVP/v1.0, orama remains stateless and has no Redis requirement. PT is the sole orchestration layer and owns agent instantiation, tracking, queueing, budget enforcement, and file-based runtime state. Redis-backed coordination is a future PT-only enhancement planned for multi-instance distributed deployments in v1.1 and above.
 
 **Rules:**
 - Single PT instance or LAN MVP per machine: file-based state only (`.state/agents.json`, `.state/budget.json`)
-- No Redis mentions in ultrathink install/runtime requirements
+- No Redis mentions in orama install/runtime requirements
 - Any future queue/cache/distributed lock support belongs to PT
 - Redis only activates when PT supports multi-instance distributed operation (v1.1+), not before
 
@@ -40,7 +40,7 @@ This orchestrator is designed for **full hardware profile awareness** [web:40] a
 ### Spawn Reconciliation (Pre-Model Spawning)
 - **Centralized Registry Check**: Before spawning any agent, the orchestrator MUST check the `AgentTracker` (global registry) for an existing agent with the same `role` and `task_hash`.
 - **Proper Session Planning**: Reconcile spawns *before* model assignment to prevent dual-task GPU contention or redundant model loading.
-- **Model Assignment**: Once a spawn is reconciled, assign the model based on the hardware profile's VRAM/RAM ceiling (see [hardware/SKILL.md](https://github.com/diazMelgarejo/Perplexity-Tools/blob/main/hardware/SKILL.md)).
+- **Model Assignment**: Once a spawn is reconciled, assign the model based on the hardware profile's VRAM/RAM ceiling (see [hardware/SKILL.md](https://github.com/diazMelgarejo/Perpetua-Tools/blob/main/hardware/SKILL.md)).
 
 ### Profile Deployment Logic
 | Profile ID | Architecture | Core Specialization | Primary Use Case |
@@ -51,7 +51,7 @@ This orchestrator is designed for **full hardware profile awareness** [web:40] a
 ---
 
 ## Hardware Profiles (Summary)
-Refer to [hardware/SKILL.md](https://github.com/diazMelgarejo/Perplexity-Tools/blob/main/hardware/SKILL.md) for full specs.
+Refer to [hardware/SKILL.md](https://github.com/diazMelgarejo/Perpetua-Tools/blob/main/hardware/SKILL.md) for full specs.
 
 ### Profile A — mac-studio (16GB+ Unified Memory)
 - **Primary**: `glm-5.1:cloud` via local Ollama when the live probe succeeds
@@ -222,7 +222,7 @@ fallback_chain:
 ---
 
 ## Idempotent Orchestrator Rules
-This repo (**Perplexity-Tools**) is the **top-level orchestrator and instance manager**:
+This repo (**Perpetua-Tools**) is the **top-level orchestrator and instance manager**:
 1. **Check before creating**: Consult `.state/agents.json` via `AgentTracker`.
 2. **Reuse existing**: Return conflict if matching running agent exists (override with `force=true`).
 3. **Conflict resolution**: Ask user before overriding idempotency.
@@ -312,12 +312,12 @@ This is the primary async communication channel between agents that never share 
 ### v0.9.9.0 (2026-03-30)
 - **Version freeze**: all files synchronized to 0.9.9.0, held until 1.0 RC
 - **v1.1+ Roadmap**: Deferred MCP-first transport documented in both repos
-- **Bridge tests**: `tests/test_ultrathink_bridge.py` — unit tests for HTTP bridge module
-- **HTTP bridge always-active**: Removed `ULTRATHINK_HTTP_BACKUP_ENABLED` opt-in flag [SYNC]
-- **Renamed**: `ultrathink_http_backup` → `ultrathink_bridge` across all code and response keys
+- **Bridge tests**: `tests/test_orama_bridge.py` — unit tests for HTTP bridge module
+- **HTTP bridge always-active**: Removed `ORAMA_HTTP_BACKUP_ENABLED` opt-in flag [SYNC]
+- **Renamed**: `orama_http_backup` → `orama_bridge` across all code and response keys
 
 ### v0.9.7.0 (2026-03-28)
-- **AFRP cross-reference**: ultrathink-system layer now documents AFRP (pre-router gate) in 4-layer architecture table [SYNC]
+- **AFRP cross-reference**: orama-system layer now documents AFRP (pre-router gate) in 4-layer architecture table [SYNC]
 - **Fixes**: orchestrator.py syntax errors, confidential folder references removed, FastAPI version aligned
 - **Sync**: Both repos synchronized to v0.9.7.0 [SYNC]
 
@@ -335,7 +335,7 @@ This is the primary async communication channel between agents that never share 
 - Added Qwen3-30B-A3B as critic, refiner, and offline fallback
 - Added Perplexity API integration (Claude Sonnet 4.5 + Grok 4.1)
 - Added 4 runtime modes (Mac-only, Dell-only, LAN-full, LM-Studio-MLX)
-- Integrated with ultrathink-system and ECC-tools
+- Integrated with orama-system and ECC-tools
 
 ---
 

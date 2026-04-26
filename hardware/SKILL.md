@@ -1,4 +1,4 @@
-# Hardware Abstraction Layer — Perplexity-Tools
+# Hardware Abstraction Layer — Perpetua-Tools
 # hardware/SKILL.md
 # Decoupled hardware profiles for role-based agent assignment.
 # Synchronized across all repos. Governs VRAM/RAM limits for model routing.

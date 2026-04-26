@@ -6,7 +6,7 @@
 
 ## Root Cause
 
-Shared with ultrathink-system. See: [UTS wiki/01-ci-deps.md](https://github.com/diazMelgarejo/ultrathink-system/blob/main/docs/wiki/01-ci-deps.md)
+Shared with orama-system. See: [UTS wiki/01-ci-deps.md](https://github.com/diazMelgarejo/orama-system/blob/main/docs/wiki/01-ci-deps.md)
 
 ---
 
@@ -49,4 +49,4 @@ test = [
 ## Related
 
 - [Session log 2026-04-06](../LESSONS.md)
-- [UTS/01-ci-deps.md](https://github.com/diazMelgarejo/ultrathink-system/blob/main/docs/wiki/01-ci-deps.md)
+- [UTS/01-ci-deps.md](https://github.com/diazMelgarejo/orama-system/blob/main/docs/wiki/01-ci-deps.md)

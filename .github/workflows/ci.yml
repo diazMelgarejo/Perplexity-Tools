@@ -42,9 +42,9 @@ jobs:
         run: |
           pytest tests/ -v --tb=short
         env:
-          ULTRATHINK_ENDPOINT: http://localhost:8001/ultrathink
-          ULTRATHINK_TIMEOUT: "120"
-          ULTRATHINK_ENABLED: "false"
+          ORAMA_ENDPOINT: http://localhost:8001/orama
+          ORAMA_TIMEOUT: "120"
+          ORAMA_ENABLED: "false"
 
       - name: Check routing.yml validity
         run: |
