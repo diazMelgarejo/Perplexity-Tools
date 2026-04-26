@@ -19,7 +19,17 @@ os.environ["OLLAMA_HOST"] = "http://127.0.0.1"
 
 from orchestrator.model_registry import ModelRegistry
 from orchestrator.fastapi_app import app
-from utils.hardware_policy import HardwareAffinityError, check_affinity, filter_models_for_platform
+from utils.hardware_policy import HardwareAffinityError, check_affinity, filter_models_for_platform, load_policy
+import utils.hardware_policy as _hw_policy_mod
+
+
+@pytest.fixture(autouse=True)
+def clear_policy_cache():
+    """Clear module-level _POLICY_CACHE before every test to prevent cross-test contamination."""
+    _hw_policy_mod._POLICY_CACHE = None
+    yield
+    _hw_policy_mod._POLICY_CACHE = None
+
 
 @pytest.fixture
 def registry():
@@ -219,3 +229,86 @@ def test_fallback_chain_across_hardware(registry):
     assert devices_in_chain[0] == "mac-studio"
     assert any(d != "mac-studio" for d in devices_in_chain)
     assert "cloud" in devices_in_chain
+
+
+# ---------------------------------------------------------------------------
+# shared: section comment-out safety — parametrized across both parsers
+# ---------------------------------------------------------------------------
+
+COMMENTED_OUT_SHARED = """\
+windows_only:
+  - gemma-4-26b-a4b-it
+
+mac_only:
+  - gemma-4-e4b-it
+
+# TODO(shared-models): out of scope until both machines verified online.
+# shared:
+"""
+
+ABSENT_SHARED = """\
+windows_only:
+  - gemma-4-26b-a4b-it
+
+mac_only:
+  - gemma-4-e4b-it
+"""
+
+EXPLICIT_EMPTY_SHARED = """\
+windows_only:
+  - gemma-4-26b-a4b-it
+
+mac_only:
+  - gemma-4-e4b-it
+
+shared:
+"""
+
+
+@pytest.mark.parametrize("yaml_text,label", [
+    (COMMENTED_OUT_SHARED, "commented_out"),
+    (ABSENT_SHARED, "absent"),
+    (EXPLICIT_EMPTY_SHARED, "explicit_empty"),
+])
+def test_shared_section_variants_return_empty_list(tmp_path, yaml_text, label):
+    """Both PyYAML and _simple_policy_parse must treat all 3 shared: variants identically."""
+    policy_file = tmp_path / f"policy_{label}.yml"
+    policy_file.write_text(yaml_text)
+
+    # PyYAML path
+    policy = load_policy(policy_path=policy_file, force_reload=True)
+    assert policy.get("shared", []) == [], (
+        f"[{label}] PyYAML path: shared should be empty list, got {policy.get('shared')}"
+    )
+    assert "gemma-4-26b-a4b-it" in policy.get("windows_only", [])
+    assert "gemma-4-e4b-it" in policy.get("mac_only", [])
+
+    # Force _simple_policy_parse path by making yaml unavailable
+    import importlib
+    import sys
+    real_yaml = sys.modules.get("yaml")
+    sys.modules["yaml"] = None  # type: ignore[assignment]
+    _hw_policy_mod._POLICY_CACHE = None
+    try:
+        policy_fallback = load_policy(policy_path=policy_file, force_reload=True)
+        assert policy_fallback.get("shared", []) == [], (
+            f"[{label}] _simple_policy_parse path: shared should be empty, got {policy_fallback.get('shared')}"
+        )
+    finally:
+        if real_yaml is not None:
+            sys.modules["yaml"] = real_yaml
+        else:
+            del sys.modules["yaml"]
+        _hw_policy_mod._POLICY_CACHE = None
+
+
+def test_routing_affinity_keys_normalized():
+    """All autoresearch routes in routing.yml must use 'affinity' key (not 'device_affinity')."""
+    import yaml
+    routing_path = REPO_ROOT / "config" / "routing.yml"
+    routing = yaml.safe_load(routing_path.read_text())
+    routes = routing.get("routes", {})
+    for name, entry in routes.items():
+        assert "device_affinity" not in entry, (
+            f"Route '{name}' still uses deprecated 'device_affinity' key — migrate to 'affinity'"
+        )

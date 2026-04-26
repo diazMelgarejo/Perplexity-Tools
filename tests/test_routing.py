@@ -44,12 +44,12 @@ def test_required_routes_present(routing_config):
 
 
 def test_ultrathink_routes_have_endpoint(routing_config):
-    """deep_reasoning and code_analysis must reference ULTRATHINK_ENDPOINT."""
+    """deep_reasoning and code_analysis must reference ORAMA_ENDPOINT."""
     routes = routing_config["routes"]
     for route_name in ("deep_reasoning", "code_analysis"):
         route = routes[route_name]
         assert "endpoint" in route, f"{route_name} missing endpoint"
-        assert "ULTRATHINK_ENDPOINT" in route["endpoint"]
+        assert "ORAMA_ENDPOINT" in route["endpoint"]
 
 
 def test_ultrathink_routes_have_fallback(routing_config):
@@ -75,10 +75,10 @@ def test_autoresearch_routes_present(routing_config):
         assert route in routes, f"Missing autoresearch route: {route}"
 
 
-def test_autoresearch_coder_device_affinity(routing_config):
-    """autoresearch-coder must target win-rtx3080."""
+def test_autoresearch_coder_affinity(routing_config):
+    """autoresearch-coder must target win (normalized from win-rtx3080)."""
     route = routing_config["routes"]["autoresearch-coder"]
-    assert route.get("device_affinity") == "win-rtx3080"
+    assert route.get("affinity") == "win"
 
 
 def test_ultrathink_comments_describe_current_task_type_contract():
