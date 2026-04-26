@@ -1,10 +1,10 @@
-#ultrathink-system Lessons
+#orama-system Lessons
 
-This file is the high-signal summary of what we have learned so far while turning ultrathink-system into a clean delegate and methodology layer in the PT-first stack.
+This file is the high-signal summary of what we have learned so far while turning orama-system into a clean delegate and methodology layer in the PT-first stack.
 
 ## Core role
 
-- ultrathink-system is the reasoning and execution layer, not the orchestration authority.
+- orama-system is the reasoning and execution layer, not the orchestration authority.
 - The repo should remain stateless at runtime. PT decides gateway, routing, and lifecycle; UTS applies the resolved state and exposes execution interfaces.
 
 ## Architecture lessons

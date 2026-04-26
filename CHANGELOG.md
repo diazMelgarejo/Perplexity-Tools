@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Perplexity-Tools are documented here.
+All notable changes to Perpetua-Tools are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 Versioning follows [Semantic Versioning](https://semver.org/).
 
@@ -29,6 +29,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - Ollama remains as fallback (same model files, different runtime)
 
 ---
+
 ## [1.0.0-rc] - 2026-04-01 [LM Studio MCP Server] [SYNC]
 
 ### Added
@@ -48,62 +49,65 @@ Versioning follows [Semantic Versioning](https://semver.org/).
   - `privacy_critical=True` path: UltraThink → LM Studio Win(s) → LM Studio Mac → Ollama
   - standard path: Perplexity cloud → LM Studio Win(s) → Ollama
 
-### Synced with ultrathink-system [SYNC]
+### Synced with orama-system [SYNC]
 
 - US added `lmstudio_bridge.py`, `lmstudio_mcp_server.py`, `portal_server.py`,
   `multi_agent/config/mcp.json`, updated `api_server.py` with LM Studio primary backend
 
 ---
+
 ## [1.0-rc] - 2026-03-30
 
 ### Added
 
-- `orchestrator/ultrathink_mcp_client.py` — MCP-Optional client infrastructure:
+- `orchestrator/orama_mcp_client.py` — MCP-Optional client infrastructure:
   async subprocess lifecycle, JSON-RPC framing over stdio, stub-response detection
-- `call_ultrathink_mcp_or_bridge()` in `orchestrator/ultrathink_bridge.py` —
-  tries MCP first when `ULTRATHINK_MCP_SERVER_CMD` is set; falls back to HTTP on
+- `call_orama_mcp_or_bridge()` in `orchestrator/orama_bridge.py` —
+  tries MCP first when `ORAMA_MCP_SERVER_CMD` is set; falls back to HTTP on
   any failure (crash, timeout, malformed response, or stub response from server)
 - `"transport": "mcp" | "http"` key in `/orchestrate` response envelope so callers
   can observe which path was taken without guessing
-- `ULTRATHINK_MCP_SERVER_CMD` env var — opt-in MCP transport; unset = HTTP only (default)
+- `ORAMA_MCP_SERVER_CMD` env var — opt-in MCP transport; unset = HTTP only (default)
 - `docs/RC_CHECKLIST.md` — explicit v1.0 RC stamp criteria and completion checklist
 
 ### Fixed
 
-- `orchestrator/ultrathink_bridge.py` was calling sync `httpx.post()` inside an async
+- `orchestrator/orama_bridge.py` was calling sync `httpx.post()` inside an async
   FastAPI route handler, blocking the event loop. New async wrapper uses `httpx.AsyncClient`.
 
 ### Notes
 
-- MCP server (`ultrathink-system`) `_solve()` is still a stub in this release.
-  When `ULTRATHINK_MCP_SERVER_CMD` is set, the client will detect the stub response
+- MCP server (`orama-system`) `_solve()` is still a stub in this release.
+  When `ORAMA_MCP_SERVER_CMD` is set, the client will detect the stub response
   and fall back to HTTP automatically — no task is dropped. Tier 2 (real MCP pipeline)
   is tracked in `docs/ROADMAP_v1.1.md`.
 
 ---
+
 ## [0.9.9.0] - 2026-03-30
 
 ### Added
 
 - **v1.1+ Roadmap**: Deferred MCP-first transport documented in both repos
-- **Bridge tests**: `tests/test_ultrathink_bridge.py` — unit tests for HTTP bridge module
+- **Bridge tests**: `tests/test_orama_bridge.py` — unit tests for HTTP bridge module
 
 ### Changed
 
-- **HTTP bridge always-active**: Removed `ULTRATHINK_HTTP_BACKUP_ENABLED` opt-in flag [SYNC]
-- **Renamed**: `ultrathink_http_backup` → `ultrathink_bridge` across all code and response keys
+- **HTTP bridge always-active**: Removed `ORAMA_HTTP_BACKUP_ENABLED` opt-in flag [SYNC]
+- **Renamed**: `orama_http_backup` → `orama_bridge` across all code and response keys
 - MCP over stdio deferred to v1.1+ as primary transport [SYNC]
 
 ### Fixed
 
 - Version alignment: all files synchronized to 0.9.9.0
 
-### Synced with ultrathink-system
+### Synced with orama-system
 
 - Both repos synchronized to v0.9.9.0 [SYNC]
-- ultrathink api_server.py hardened with corrected defaults [SYNC]
+- orama api_server.py hardened with corrected defaults [SYNC]
 
 ---
+
 ## [0.9.8.0] - 2026-03-29
 
 ### Security
@@ -117,7 +121,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 - **orchestrator.py**: Migrated `@validator` to Pydantic V2 `@field_validator` + `@classmethod` (deprecation fix) [SYNC]
 
-### Synced with ultrathink-system
+### Synced with orama-system
 
 - Both repos synchronized to v0.9.8.0 [SYNC]
 - `api_server.py` receives same Pydantic V2 migration [SYNC]
@@ -128,7 +132,7 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **AFRP cross-reference**: ultrathink-system layer now documents AFRP (pre-router gate) in 4-layer architecture table [SYNC]
+- **AFRP cross-reference**: orama-system layer now documents AFRP (pre-router gate) in 4-layer architecture table [SYNC]
 
 ### Fixed
 
@@ -138,10 +142,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - **orchestrator/autoresearch_bridge.py**: Removed 3x confidential folder references
 - **requirements.txt**: Updated header comment version
 
-### Synced with ultrathink-system
+### Synced with orama-system
 
 - Both repos synchronized to v0.9.7.0 [SYNC]
-- ultrathink-system introduces AFRP as mandatory pre-router gate [SYNC]
+- orama-system introduces AFRP as mandatory pre-router gate [SYNC]
 
 ---
 
@@ -163,10 +167,10 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 - `orchestrator.py` hardened with VRAM safety rules and hardware-bound routing
 - Adapted durable workflow and intelligent routing for multi-computer LAN [SYNC]
 
-### Synced with ultrathink-system
+### Synced with orama-system
 
 - Both repos synchronized to v0.9.6.0
-- ultrathink `api_server.py` updated to v0.9.6.0 with GPU reconciliation
+- orama `api_server.py` updated to v0.9.6.0 with GPU reconciliation
 - Cross-repo SKILL.md references established for recursive sub-skill loading
 
 ## [0.9.5.0] - 2026-03-27
@@ -199,22 +203,22 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- `tests/test_routing.py` — routing.yml + ultrathink route unit tests [SYNC]
+- `tests/test_routing.py` — routing.yml + orama route unit tests [SYNC]
 - `.github/workflows/ci.yml` — CI pipeline with pytest + routing.yml validation
-- `config/routing.yml` — `deep_reasoning` and `code_analysis` ultrathink routes [SYNC]
-- `.env.example` — full `ULTRATHINK_ENDPOINT`, `ULTRATHINK_TIMEOUT`, `ULTRATHINK_ENABLED` vars [SYNC]
+- `config/routing.yml` — `deep_reasoning` and `code_analysis` orama routes [SYNC]
+- `.env.example` — full `ORAMA_ENDPOINT`, `ORAMA_TIMEOUT`, `ORAMA_ENABLED` vars [SYNC]
 
 ### Changed
 
-- `.env.example` — updated version header to v0.9.4.3, expanded ultrathink section
-- `config/routing.yml` — added ultrathink endpoint/fallback/timeout metadata to deep reasoning routes
+- `.env.example` — updated version header to v0.9.4.3, expanded orama section
+- `config/routing.yml` — added orama endpoint/fallback/timeout metadata to deep reasoning routes
 
-### Synced with ultrathink-system
+### Synced with orama-system
 
 - Both repos now at v0.9.4.3
-- `api_server.py` added to ultrathink-system (POST /ultrathink + GET /health)
+- `api_server.py` added to orama-system (POST /orama + GET /health)
 - Shared `.env` contract documented in both repos
-- PERPLEXITY_BRIDGE.md + SYNC_ANALYSIS.md in ultrathink-system docs
+- PERPLEXITY_BRIDGE.md + SYNC_ANALYSIS.md in orama-system docs
 
 ---
 
@@ -222,9 +226,9 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Initial Perplexity-Tools release
+- Initial Perpetua-Tools release
 - Multi-model orchestrator with local Ollama + Perplexity cloud fallback
-- `.agents/skills/Perplexity-Tools/` skill bundle for Claude/Codex/Cowork
+- `.agents/skills/Perpetua-Tools/` skill bundle for Claude/Codex/Cowork
 - `config/routing.yml` — task-type to model-role routing
 - `config/models.yml` — model registry with device affinity
 - `config/devices.yml` — LAN device configuration (Mac + Windows)
@@ -236,6 +240,6 @@ Versioning follows [Semantic Versioning](https://semver.org/).
 
 ## Notes
 
-- ultrathink-system CHANGELOG: <https://github.com/diazMelgarejo/ultrathink-system/blob/main/CHANGELOG.md>
-- 4-layer architecture: Perplexity-Tools → ultrathink-system → ECC Tools → autoresearch
-- Priority rule: PT SKILL.md runs first; ultrathink called for `reasoning_depth=ultra` only
+- orama-system CHANGELOG: <https://github.com/diazMelgarejo/orama-system/blob/main/CHANGELOG.md>
+- 4-layer architecture: Perpetua-Tools → orama-system → ECC Tools → autoresearch
+- Priority rule: PT SKILL.md runs first; orama called for `reasoning_depth=ultra` only

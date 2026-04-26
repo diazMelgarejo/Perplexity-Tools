@@ -10,22 +10,22 @@ All items must be checked before pushing the tag.
 - [x] Redis soft import in `orchestrator.py` — no `ImportError` if package absent
 - [x] ECC sync gate — `ECC_SYNC_ENABLED` env var in `ecc_tools_sync.py` (default: true);
       `conftest.py` sets it to false at test session scope
-- [x] Async httpx fix — `ultrathink_bridge.py` uses `httpx.AsyncClient` in the new
-      `call_ultrathink_mcp_or_bridge()` wrapper (was blocking the FastAPI event loop)
+- [x] Async httpx fix — `orama_bridge.py` uses `httpx.AsyncClient` in the new
+      `call_orama_mcp_or_bridge()` wrapper (was blocking the FastAPI event loop)
 
 ## Transport
 
-- [x] HTTP Bridge (`POST /ultrathink`, port 8001) — active v1.0 RC primary transport
-- [x] MCP-Optional Tier 1 — `orchestrator/ultrathink_mcp_client.py` + `call_ultrathink_mcp_or_bridge()`
-      with HTTP fallback; `ULTRATHINK_MCP_SERVER_CMD` env var for opt-in
+- [x] HTTP Bridge (`POST /orama`, port 8001) — active v1.0 RC primary transport
+- [x] MCP-Optional Tier 1 — `orchestrator/orama_mcp_client.py` + `call_orama_mcp_or_bridge()`
+      with HTTP fallback; `ORAMA_MCP_SERVER_CMD` env var for opt-in
 - [x] `"transport": "mcp" | "http"` key surfaced in `/orchestrate` response envelope
-- [ ] MCP Tier 2 (ultrathink-system real `_solve()` pipeline) — deferred to v1.1
+- [ ] MCP Tier 2 (orama-system real `_solve()` pipeline) — deferred to v1.1
 
 ## Tests & CI
 
-- [x] 114/114 tests passing in Perplexity-Tools (108 pre-RC + 6 MCP client tests)
+- [x] 114/114 tests passing in Perpetua-Tools (108 pre-RC + 6 MCP client tests)
 - [x] CI green on both repos (`.github/workflows/ci.yml`)
-- [x] `tests/test_ultrathink_mcp_client.py` — MCP success path, MCP failure → HTTP fallback
+- [x] `tests/test_orama_mcp_client.py` — MCP success path, MCP failure → HTTP fallback
 
 ## Documentation
 
@@ -35,17 +35,17 @@ All items must be checked before pushing the tag.
 - [x] `docs/api-reference.md` — MCP stub status documented, Tier 2 design noted
 - [x] `docs/faq.md` — MCP transport status + recommended sequencing Q&A
 - [x] Both `docs/ROADMAP_v1.1.md` — Tier 1 and Tier 2 checklists with sequencing guarantee
-- [x] `.env.example` — `ULTRATHINK_MCP_SERVER_CMD` documented with opt-in notes
+- [x] `.env.example` — `ORAMA_MCP_SERVER_CMD` documented with opt-in notes
 - [x] `CHANGELOG.md` — v1.0-rc entry added (both repos)
 
 ## Release Gate
 
 - [x] Manual end-to-end smoke test (2026-03-30):
-      `POST /orchestrate` `task_type=deep_reasoning` → ultrathink HTTP (port 8001)
+      `POST /orchestrate` `task_type=deep_reasoning` → orama HTTP (port 8001)
       → Ollama `qwen3:4b-instruct` (localhost fallback) → non-empty `result` ✓
       Response: `status=created`, `transport=http`, result non-empty.
-- [ ] `git tag v1.0-rc` pushed to `diazMelgarejo/Perplexity-Tools`
-- [ ] `git tag v1.0-rc` pushed to `diazMelgarejo/ultrathink-system`
+- [ ] `git tag v1.0-rc` pushed to `diazMelgarejo/Perpetua-Tools`
+- [ ] `git tag v1.0-rc` pushed to `diazMelgarejo/orama-system`
 
 ---
 
