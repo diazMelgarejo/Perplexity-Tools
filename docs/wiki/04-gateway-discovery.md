@@ -57,5 +57,5 @@ async def bootstrap_alphaclaw():
 ## Related
 
 - [Session log 2026-04-07](../LESSONS.md#2026-04-07--claude--idempotent-gateway-discovery-commandeer-first-bootstrap)
-- [UTS/04](https://github.com/diazMelgarejo/ultrathink-system/blob/main/docs/wiki/04-gateway-discovery.md) — full code examples
+- [UTS/04](https://github.com/diazMelgarejo/orama-system/blob/main/docs/wiki/04-gateway-discovery.md) — full code examples
 - [AlphaClaw wiki/03-gateway-config.md](https://github.com/diazMelgarejo/AlphaClaw/blob/feature/MacOS-post-install/docs/wiki/03-gateway-config.md)

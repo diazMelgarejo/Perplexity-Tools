@@ -64,4 +64,4 @@ if urlparse(REMOTE_WINDOWS_URL).hostname in local_ips:
 ## Related
 
 - [Session log 2026-04-07](../LESSONS.md#2026-04-07--claude--device-identity--gpu-crash-recovery)
-- [UTS/03](https://github.com/diazMelgarejo/ultrathink-system/blob/main/docs/wiki/03-device-identity.md) — full code examples
+- [UTS/03](https://github.com/diazMelgarejo/orama-system/blob/main/docs/wiki/03-device-identity.md) — full code examples

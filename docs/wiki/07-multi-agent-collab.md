@@ -93,4 +93,4 @@ git checkout -b feature/xyz origin/main
 ## Related
 
 - [Session log 2026-04-12](../LESSONS.md#2026-04-12--claude--48-hour-multi-agent-sprint-collaboration-patterns--version-registry)
-- [UTS/06-multi-agent-collab.md](https://github.com/diazMelgarejo/ultrathink-system/blob/main/docs/wiki/06-multi-agent-collab.md)
+- [UTS/06-multi-agent-collab.md](https://github.com/diazMelgarejo/orama-system/blob/main/docs/wiki/06-multi-agent-collab.md)

@@ -17,7 +17,7 @@ git pull origin main
 Then in Claude Code:
 
 ```
-/instinct-import .claude/homunculus/instincts/inherited/Perplexity-Tools-instincts.yaml
+/instinct-import .claude/homunculus/instincts/inherited/Perpetua-Tools-instincts.yaml
 /instinct-status
 ```
 
@@ -38,5 +38,5 @@ git push origin main
 ## Related
 
 - Lessons file: `.claude/lessons/LESSONS.md`
-- Instincts YAML: `.claude/homunculus/instincts/inherited/Perplexity-Tools-instincts.yaml`
-- Companion repo sync: run the same command in ultrathink-system after merging US ECC PRs
+- Instincts YAML: `.claude/homunculus/instincts/inherited/Perpetua-Tools-instincts.yaml`
+- Companion repo sync: run the same command in orama-system after merging US ECC PRs

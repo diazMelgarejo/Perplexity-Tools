@@ -1,6 +1,6 @@
 # AI Agent Model x Hardware Profile Matrix
 
-Canonical runtime summary for **Perplexity-Tools v0.9.9.7**.
+Canonical runtime summary for **Perpetua-Tools v0.9.9.7**.
 
 ## Primary Local Lanes
 
@@ -28,8 +28,8 @@ Canonical runtime summary for **Perplexity-Tools v0.9.9.7**.
 | `default` | `glm-5.1:cloud` on Mac | Falls back to Mac LM Studio, then local backup chain. |
 | `coding` | Windows LM Studio Qwen 27B | Falls back to `qwen3-coder:14b`, then other reachable local fallbacks. |
 | `autoresearch` | Windows LM Studio Qwen 27B | Falls back to `qwen3-coder:14b`, other reachable LM Studio models, then Mac LM Studio. If no viable local coder backend is reachable, PT returns a user-action stop. |
-| `deep_reasoning` | ultrathink bridge | PT still owns hardware selection before ultrathink. |
-| `code_analysis` | ultrathink bridge | Local-only ultrathink route; Windows LM Studio remains the preferred local fallback lane after ultrathink. |
+| `deep_reasoning` | orama bridge | PT still owns hardware selection before orama. |
+| `code_analysis` | orama bridge | Local-only orama route; Windows LM Studio remains the preferred local fallback lane after orama. |
 
 ## Fallback Chain
 
@@ -45,4 +45,4 @@ Canonical runtime summary for **Perplexity-Tools v0.9.9.7**.
 
 - `qwen3.5:35b-a3b-q4_K_M` remains a supported backup fallback model and should stay documented as such.
 - `glm-5` is obsolete here; use `glm-5.1:cloud`.
-- `single_agent/SKILL.md` is not the active ultrathink skill surface anymore; use `bin/skills/SKILL.md`.
+- `single_agent/SKILL.md` is not the active orama skill surface anymore; use `bin/skills/SKILL.md`.

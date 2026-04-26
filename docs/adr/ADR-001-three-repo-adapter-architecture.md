@@ -10,14 +10,14 @@
 
 AlphaClaw (`diazMelgarejo/AlphaClaw`) is a macOS ARM64 port of `chrysb/alphaclaw` — an active upstream. The system must evolve to support Claude Code, Xcode 26 mcpbridge, Ollama, and LM Studio agents co-managing AlphaClaw installations, while keeping the fork clean and upstreamable.
 
-Two companion repos exist (`Perplexity-Tools` → renamed `Perpetua-Tools`, `ultrathink-system` → renamed `orama-system`) that accumulated orchestration logic in conflict with each other. The previous contract had gateway routing split between PT and orama, direct Python patching of the AlphaClaw npm package, and no stable interface boundary.
+Two companion repos exist (`Perpetua-Tools` → renamed `Perpetua-Tools`, `orama-system` → renamed `orama-system`) that accumulated orchestration logic in conflict with each other. The previous contract had gateway routing split between PT and orama, direct Python patching of the AlphaClaw npm package, and no stable interface boundary.
 
 **Forces at play:**
 - AlphaClaw tracks an active upstream (`chrysb/alphaclaw`). Every internal import creates a merge conflict surface.
 - orama-system must remain a stateless execution layer — it must not re-own gateway decisions.
 - Local agents (Ollama, LM Studio) need a unified client that works offline and survives backend failures.
 - MCP protocol requires a standalone stdio server process — not an HTTP endpoint inside AlphaClaw.
-- The rename from Perplexity-Tools eliminates trademark risk (`Perplexity` is an active AI company).
+- The rename from Perpetua-Tools eliminates trademark risk (`Perplexity` is an active AI company).
 
 ---
 
@@ -159,5 +159,5 @@ All three old-contract concerns resolved before Gate 1 work begins:
 - `docs/adapter-interface-contract.md` — living HTTP contract
 - `docs/system-design-three-repo-architecture.md` — architecture diagram + milestone gates
 - `docs/plan-review-migration-plan-3.md` — critique and steelman
-- `orama-system/.claude/lessons/Perplexity-Ultrathink-Consolidation.md` — lessons from prior work
+- `orama-system/.claude/lessons/Perplexity-Orama-Consolidation.md` — lessons from prior work
 - `docs/wiki/08-macos-alphaclaw-compat.md` — macOS patching lessons
