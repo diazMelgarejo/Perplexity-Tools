@@ -19,6 +19,7 @@ os.environ["OLLAMA_HOST"] = "http://127.0.0.1"
 
 from orchestrator.model_registry import ModelRegistry
 from orchestrator.fastapi_app import app
+from utils.hardware_policy import HardwareAffinityError, check_affinity, filter_models_for_platform
 
 @pytest.fixture
 def registry():
@@ -89,6 +90,28 @@ def test_autoresearch_prefers_windows_lmstudio(registry):
     assert chain[0].name == "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2"
     assert chain[0].device == "win-rtx3080"
     assert "autoresearch-coder" in chain[0].roles
+
+
+def test_hardware_policy_blocks_windows_only_on_mac():
+    with pytest.raises(HardwareAffinityError, match="NEVER_MAC"):
+        check_affinity("Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2", "mac")
+
+
+def test_hardware_policy_blocks_mac_only_on_windows():
+    with pytest.raises(HardwareAffinityError, match="NEVER_WIN"):
+        check_affinity("Qwen3.5-9B-MLX-4bit", "win")
+
+
+def test_hardware_policy_filter_is_case_insensitive():
+    models = [
+        "Qwen3.5-9B-MLX-4bit",
+        "gemma-4-26B-A4B-it-Q4_K_M",
+        "unknown-local-experiment",
+    ]
+    assert filter_models_for_platform(models, "mac") == [
+        "Qwen3.5-9B-MLX-4bit",
+        "unknown-local-experiment",
+    ]
 
 
 def test_orchestrate_hardware_selection(monkeypatch, client):
