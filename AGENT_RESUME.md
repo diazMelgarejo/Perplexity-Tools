@@ -1,5 +1,24 @@
 # Perpetua-Tools — Agent Resume
 
+### Hardware Safety & Model Affinity (2026-04-26)
+
+**Canonical policy:** `config/model_hardware_policy.yml`
+
+Hard rules — never override:
+- Windows-only (NEVER_MAC): `gemma-4-26b-a4b-it`, `gemma-4-26B-A4B-it-Q4_K_M`,
+  `qwen3.5-27b-claude-4.6-opus-reasoning-distilled-v2`
+- Mac-only (NEVER_WIN): `gemma-4-e4b-it`, `qwen3.5-9b-mlx`, `qwen3.5-9b-mlx-4bit`
+
+Runtime validation fires at three layers (L1 discover, L2 manager/launcher,
+L3 API). Any `HardwareAffinityError` must escalate to Controller — never
+silently fallback to unsafe hardware.
+
+If you are an AI agent reading this: do NOT add unverified model IDs to any
+policy file or config. Confirm with `discover.py --status` on actual hardware
+first. Known hallucinations removed: `qwen3-coder-14b` and `gemma4:e4b`.
+
+---
+
 ## Status: COMPLETE ✅ (2026-04-20)
 
 Branch: `main`

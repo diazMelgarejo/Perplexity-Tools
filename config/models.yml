@@ -31,7 +31,7 @@ models:
   - name: "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2"
     backend: lm-studio
     device: win-rtx3080
-    host: "${LM_STUDIO_WIN_ENDPOINTS:-http://192.168.254.103://192.168.254.101}"
+    host: "${LM_STUDIO_WIN_ENDPOINTS:-http://://192.168.254.103://192.168.254.103://192.168.254.103://192.168.254.101}"
     port: 1234
     context_window: 16384
     gpu_offload: 40
@@ -71,7 +71,7 @@ models:
   - name: gemma-4-26B-A4B-it-Q4_K_M
     backend: lm-studio
     device: win-rtx3080
-    host: "${LM_STUDIO_WIN_ENDPOINTS:-http://192.168.254.103://192.168.254.101}"
+    host: "${LM_STUDIO_WIN_ENDPOINTS:-http://://192.168.254.103://192.168.254.103://192.168.254.103://192.168.254.101}"
     port: 1234
     context_window: 16384
     gpu_offload: 35

@@ -1,5 +1,40 @@
 # Lessons — Perpetua-Tools
 
+## 2026-04-26 — Hardware Model Affinity Incident
+
+**Context:**
+`orama-system/scripts/discover.py` was writing unfiltered LM Studio model lists
+to `openclaw.json`. This could cause `lmstudio-mac` to advertise Windows-only
+27B/26B models, creating a hardware damage risk on the M2 Pro, while
+`lmstudio-win` could advertise Mac-only MLX / Apple Silicon models.
+
+**Root cause:**
+Discovery trusted endpoint responses without cross-referencing a hardware policy.
+
+**Defense-in-depth solution:**
+- L1: `discover.py` filters through `Perpetua-Tools/config/model_hardware_policy.yml`
+  before writing discovery state, `openclaw.json`, or `.env.lmstudio`.
+- L2: `utils/hardware_policy.py`, `alphaclaw_manager.py`, and `agent_launcher.py`
+  enforce affinity before routing/spawn decisions.
+- L3: `api_server.py` returns HTTP 400 `HARDWARE_MISMATCH` at the API boundary.
+
+**Canonical policy file:** `config/model_hardware_policy.yml`
+
+**Known hallucinations removed:** `qwen3-coder-14b` and `gemma4:e4b` appeared in
+AI-generated drafts of this plan. They are NOT verified model IDs in this system.
+Do not re-add them.
+
+**Status:** Implemented 2026-04-26.
+
+**Follow-up — unified CLI/GUI management:**
+Do not multiply human entry points. Hardware policy validation is exposed through
+the existing orama CLI (`./start.sh --hardware-policy`, `./start.sh --status`)
+and the existing Orama Portal (`http://localhost:8002`, Hardware Policy & Safe
+Defaults section). `scripts/hardware_policy_cli.py` is a helper used by the
+existing CLI, tests, and agents — not a separate product surface.
+
+---
+
 > **Canonical path**: `docs/LESSONS.md`
 > **Previous path**: `.claude/lessons/LESSONS.md` (now redirects here)
 > **Purpose**: GitHub-auditable persistent memory across all ECC, AutoResearcher, and Claude sessions.

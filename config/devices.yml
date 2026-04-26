@@ -35,7 +35,7 @@ devices:
     default_backend: "lm-studio"
     primary_backend: "lm-studio"
     secondary_backend: "ollama"
-    lan_ip: "192.168.254.103"
+    lan_ip: ""
     ports:
       - 1234   # LM Studio (primary)
       - 11434  # Ollama (secondary)
