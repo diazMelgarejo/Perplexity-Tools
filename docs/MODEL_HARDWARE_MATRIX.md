@@ -2,6 +2,11 @@
 
 Canonical runtime summary for **Perpetua-Tools v0.9.9.7**.
 
+> **Machine-enforced policy:** See `config/model_hardware_policy.yml`.
+> This document is the human-readable reference. The YAML file is the
+> authoritative source for all runtime enforcement. The `shared:` list is
+> intentionally empty until a model is verified on both physical machines.
+
 ## Primary Local Lanes
 
 | Lane | Primary Model | Backend | Endpoint | Notes |
