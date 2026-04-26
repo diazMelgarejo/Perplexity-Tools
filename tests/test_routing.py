@@ -76,9 +76,9 @@ def test_autoresearch_routes_present(routing_config):
 
 
 def test_autoresearch_coder_affinity(routing_config):
-    """autoresearch-coder must target win (normalized from win-rtx3080)."""
+    """autoresearch-coder must target win-rtx3080 (specific device, not normalized)."""
     route = routing_config["routes"]["autoresearch-coder"]
-    assert route.get("affinity") == "win"
+    assert route.get("affinity") == "win-rtx3080"
 
 
 def test_ultrathink_comments_describe_current_task_type_contract():
