@@ -35,6 +35,8 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from utils.hardware_policy import check_affinity
+
 SCRIPT_DIR = Path(__file__).resolve().parent.parent   # PT root
 STATE_DIR  = SCRIPT_DIR / ".state"
 ROUTING_JSON = STATE_DIR / "routing.json"
@@ -240,6 +242,21 @@ def determine_mode(probe: BackendProbeResult) -> RuntimeMode:
             windows_reachable=False,
             distributed=False,
         )
+
+
+# ─── Hardware affinity enforcement ────────────────────────────────────────────
+
+class AlphaClawManager:
+    """Thin OO wrapper for callers that expect a manager instance."""
+
+    def validate_routing_affinity(self, model_id: str, platform: str) -> bool:
+        """
+        Validate a model/hardware assignment before agent spawn.
+
+        Raises HardwareAffinityError on violation; returns True otherwise.
+        """
+        check_affinity(model_id=model_id, platform=platform)
+        return True
 
 
 # ─── AlphaClaw bootstrap ───────────────────────────────────────────────────────
