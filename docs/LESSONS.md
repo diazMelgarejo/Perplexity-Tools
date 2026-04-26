@@ -348,3 +348,37 @@ All lessons above are expanded with root causes, exact fixes, and verification c
 - **Requirement**: Git must track symlinks as Mode 120000. Use `git ls-files -s` to verify.
 - **Automation**: Startup scripts (`start.sh`) MUST validate symlinks. If a link is missing or broken, the script should attempt to recreate it or provide clear instructions on where the missing sibling dependency should live.
 - **Agnostic Pathing**: Always use relative paths in symlinks (e.g., `../sibling`) rather than absolute paths to ensure portability across different clones.
+
+---
+
+## 2026-04-26 — Claude — Cross-repo import pattern for hardware_policy
+
+### What was learned
+
+**utils/hardware_policy.py is PT-owned; orama imports via sys.path**
+The canonical approach: orama's `api_server.py` and `scripts/discover.py` both resolve
+`PERPETUA_TOOLS_ROOT` (env var with sibling-dir fallback) and call
+`sys.path.insert(0, PERPETUA_TOOLS_ROOT)` to import `utils.hardware_policy` at runtime.
+This avoids packaging the module twice or adding a git submodule.
+
+**Fallback must be visible in logs**
+If `PERPETUA_TOOLS_ROOT` path doesn't exist or the import fails, the except block
+now emits `logger.warning(...)` with the resolved path. Operators can see when
+enforcement is silently disabled.
+
+**pre-commit hook blocks hallucinated model IDs**
+`scripts/check_no_hallucinated_models.py` is registered as a pre-commit hook in both repos.
+It blocks `qwen3-coder-14b` and `gemma4:e4b` — IDs that appeared in AI-generated plan drafts
+but are not verified model IDs in this system. Add to this list whenever a hallucination is
+discovered in any plan or code review.
+
+### Decisions made
+
+- PT owns `utils/hardware_policy.py` and `config/model_hardware_policy.yml`
+- orama consumes via sys.path injection, not packaging or submodule
+- `shared:` section intentionally empty until both machines are verified online
+
+### Follow-up
+
+- Populate `shared:` section after live `discover.py --status` run (Part 2 plan)
+- Document `PERPETUA_TOOLS_ROOT` in both repos' `.env.example`
