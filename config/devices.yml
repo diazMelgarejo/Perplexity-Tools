@@ -16,7 +16,7 @@ devices:
     default_backend: mlx
     primary_backend: "ollama"
     secondary_backend: "lm-studio"
-    lan_ip: "192.168.254.107"
+    lan_ip: "localhost"
     ports: 
       - 11434  # Ollama
       - 1234   # LM Studio
@@ -35,7 +35,7 @@ devices:
     default_backend: "lm-studio"
     primary_backend: "lm-studio"
     secondary_backend: "ollama"
-    lan_ip: "192.168.254.101"
+    lan_ip: "192.168.254.103"
     ports:
       - 1234   # LM Studio (primary)
       - 11434  # Ollama (secondary)
