@@ -12,6 +12,10 @@ All hardware-specific configuration lives here. `ModelRegistry` reads this file
 before selecting any model. Rules: never assign a model that exceeds the profile's
 `max_model_vram_gb` or `max_model_ram_gb` limits.
 
+> **Machine-enforced affinity policy:** See `config/model_hardware_policy.yml`.
+> That YAML file is the authoritative runtime source for `NEVER_MAC` and
+> `NEVER_WIN`. This markdown is the human-readable hardware guide.
+
 ---
 
 ### Profile: mac-studio
@@ -129,7 +133,7 @@ recommended_models:
     num_gpu_layers: 32
     num_ctx: 8192
     notes: "Legacy Ollama path. Still valid; use LM Studio model above for v0.9.9.1+."
-  - id: qwen3-coder-14b
+  - id: qwen3-coder:14b
     ollama_tag: qwen3-coder:14b
     backend: ollama
     roles: [coding, autoresearch-coder, subagent]
@@ -160,14 +164,14 @@ that exceeds the profile's VRAM/RAM ceiling.
 | Role | Preferred Hardware | Model | Constraint |
 |---|---|---|---|
 | `orchestrator` / `strategy` / `architecture` | mac-studio | glm-5.1:cloud via local Ollama | live probe must pass |
-| `final-validator` / `presenter` | mac-studio | Qwen3.5-9B-MLX-4bit (LM Studio) | context≤4096 conservative |
-| `coder` / `checker` / `executor` / `verifier` / `autoresearch-coder` | win-rtx3080 | Qwen3.5-27B (LM Studio) | gpu_offload=40, context≤16384 |
-| `refiner` / `subagent` | win-rtx3080 | Qwen3.5-27B (LM Studio) | gpu_offload=40 |
-| `general` / `coding` (secondary) | win-rtx3080 | gemma-4-26B-A4B-it-Q4_K_M (LM Studio) | gpu_offload=35, context≤16384 |
+| `final-validator` / `presenter` | mac-studio | Qwen3.5-9B-MLX-4bit (LM Studio) | NEVER_WIN; context≤4096 conservative |
+| `coder` / `checker` / `executor` / `verifier` / `autoresearch-coder` | win-rtx3080 | Qwen3.5-27B (LM Studio) | NEVER_MAC; gpu_offload=40, context≤16384 |
+| `refiner` / `subagent` | win-rtx3080 | Qwen3.5-27B (LM Studio) | NEVER_MAC; gpu_offload=40 |
+| `general` / `coding` (secondary) | win-rtx3080 | gemma-4-26B-A4B-it-Q4_K_M (LM Studio) | NEVER_MAC; gpu_offload=35, context≤16384 |
 | `coding` / `autoresearch-coder` | win-rtx3080 | qwen3.5-35b-a3b-q4 (Ollama fallback) | ≤10GB VRAM, num_ctx≤8192 |
 | `critic` / `refiner` (Ollama path) | win-rtx3080 | qwen3-30b-critic | ≤10GB VRAM |
-| `standard` / `subagent` | mac-studio | Qwen3.5-9B-MLX-4bit | 16GB+ unified |
-| `synthesis` | mac-studio | Qwen3.5-9B-MLX-4bit | context≤4096 |
+| `standard` / `subagent` | mac-studio | Qwen3.5-9B-MLX-4bit | NEVER_WIN; 16GB+ unified |
+| `synthesis` | mac-studio | Qwen3.5-9B-MLX-4bit | NEVER_WIN; context≤4096 |
 | `strategy` / `architecture` | cloud or win | claude-4-5 or qwen3-30b | online or local |
 | `realtime` / `finance` | cloud | grok-4-1-thinking | online only |
 | `autoresearch-critic` | win-rtx3080 | qwen3-30b-critic | ≤10GB VRAM |
@@ -224,6 +228,10 @@ DEGRADED: return cached result or queue task
 ## Synchronization Contract
 
 This file is the **single source of truth** for hardware profiles.
+
+`config/model_hardware_policy.yml` is the **single source of truth** for
+machine-enforced model affinity. Do not duplicate the full policy in markdown;
+cite the YAML and keep examples aligned with it.
 
 - `config/models.yml` → references profile_ids from this file
 - `config/routing.yml` → respects `max_model_vram_gb` constraints
