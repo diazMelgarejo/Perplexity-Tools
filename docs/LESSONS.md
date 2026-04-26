@@ -382,3 +382,45 @@ discovered in any plan or code review.
 
 - Populate `shared:` section after live `discover.py --status` run (Part 2 plan)
 - Document `PERPETUA_TOOLS_ROOT` in both repos' `.env.example`
+
+---
+
+# 2026-04-27 — Part 2 Complete: Affinity Key Normalization, Disaster Recovery, Gemini Plan Review
+
+## Changes landed
+
+**G3 — device_affinity → affinity key rename (PT side):**
+- `config/routing.yml` autoresearch routes: `device_affinity` → `affinity`
+- Value `win-rtx3080` preserved — future Windows hardware profiles (e.g. win-rtx4090) share the windows_only blocklist but need distinct whitelists. Device-specific affinity is the extension point. **Never normalize `win-rtx3080` to generic `win`.**
+- Fixed stale test: `ULTRATHINK_ENDPOINT` → `ORAMA_ENDPOINT` (the rename had happened in routing.yml but the test didn't track it)
+- Regression guard: `test_routing_affinity_keys_normalized` blocks future re-introduction of `device_affinity` key
+
+**G1 — shared: section:**
+- Commented out in `config/model_hardware_policy.yml` with TODO pointing to Part 2 Phase 5
+- Added `_POLICY_CACHE` autouse fixture to clear module-level cache between tests (prevents test-ordering contamination)
+- Parametrized test covers all 3 YAML variants (commented-out, absent, explicit-empty) × both parsers (PyYAML + `_simple_policy_parse`)
+
+**G2 — PERPETUA_TOOLS_ROOT:**
+- Documented in `.env.example` with cross-repo usage context
+
+## Disaster Recovery Pattern (owned by orama, mirrors here for cross-repo context)
+
+`HardwarePolicyResolver` in `orama/api_server.py` implements:
+1. **PT-first**: import from `PERPETUA_TOOLS_ROOT` → authoritative
+2. **Cache fallback**: `config/hardware_policy_cache.yml` → degraded (CRITICAL warning)
+3. **Hard fail if cache missing**: never silently skip enforcement
+
+**Key invariant for PT:** orama will ALWAYS try PT first and defer to PT's decisions. The cache is strictly a last resort for DR scenarios, not a way to bypass PT. PT remains authoritative — orama will call back to PT on every start and include `policy_source` in response metadata so ops can detect when the fallback was used.
+
+## Gemini v3.1 Plan Review
+
+**Accepted:** G2 (env docs) and G4 (hallucination purge — already done).
+
+**Rejected — symlink proposal:** `orama/utils/hardware_policy.py → PT/utils/hardware_policy.py`. Fragile: breaks on Windows (no Unix symlinks), breaks in Docker/CI when repos at different mount paths, breaks when repos cloned to different locations. sys.path injection is more portable and already works.
+
+**Rejected — remove _simple_policy_parse:** This fallback exists for PyYAML-absent environments. Removing it trades elegance for fragility.
+
+## Test counts
+
+- PT: 24/24 (16 → +8 new tests)
+- orama: 23/23 (16 → +7 new schema tests)
