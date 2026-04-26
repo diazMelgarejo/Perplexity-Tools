@@ -18,6 +18,8 @@ mac_only:
   - qwen3.5-9b-mlx-4bit
   - Qwen3.5-9B-MLX-4bit
 
-shared:
-  # INTENTIONALLY EMPTY — do not populate without verification
-  # Add only confirmed cross-platform models here
+# TODO(shared-models): Populate this section once both Mac and Windows machines
+# are online simultaneously and `discover.py --status` has been run on both.
+# Steps documented in: docs/tripartite-plan/2026-04-26-hardware-model-routing-004-PART2-PLAN.md § Phase 5
+# Out of scope until both machines are verified online.
+# shared:

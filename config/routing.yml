@@ -70,17 +70,17 @@ routes:
   autoresearch-coder:
     description: Edits train.py, deploys to GPU via scp, dispatches run via ssh
     roles: [autoresearch-coder, coding, fallback]
-    device_affinity: win-rtx3080
+    affinity: win
 
   autoresearch-evaluator:
     description: Reads log.txt, parses val_bpb, writes findings to swarm_state.md
     roles: [autoresearch-critic, critic, refiner, fallback]
-    device_affinity: mac
+    affinity: mac
 
   autoresearch-orchestrator:
     description: Reads swarm_state.md + git log, proposes next hypothesis
     roles: [strategy, architecture, top-level, fallback]
-    device_affinity: mac
+    affinity: mac
 
   ml-experiment:
     description: Alias for autoresearch; routes identically
