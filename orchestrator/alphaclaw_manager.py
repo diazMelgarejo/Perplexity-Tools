@@ -117,7 +117,7 @@ def probe_backends(
     Returns a BackendProbeResult with reachability flags and IPs.
     """
     mac_ip = mac_ip or os.getenv("MAC_IP", "192.168.254.105")
-    win_ip = win_ip or os.getenv("WIN_IP", "192.168.254.100")
+    win_ip = win_ip or os.getenv("WIN_IP", "192.168.254.103")
 
     launcher = SCRIPT_DIR / "agent_launcher.py"
     if not launcher.is_file():
@@ -130,7 +130,7 @@ def probe_backends(
     env = {
         **os.environ,
         "WINDOWS_IP": win_ip,
-        "OLLAMA_MAC_ENDPOINT": f"http://{mac_ip}:11434",
+        "OLLAMA_MAC_ENDPOINT": "http://localhost:11434",
         "MAC_IP": mac_ip,
         "WIN_IP": win_ip,
     }
@@ -256,7 +256,7 @@ def bootstrap_alphaclaw(mac_ip: str = "", win_ip: str = "") -> AlphaClawState:
         return AlphaClawState(error="alphaclaw_bootstrap.py not found")
 
     mac_ip = mac_ip or os.getenv("MAC_IP", "192.168.254.105")
-    win_ip = win_ip or os.getenv("WIN_IP", "192.168.254.100")
+    win_ip = win_ip or os.getenv("WIN_IP", "192.168.254.103")
 
     env = {
         **os.environ,
@@ -329,7 +329,7 @@ def resolve_runtime(
     orama reads it; it makes zero additional gateway decisions.
     """
     mac_ip = mac_ip or os.getenv("MAC_IP", "192.168.254.105")
-    win_ip = win_ip or os.getenv("WIN_IP", "192.168.254.100")
+    win_ip = win_ip or os.getenv("WIN_IP", "192.168.254.103")
 
     # Step 1: probe
     if skip_probe:
@@ -368,9 +368,9 @@ def resolve_runtime(
     env_exports = {
         "MAC_IP": mac_ip,
         "WIN_IP": win_ip,
-        "OLLAMA_MAC_ENDPOINT": f"http://{mac_ip}:11434",
+        "OLLAMA_MAC_ENDPOINT": "http://localhost:11434",
         "OLLAMA_WINDOWS_ENDPOINT": f"http://{win_ip}:11434",
-        "LM_STUDIO_MAC_ENDPOINT": f"http://{mac_ip}:1234",
+        "LM_STUDIO_MAC_ENDPOINT": "http://localhost:1234",
         "LM_STUDIO_WIN_ENDPOINTS": f"http://{win_ip}:1234",
         "WINDOWS_IP": win_ip,
         "GPU_BOX": f"WINUSER@{win_ip}",
