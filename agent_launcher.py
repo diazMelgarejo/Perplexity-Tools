@@ -27,6 +27,8 @@ import socket
 from pathlib import Path
 from urllib.parse import urlparse
 
+from utils.hardware_policy import HardwareAffinityError, check_affinity
+
 try:
     import httpx
 except ImportError:
@@ -274,19 +276,43 @@ def _build_routing_state(
 
     mac_any = mac_ok or mac_lms_ok
 
+    try:
+        check_affinity(manager_model, "mac")
+    except HardwareAffinityError as exc:
+        print(f"[agent_launcher] ✗  {exc}")
+        mac_ok = False
+        mac_lms_ok = False
+        mac_any = False
+
+    coder_endpoint = (REMOTE_WINDOWS_LMS_URL if lms_ok
+                      else REMOTE_WINDOWS_URL if win_ok
+                      else manager_endpoint)
+    coder_model = (WINDOWS_LMS_MODEL if lms_ok
+                   else WINDOWS_CODER_MODEL if win_ok
+                   else manager_model)
+    coder_backend = ("windows-lmstudio" if lms_ok
+                     else "windows-ollama" if win_ok
+                     else "mac-degraded")
+    coder_platform = "win" if coder_backend.startswith("windows-") else "mac"
+
+    try:
+        check_affinity(coder_model, coder_platform)
+    except HardwareAffinityError as exc:
+        print(f"[agent_launcher] ✗  {exc}")
+        print("[agent_launcher]   unsafe coder lane disabled; falling back to manager lane")
+        win_ok = False
+        lms_ok = False
+        coder_endpoint = manager_endpoint
+        coder_model = manager_model
+        coder_backend = "mac-degraded"
+
     return {
         "manager_endpoint":      manager_endpoint,
         "manager_model":         manager_model,
         "manager_backend":       manager_backend,
-        "coder_endpoint":        (REMOTE_WINDOWS_LMS_URL if lms_ok
-                                  else REMOTE_WINDOWS_URL  if win_ok
-                                  else manager_endpoint),
-        "coder_model":           (WINDOWS_LMS_MODEL       if lms_ok
-                                  else WINDOWS_CODER_MODEL  if win_ok
-                                  else manager_model),
-        "coder_backend":         ("windows-lmstudio" if lms_ok
-                                  else "windows-ollama" if win_ok
-                                  else "mac-degraded"),
+        "coder_endpoint":        coder_endpoint,
+        "coder_model":           coder_model,
+        "coder_backend":         coder_backend,
         "mac_ollama_ok":         mac_ok,
         "mac_lmstudio_ok":       mac_lms_ok,
         "windows_ollama_ok":     win_ok,

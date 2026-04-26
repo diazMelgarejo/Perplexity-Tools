@@ -29,7 +29,7 @@ from orchestrator.control_plane import (
 from orchestrator.cost_guard import CostGuard
 from orchestrator.ecc_tools_sync import get_sync_status, sync_ecc_tools
 from orchestrator.model_registry import ModelRegistry
-from orchestrator.ultrathink_bridge import (
+from orchestrator.orama_bridge import (
     call_ultrathink_mcp_or_bridge,
     parse_ultrathink_timeout,
 )
