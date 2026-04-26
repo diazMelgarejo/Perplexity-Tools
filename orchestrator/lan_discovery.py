@@ -286,7 +286,7 @@ class LANDiscovery:
 def detect_active_tilting_ip() -> str:
     """Derive the Windows GPU endpoint base URL from the local subnet at runtime.
 
-    Implements the v0.9.9.5 Active Tilting spec: Windows is always .100 on whatever
+    Implements the v0.9.9.5 Active Tilting spec: Windows is always .103 on whatever
     subnet the Mac is on, so the IP is portable across legacy (192.168.1.x) and
     current (192.168.254.x) network topologies without any config change.
 
@@ -294,16 +294,16 @@ def detect_active_tilting_ip() -> str:
       1. LAN_GPU_IP_OVERRIDE env var — absolute override, any subnet
       2. LM_STUDIO_WIN_ENDPOINTS env var — backward-compat with existing .env files
       3. UDP routing trick (no packets sent) — live detection of outbound interface
-      4. Hardcoded 192.168.254.100 — current-subnet safe fallback
+      4. Hardcoded 192.168.254.103 — current-subnet safe fallback
 
-    Returns a base URL string like "http://192.168.254.100" (no port, no path).
+    Returns a base URL string like "http://192.168.254.103" (no port, no path).
     Callers append the port themselves to keep the function backend-agnostic.
 
     Table:
       Detected subnet   | Derived Windows IP
-      192.168.1.x       | 192.168.1.100   (legacy)
-      192.168.254.x     | 192.168.254.100 (current)
-      <any other /24>   | <subnet>.100
+      192.168.1.x       | 192.168.1.103   (legacy)
+      192.168.254.x     | 192.168.254.103 (current)
+      <any other /24>   | <subnet>.103
     """
     for env_var in ("LAN_GPU_IP_OVERRIDE", "LM_STUDIO_WIN_ENDPOINTS"):
         val = os.environ.get(env_var, "")
@@ -319,8 +319,8 @@ def detect_active_tilting_ip() -> str:
         log.debug("detect_active_tilting_ip: local=%s → windows=%s", local_ip, detected)
         return detected
     except Exception as exc:
-        log.warning("Active tilting IP detection failed (%s); falling back to 192.168.254.100", exc)
-        return "http://192.168.254.100"
+        log.warning("Active tilting IP detection failed (%s); falling back to 192.168.254.103", exc)
+        return "http://192.168.254.103"
 
 
 async def main():
