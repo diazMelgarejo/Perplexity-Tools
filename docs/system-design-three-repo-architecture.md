@@ -423,7 +423,7 @@ A. The Repo Links that will serve as example and inspiration, or we can git subm
 1. <https://github.com/yayoboy/Claude-Desktop-LLM> Take a cue from handling ollama and LM-Studio models with two files:
  •  ollama-agent.mcpb reasoning and reading code for analysis
  •  lmstudio-agent.mcpb could expose the server for Claude to spawn sub-agents, this repo can be a dependency?
-2. <https://github.com/rusiaaman/wcgw> MCP could do the actual code editing recursively called by any agent
+2. <https://github.com/rusiaaman/wcgw> MCP could do the actual code editing recursively called by any agent ([The maintainer’s own warning matters: for clients that already have shell/filesystem tools, wcgw may create duplicate tool choices and token waste. It shines more in clients that lack strong local shell and file access.](https://github.com/rusiaaman/wcgw/discussions/58))
 3. <https://github.com/codejunkie99/agentic-stack> get only the pluggability here, do not ingest, converge with its logic for Portable ".agent/" folder (memory + skills + protocols) that plugs into Claude Code, Cursor, Windsurf, OpenCode, OpenClaw, Hermes, or DIY Python and keeps accumulated knowledge, we need this
 
 B. The Repo Links we are working on (where it will land):
