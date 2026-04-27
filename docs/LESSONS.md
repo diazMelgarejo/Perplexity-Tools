@@ -424,3 +424,55 @@ discovered in any plan or code review.
 
 - PT: 24/24 (16 → +8 new tests)
 - orama: 23/23 (16 → +7 new schema tests)
+
+---
+
+## Session 2026-04-27b — Agent Automation + Portal Integration
+
+### Codex PTY Automation Pattern (CRITICAL — add to all agent skills)
+
+**Problem:** Codex `--full-auto` requires a TTY. Spawning from Python subprocesses fails with "stdin is not a terminal".
+
+**Automated solution using `pty.openpty()`:**
+```python
+import pty, select, os, subprocess
+
+master_fd, slave_fd = pty.openpty()
+proc = subprocess.Popen(
+    ["codex", "--full-auto", task],
+    stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
+    close_fds=True, cwd=str(repo_root),
+)
+os.close(slave_fd)
+# Collect output via master_fd with select() + timeout
+```
+**This makes Codex 100% automatable — no human terminal needed, works from Claude Code, CI, FastAPI, or any Python subprocess.**
+
+See: `orama-system/scripts/spawn_agents.py → _dispatch_codex()`
+
+### Gemini CLI Fix
+```bash
+# Create wrapper in ~/.local/bin/gemini:
+#!/usr/bin/env bash
+exec /path/to/nvm/v24/bin/node /path/to/nvm/v24/bin/gemini "$@"
+```
+Fixes `??= SyntaxError` when shell resolves `node` to v14.
+Auto-created by `scripts/setup_codex.sh` on every stack startup.
+
+### Tools Available (cross-session reference)
+| Tool | Status | How to use |
+|------|--------|-----------|
+| Codex | ✓ via PTY | `spawn_agents.py --agent codex` |
+| Gemini CLI | ✓ via wrapper | `spawn_agents.py --agent gemini` or `~/.local/bin/gemini -p "..."` |
+| LM Studio Mac | ✓ when .110 online | `spawn_agents.py --agent lmstudio-mac` |
+| LM Studio Win | ✓ when .101 online | `spawn_agents.py --agent lmstudio-win` (GPU serialized) |
+| All agents | parallel + serial | `spawn_agents.py --agent all` |
+
+### Module Loading Pattern (sys.modules registration)
+When loading a Python module with `importlib.util.exec_module` and it contains dataclasses:
+```python
+mod = importlib.util.module_from_spec(spec)
+sys.modules['module_name'] = mod  # MUST register before exec_module
+spec.loader.exec_module(mod)       # otherwise dataclass field annotations fail
+```
+
