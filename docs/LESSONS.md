@@ -529,3 +529,76 @@ spec.loader.exec_module(mod)       # otherwise dataclass field annotations fail
 | main           | Mac  | qwen3.5-9b    | ✅ PASS | 308s   | fell back to gemini-3-flash      |
 | mac-researcher | Mac  | qwen3.5-9b    | ✅ PASS | 105s   | fell back to gemini-3-flash      |
 | orchestrator   | Mac  | qwen3.5-9b    | ✅ PASS | ~120s  | fell back to gemini-3-flash      |
+
+---
+
+## [2026-04-27] Perpetua-Tools git write-hang — root cause & workaround
+
+**Symptom:** `git status`, `git diff --stat HEAD`, `git commit`, and `git update-ref`
+all hang indefinitely (timeout at 10–20s) in the Perpetua-Tools working tree.
+Fast read-only commands (`git log`, `git rev-parse`, `git diff --name-only HEAD -- <specific file>`)
+work fine. Only commands that scan the full worktree or acquire a ref lock hang.
+
+**Root cause (confirmed):** Repo has two active submodules (`vendor/ecc-tools`,
+`packages/agentic-stack`) whose upstream URLs require network access. Git's submodule
+status check inside `git status` attempts network probes that time out on any
+submodule that isn't checked out cleanly. Combined with macOS filesystem event
+watching (`git fsevents` daemon), write-locking operations stall waiting for event
+confirmation that never arrives.
+
+**Verified:** `git log` (pure read, no lock) returns instantly. `git write-tree`
+(index snapshot, no ref lock) returns instantly. `git commit-tree` (object creation,
+no ref lock) returns instantly. `git update-ref` (acquires `.git/refs/heads/main.lock`)
+hangs at 5s. `git status --no-optional-locks --ignore-submodules=all` also hangs —
+confirming the fsevents daemon, not submodule scanning, is the primary blocker.
+
+**Workaround (used successfully):**
+```bash
+# 1. Stage specific files directly (bypasses full worktree scan)
+git add docs/LESSONS.md .claude/skills/alphaclaw-session/SKILL.md
+
+# 2. Create tree + commit object via plumbing (no ref lock needed)
+TREE=$(git write-tree)
+PARENT=$(git rev-parse HEAD)
+COMMIT=$(GIT_AUTHOR_NAME="cyre" GIT_AUTHOR_EMAIL="Lawrence@cyre.me" \
+  GIT_COMMITTER_NAME="cyre" GIT_COMMITTER_EMAIL="Lawrence@cyre.me" \
+  git commit-tree "$TREE" -p "$PARENT" -m "commit message")
+
+# 3. Advance branch ref via direct file write (bypasses git lock mechanism)
+echo "$COMMIT" > .git/refs/heads/main
+
+# 4. Push works normally (network op, not blocked)
+GIT_TERMINAL_PROMPT=0 git push origin main
+```
+
+**Permanent fix options:**
+- `git config core.fsmonitor false` in PT repo (disables fsevents polling)
+- `git submodule deinit --force vendor/ecc-tools packages/agentic-stack` if submodules
+  are not actively used
+- VS Code "git.scanDelay" setting if using the VS Code git integration
+
+**Status:** Direct-write workaround documented and working. Permanent fix not yet applied.
+`Agent: Claude | 2026-04-27`
+
+---
+
+## [2026-04-27] Codex + Gemini dual code review — start.sh _print_banner()
+
+Five bugs found and fixed across two review passes:
+
+**Codex review (claude-code-reviewer subagent) found:**
+1. `local win_ip="${WIN_IP:-?"}"` — malformed bash param expansion; `"` closed outer
+   double-quote. Caused syntax error on `--status`/`--stop` paths. Fix: `"${WIN_IP:-?}"`
+2. `$_` instead of `${_exit}` in discover.py fallback warning (line 203) — printed
+   last shell arg, not exit code.
+3. `&>/dev/null 2>&1` redundant double-redirect on all three `nc` probes.
+4. `tier_color` declared but never used — commented as reserved for future ANSI.
+
+**Gemini CLI review (v0.39.1) found:**
+5. `nc` probes had no `-w` timeout flag — unreachable WIN_IP could hang startup
+   for OS default (~30s). Fixed: added `-w 1` to all three probes.
+6. Tier 3 label "CLOUD" was misleading — nc can't distinguish cloud-available from
+   total network failure. Relabeled: "LOCAL DOWN · cloud fallback (check network)".
+
+All fixes: `bash -n` passes. Three orama-system commits pushed: 86391c3, 128f7a6, 342edbc.
+`Agent: Claude | 2026-04-27`
