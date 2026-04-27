@@ -1,15 +1,24 @@
 ---
 name: alphaclaw-session
-version: 1.2.0
+version: 1.3.0
 description: Commandeer AlphaClaw/OpenClaw runtime defaults. Set environment profiles, backup/restore sessions, enumerate live agents, self-heal connectivity issues. Run when starting any OpenClaw-dependent session.
 user-invocable: true
 ---
 
-# AlphaClaw Session — v1.2.0
+# AlphaClaw Session — v1.3.0
 
 Encodes durable knowledge about the AlphaClaw/OpenClaw environment so you never have to figure it out again each time.
 
 **Confirmed by live matrix test 2026-04-27 — all 6 agents pass.**
+
+---
+
+## Hardware Topology (confirmed 2026-04-27)
+
+| Machine | Hardware | LM Studio | Notes |
+|---------|----------|-----------|-------|
+| Mac (cyre) | Apple Silicon M-series | `localhost:1234` | MLX inference, qwen3.5-9b-mlx is native MLX |
+| Win (cyre) | **DELL Precision Tower 3660, 32GB RAM, RTX 3080 10GB** | `192.168.254.103:1234` | GGUF via CUDA, RTX 3080 constraint: ONE model at a time |
 
 ---
 
@@ -25,6 +34,8 @@ Encodes durable knowledge about the AlphaClaw/OpenClaw environment so you never 
 | Bearer token | `d3aea7fea7ba51a1dff69b84662ae97d53dd3c2bcb182781` | from openclaw.json |
 | openclaw CLI Node | `/Users/lawrencecyremelgarejo/.nvm/versions/node/v24.14.1/bin/openclaw` | Node v14 is too old |
 | Agent timeout | 300s (300000ms) | reasoning models need long budget |
+| Mac thinking | `thinkingLevel: off` in openclaw.json + LM Studio UI toggle | reasoning mode slows turns 5× |
+| Win thinking | leave as-is | Win 27B returns `reasoning_content`; `text` often empty — check both |
 
 ---
 
