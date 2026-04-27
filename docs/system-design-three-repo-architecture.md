@@ -430,6 +430,6 @@ B. The Repo Links we are working on (where it will land):
 
 i. <https://github.com/diazMelgarejo/AlphaClaw> the branch "feature/MacOS-post-install" will be our home to prepare the thin custom add-ons and configuration on top of it for PT & UTS use (dependency)
 
-ii. old PT = `diazMelgarejo/Perpetua-Tools` renamed → <https://github.com/diazMelgarejo/Perpetua-Tools> main
+ii. old PT = `diazMelgarejo/Perplexity-Tools` renamed → <https://github.com/diazMelgarejo/Perpetua-Tools> main
 
-iii. old UTS = `diazMelgarejo/orama-system` renamed → <https://github.com/diazMelgarejo/orama-system> main
+iii. old UTS = `diazMelgarejo/ultrathink-system` renamed → <https://github.com/diazMelgarejo/orama-system> main
