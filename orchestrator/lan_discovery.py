@@ -315,7 +315,7 @@ def detect_active_tilting_ip() -> str:
             s.connect(("8.8.8.8", 80))   # No packets are actually sent
             local_ip = s.getsockname()[0]
         subnet = ".".join(local_ip.split(".")[:3])
-        detected = f"http://{subnet}.100"
+        detected = f"http://{subnet}.103"   # Windows RTX 3080 is always .103 on any subnet
         log.debug("detect_active_tilting_ip: local=%s → windows=%s", local_ip, detected)
         return detected
     except Exception as exc:
