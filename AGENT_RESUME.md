@@ -1,10 +1,11 @@
 # Perpetua-Tools — Agent Resume
 
-### Hardware Safety & Model Affinity (2026-04-26)
+## Hardware Safety & Model Affinity (2026-04-26)
 
 **Canonical policy:** `config/model_hardware_policy.yml`
 
 Hard rules — never override:
+
 - Windows-only (NEVER_MAC): `gemma-4-26b-a4b-it`, `gemma-4-26B-A4B-it-Q4_K_M`,
   `qwen3.5-27b-claude-4.6-opus-reasoning-distilled-v2`
 - Mac-only (NEVER_WIN): `gemma-4-e4b-it`, `qwen3.5-9b-mlx`, `qwen3.5-9b-mlx-4bit`
@@ -53,7 +54,7 @@ All Claude Code automation from the LM Studio Auto-Discovery plan has been imple
 
 ### Live Endpoints (auto-updated by discover.py)
 
-```
+```ascii
 Mac LM Studio: http://localhost:1234
 Win LM Studio: http://192.168.254.109:1234
 LMS_WIN_MODEL: qwen3.5-27b-claude-4.6-opus-reasoning-distilled-v2
