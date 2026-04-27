@@ -33,7 +33,7 @@ AlphaClaw (`diazMelgarejo/AlphaClaw`) is a macOS ARM64 port of `chrysb/alphaclaw
 ┌───────────────────────────▼─────────────────────────────────────────┐
 │  LAYER 2 — Middleware / Adapters / Tooling                          │
 │  @diazmelgarejo/perpetua-tools  (github: diazMelgarejo/Perpetua-Tools) │
-│  (renamed from Perpetua-Tools — trademark risk eliminated)        │
+│  (renamed from Perplexity-Tools — trademark risk eliminated)        │
 │  Contains: AlphaClaw adapter · MCP toolpack · local-agent clients   │
 │            (Ollama + LM Studio) · Xcode integration scripts         │
 │            · .agent/ portable folder skeleton · CI for adapters     │
