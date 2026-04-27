@@ -1,12 +1,10 @@
 # System Design: Three-Repo Architecture
 
-# @diazmelgarejo/alphaclaw · @diazmelgarejo/perpetua-tools · @diazmelgarejo/orama-system
+@diazmelgarejo/alphaclaw · @diazmelgarejo/perpetua-tools · @diazmelgarejo/orama-system
 
-# Version: 0.9.9.8 (all three, post-migration)
-
-# Status: SCAFFOLDING — not committed | Branch: feature/MacOS-post-install
-
-# Merges: Migration Plan 3 + Plan Review + Session decisions (2026-04-19)
+> Version: 0.9.9.8 (all three, post-migration)
+> Status: SCAFFOLDING — not committed | Branch: feature/MacOS-post-install
+> Merges: Migration Plan 3 + Plan Review + Session decisions (2026-04-19)
 
 ---
 
