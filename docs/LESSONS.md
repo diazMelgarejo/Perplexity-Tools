@@ -646,7 +646,25 @@ pathlib.Path.home().joinpath('.openclaw/openclaw.json').write_text(
     json.dumps(cfg, indent=2, ensure_ascii=False))
 ```
 
-**Status:** Applied 2026-04-27. LM Studio must also be toggled manually after each restart.
+**Status → AUTOMATED 2026-04-27.** `setup_macos.py` (step 3b) now enforces this on every
+`start.sh` startup — no manual LM Studio toggle required.
+
+**OpenClaw overwrite race (solved):** OpenClaw holds openclaw.json in memory and writes it
+back on shutdown. Fix: `_restart_openclaw_if_running()` sends SIGTERM, waits for full exit,
+then writes patched config — shutdown write completes first, our write wins.
+Commit: `orama-system 3cba5bd`
+
 **Win agents:** Leave thinking as-is. Win 27B always returns `reasoning_content`;
 `text` field is often empty — agent reply parsers must check `reasoning_content` as fallback.
+`Agent: Claude | 2026-04-27`
+
+---
+
+## [2026-04-27] Known AlphaClaw + OpenClaw working versions
+
+- **AlphaClaw**: all versions 0.9.3 through **0.9.11** are confirmed working
+- **OpenClaw**: all versions working (tested against AlphaClaw 0.9.3–0.9.11)
+- `KNOWN_ALPHACLAW_VERSION` in setup_macos.py is set to `0.9.3` (minimum confirmed baseline)
+  — patches are re-verified on version mismatch, so bumping this string is safe when a new
+  version is confirmed working
 `Agent: Claude | 2026-04-27`
