@@ -42,7 +42,7 @@ AlphaClaw (`diazMelgarejo/AlphaClaw`) is a macOS ARM64 port of `chrysb/alphaclaw
 ┌───────────────────────────▼─────────────────────────────────────────┐
 │  LAYER 3 — Application / Orchestration / Meta-Intelligence          │
 │  @diazmelgarejo/orama-system  (github: diazMelgarejo/orama-system)  │
-│  (renamed from orama-system — ὅραμα = vision/revelation)      │
+│  (renamed from ultrathink-system — ὅραμα = vision/revelation) │
 │  Contains: Orchestrator service · Planning/execution flows          │
 │            · Session management · Knowledge routing                 │
 │            · E2E tests · OTel observability stack                   │
