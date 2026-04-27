@@ -1,13 +1,30 @@
 ---
 name: alphaclaw-session
-version: 1.1.0
+version: 1.2.0
 description: Commandeer AlphaClaw/OpenClaw runtime defaults. Set environment profiles, backup/restore sessions, enumerate live agents, self-heal connectivity issues. Run when starting any OpenClaw-dependent session.
 user-invocable: true
 ---
 
-# AlphaClaw Session — v1.1.0
+# AlphaClaw Session — v1.2.0
 
 Encodes durable knowledge about the AlphaClaw/OpenClaw environment so you never have to figure it out again each time.
+
+**Confirmed by live matrix test 2026-04-27 — all 6 agents pass.**
+
+---
+
+## Critical Constants (do not guess, do not hardcode)
+
+| Item | Value | Source |
+|------|-------|--------|
+| Mac LM Studio | `localhost:1234` | self-probe always via localhost |
+| Win LM Studio | `192.168.254.103:1234` | from `~/.openclaw/openclaw.json → models.providers.lmstudio-win.baseUrl` |
+| Mac model ID | `qwen3.5-9b-mlx` | **all lowercase, no `-4bit` suffix** |
+| Win model ID | `qwen3.5-27b-claude-4.6-opus-reasoning-distilled-v2` | **all lowercase** |
+| OpenClaw gateway | `http://localhost:18789` | loopback only |
+| Bearer token | `d3aea7fea7ba51a1dff69b84662ae97d53dd3c2bcb182781` | from openclaw.json |
+| openclaw CLI Node | `/Users/lawrencecyremelgarejo/.nvm/versions/node/v24.14.1/bin/openclaw` | Node v14 is too old |
+| Agent timeout | 300s (300000ms) | reasoning models need long budget |
 
 ---
 
@@ -17,10 +34,11 @@ Encodes durable knowledge about the AlphaClaw/OpenClaw environment so you never 
 # 1. Check what tier we're on right now
 python3 ~/.openclaw/scripts/discover.py --status
 
-# 2. Verify gateway is live
-curl -s -o /dev/null -w "%{http_code}" \
-  -H "Authorization: Bearer d3aea7fea7ba51a1dff69b84662ae97d53dd3c2bcb182781" \
-  http://localhost:18789/health
+# 2. Run an agent turn (use full openclaw path — Node v24 required)
+/Users/lawrencecyremelgarejo/.nvm/versions/node/v24.14.1/bin/node \
+  /Users/lawrencecyremelgarejo/.nvm/versions/node/v24.14.1/bin/openclaw \
+  agent --agent main --session-id test-$(date +%s) \
+  --message "status check" --thinking off --json --timeout 300
 
 # 3. Back up current session state
 python3 ~/.openclaw/scripts/discover.py --force && \
@@ -42,8 +60,8 @@ Choose the profile that matches which nodes are reachable right now.
 | Win LM Studio | `192.168.254.103:1234` |
 | Active agents | all 6: main, mac-researcher, win-researcher, orchestrator, coder, autoresearcher |
 | Max parallel | 4 (2 per node, memory-bound) |
-| Primary model | `lmstudio-mac/Qwen3.5-9B-MLX-4bit` |
-| Heavy model | `lmstudio-win/Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2` |
+| Primary model | `lmstudio-mac/qwen3.5-9b-mlx` |
+| Heavy model | `lmstudio-win/qwen3.5-27b-claude-4.6-opus-reasoning-distilled-v2` |
 
 ```bash
 # Confirm tier 1 live
@@ -203,18 +221,42 @@ for name, prov in cfg['models']['providers'].items():
 
 ---
 
-## OpenClaw Agent Map
+## OpenClaw Agent Map (confirmed 2026-04-27 matrix test — all 6 ✅)
 
-| Agent ID | Model | Workspace | Tool Profile |
-|----------|-------|-----------|-------------|
-| `main` *(default)* | lmstudio-mac/Qwen3.5-9B-MLX-4bit | `~/.alphaclaw/.openclaw/workspace` | default |
-| `mac-researcher` | lmstudio-mac/Qwen3.5-9B-MLX-4bit | `~/.openclaw/agents/mac-researcher` | default |
-| `win-researcher` | lmstudio-win/Qwen3.5-27B-…-v2 | `~/.openclaw/agents/win-researcher` | coding |
-| `orchestrator` | lmstudio-mac/Qwen3.5-9B-MLX-4bit | `~/.openclaw/agents/orchestrator` | default |
-| `coder` | lmstudio-win/Qwen3.5-27B-…-v2 | `~/.openclaw/agents/coder` | coding |
-| `autoresearcher` | lmstudio-win/Qwen3.5-27B-…-v2 | `~/autoresearch` | default |
+| Agent ID | Model (exact ID) | Node | Turn time | Fallback |
+|----------|------------------|------|-----------|---------|
+| `main` *(default)* | `lmstudio-mac/qwen3.5-9b-mlx` | Mac MLX | ~105–308s | gemini-3-flash |
+| `mac-researcher` | `lmstudio-mac/qwen3.5-9b-mlx` | Mac MLX | ~105s | gemini-3-flash |
+| `orchestrator` | `lmstudio-mac/qwen3.5-9b-mlx` | Mac MLX | ~102s | gemini-3-flash |
+| `win-researcher` | `lmstudio-win/qwen3.5-27b-claude-4.6-opus-reasoning-distilled-v2` | Win RTX | ~130s | gemini-3-flash |
+| `coder` | `lmstudio-win/qwen3.5-27b-claude-4.6-opus-reasoning-distilled-v2` | Win RTX | ~107s | gemini-3-flash |
+| `autoresearcher` | `lmstudio-win/qwen3.5-27b-claude-4.6-opus-reasoning-distilled-v2` | Win RTX | ~116s | gemini-3-flash |
 
-Fallback chain for `main` agent: Gemini 3.1 Pro Preview → Gemini 3 Flash → Gemini 3.1 Flash Lite → Gemini 2.5 Flash → Gemini 2.5 Flash Lite.
+**Fallback chain** (primary fails → fallback): `gemini-3.1-pro-preview` (429 rate limit) →
+`gemini-3-flash-preview` (✅ succeeds on free tier).
+
+**Both models are extended thinking/reasoning models.** They generate `reasoning_content`
+before visible output. `text` field is often empty; actual reply is in `reasoning_content`.
+Use `--thinking off` to request no thinking (not always honored by embedding runner).
+
+### Dispatching agents
+
+```bash
+NODE24=/Users/lawrencecyremelgarejo/.nvm/versions/node/v24.14.1/bin/node
+OC=/Users/lawrencecyremelgarejo/.nvm/versions/node/v24.14.1/bin/openclaw
+
+# Single agent turn (fresh session, thinking off, 300s budget)
+$NODE24 $OC agent \
+  --agent coder \
+  --session-id "work-$(date +%s)" \
+  --message "Your task here" \
+  --thinking off \
+  --json \
+  --timeout 300
+
+# Check visible reply (reasoning models: text may be empty, use reasoning_content)
+# Success is indicated by --json output containing "text" field even if value is ""
+```
 
 ---
 

@@ -476,3 +476,56 @@ sys.modules['module_name'] = mod  # MUST register before exec_module
 spec.loader.exec_module(mod)       # otherwise dataclass field annotations fail
 ```
 
+
+## [2026-04-27] Hardware × Agent Matrix Test — Full Results
+
+### Confirmed Facts
+
+- **Model IDs are case-sensitive** in LM Studio. Config `Qwen3.5-9B-MLX-4bit` fails with HTTP 400.
+  Correct IDs (all lowercase): `qwen3.5-9b-mlx`, `qwen3.5-27b-claude-4.6-opus-reasoning-distilled-v2`
+  Also: Mac LM Studio does NOT have the `-4bit` suffix in the model ID.
+
+- **openclaw CLI requires Node.js ≥ v22**. System default (v14.21.3) fails instantly.
+  Fix: `export PATH=$HOME/.nvm/versions/node/v24.14.1/bin:$PATH` or use full path.
+  Installed at: `/Users/lawrencecyremelgarejo/.nvm/versions/node/v24.14.1/bin/openclaw`
+
+- **Both LM Studio nodes load the same models** (MLX 9B and GGUF 27B):
+  - Mac `localhost:1234`: `qwen3.5-9b-mlx` (ctx=56384, MLX), `qwen3.5-27b-...` (ctx=131072, GGUF)
+  - Win `192.168.254.103:1234`: `qwen3.5-27b-...` (ctx=131072, GGUF), `qwen3.5-9b-mlx` (ctx=56384)
+
+- **Both models are extended thinking/reasoning models.** They generate `<think>` blocks
+  (stored in `reasoning_content`) before visible output. This makes agent turns slow:
+  - Win 27B GGUF (RTX 3080): 107–130s per agent turn ✅ succeeds
+  - Mac 9B MLX: 105–308s per agent turn ✅ succeeds (via Gemini fallback on long turns)
+  - Direct API calls (tiny prompt): Mac 9B ~8–15s, Win 27B ~3s
+
+- **Mac 9B stall root cause**: Parallel=1 + reasoning model generates large think blocks.
+  Multiple rapid test requests queue up in LM Studio; each waits its turn. Clear by restarting
+  LM Studio or waiting ~2 min for queue to drain.
+
+- **Thinking models return empty `text` field** for simple prompts — response is in
+  `reasoning_content`. The `openclaw agent --json` output `text` field is empty; check
+  `reasoning_content` or use `--thinking minimal` to get brief visible responses.
+
+- **commandTimeout must be ≥ 300s** for reasoning model agent turns.
+  Set `agents.defaults.commandTimeout: 300000` in openclaw.json.
+
+### Patterns
+
+- **Agent fallback chain** (Mac 9B primary): lmstudio-mac → gemini-3.1-pro-preview (429) →
+  gemini-3-flash-preview (succeeds). Agents do work end-to-end even when LM Studio is slow.
+- **Gemini free tier rate-limits fast** under repeated tests. Space out calls or use paid tier
+  for production load. `google/gemini-3-flash-preview` is the working fallback for now.
+- **ollama-win stub needed** in openclaw.json to suppress setup_macos.py warning.
+  Added: `providers.ollama-win.baseUrl = http://192.168.254.103:11434`
+
+### Full Matrix Results
+
+| Agent          | Node | Model         | Status  | Time   | Notes                            |
+|----------------|------|---------------|---------|--------|----------------------------------|
+| win-researcher | Win  | qwen3.5-27b   | ✅ PASS | 130s   | empty text; reasoning_content ok |
+| coder          | Win  | qwen3.5-27b   | ✅ PASS | 107s   | empty text; reasoning_content ok |
+| autoresearcher | Win  | qwen3.5-27b   | ✅ PASS | 116s   | empty text; reasoning_content ok |
+| main           | Mac  | qwen3.5-9b    | ✅ PASS | 308s   | fell back to gemini-3-flash      |
+| mac-researcher | Mac  | qwen3.5-9b    | ✅ PASS | 105s   | fell back to gemini-3-flash      |
+| orchestrator   | Mac  | qwen3.5-9b    | ✅ PASS | ~120s  | fell back to gemini-3-flash      |
