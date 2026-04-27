@@ -602,3 +602,51 @@ Five bugs found and fixed across two review passes:
 
 All fixes: `bash -n` passes. Three orama-system commits pushed: 86391c3, 128f7a6, 342edbc.
 `Agent: Claude | 2026-04-27`
+
+---
+
+## [2026-04-27] Win Machine Hardware Spec (confirmed)
+
+| Field | Value |
+|-------|-------|
+| Machine | DELL Precision Tower 3660 |
+| RAM | 32 GB |
+| GPU | NVIDIA RTX 3080 10GB VRAM |
+| LM Studio | `192.168.254.103:1234` |
+| CUDA constraint | ONE model at a time (RTX 3080 VRAM limit) |
+| Active model | `qwen3.5-27b-claude-4.6-opus-reasoning-distilled-v2` (GGUF) |
+| Secondary | `qwen3.5-9b-mlx` also loaded (but MLX won't run on CUDA; LM Studio falls back to CPU) |
+
+**Important:** The Win 27B GGUF model responds in 107–130s per agent turn at full RTX 3080 capacity.
+Do not load a second model on Win while a first is actively inferring.
+`is_gpu_idle()` check is required before dispatching any new heavy Win agent task.
+
+---
+
+## [2026-04-27] thinkingLevel=off — Mac 9B Agents
+
+**Problem:** Mac 9B MLX model generates large `<think>` blocks, extending agent turns to
+100–308s. This is 5× slower than with thinking disabled (~15–25s expected).
+
+**Solution (two-layer):**
+1. **LM Studio UI** — toggle "Thinking Mode" off in the model settings panel.
+   Must be done manually per LM Studio session; resets on restart.
+2. **openclaw.json** (persistent) — set `thinkingLevel: "off"` and
+   `modelParameters.budget_tokens: 0` per Mac agent:
+
+```python
+# Apply to all Mac agents in openclaw.json
+import json, pathlib
+cfg = json.loads(pathlib.Path.home().joinpath('.openclaw/openclaw.json').read_text())
+for agent in cfg['agents']['list']:
+    if agent.get('id') in ['main', 'mac-researcher', 'orchestrator']:
+        agent['thinkingLevel'] = 'off'
+        agent.setdefault('modelParameters', {})['budget_tokens'] = 0
+pathlib.Path.home().joinpath('.openclaw/openclaw.json').write_text(
+    json.dumps(cfg, indent=2, ensure_ascii=False))
+```
+
+**Status:** Applied 2026-04-27. LM Studio must also be toggled manually after each restart.
+**Win agents:** Leave thinking as-is. Win 27B always returns `reasoning_content`;
+`text` field is often empty — agent reply parsers must check `reasoning_content` as fallback.
+`Agent: Claude | 2026-04-27`
