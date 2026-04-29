@@ -10,14 +10,14 @@
 
 AlphaClaw (`diazMelgarejo/AlphaClaw`) is a macOS ARM64 port of `chrysb/alphaclaw` — an active upstream. The system must evolve to support Claude Code, Xcode 26 mcpbridge, Ollama, and LM Studio agents co-managing AlphaClaw installations, while keeping the fork clean and upstreamable.
 
-Two companion repos exist (`Perpetua-Tools` → renamed `Perpetua-Tools`, `ultrathink-system` → renamed `orama-system`) that organically accumulated orchestration logic in conflict with each other. The previous contract had gateway routing split between PT and orama, direct Python patching of the AlphaClaw npm package, and no stable interface boundary.
+Two companion repos exist (`Perpetua-Tools` → renamed `Perpetua-Tools`, `orama-system` → renamed `orama-system`) that accumulated orchestration logic in conflict with each other. The previous contract had gateway routing split between PT and orama, direct Python patching of the AlphaClaw npm package, and no stable interface boundary.
 
 **Forces at play:**
 - AlphaClaw tracks an active upstream (`chrysb/alphaclaw`). Every internal import creates a merge conflict surface.
 - orama-system must remain a stateless execution layer — it must not re-own gateway decisions.
 - Local agents (Ollama, LM Studio) need a unified client that works offline and survives backend failures.
 - MCP protocol requires a standalone stdio server process — not an HTTP endpoint inside AlphaClaw.
-- The rename from Perpetua-Tools eliminates trademark risk (`Perplexity` is an active AI company, copyright infringement not intended), it simply started as a way to rarify, simplify, and minimize API calls to Perplexity by summoning free-tier Brave Search API first for simple queries, local Ollama and LM Studio models, and unmetered calls to OpenAI ChatGPT and Google Gemini. In pursuing that goal, these projects have grown beyond their initial klunky implementation and original scope as a personal *de facto* harness.
+- The rename from Perpetua-Tools eliminates trademark risk (`Perplexity` is an active AI company).
 
 ---
 
@@ -54,7 +54,6 @@ PT spawns `node bin/alphaclaw.js start` and communicates via `GET /health`, `GET
 | Upstreamability | **High** — AlphaClaw stays a clean fork, PRs mergeable |
 
 **Pros:** Zero coupling to upstream internals; adapter absorbs churn from upstream merges; MCP server survives AlphaClaw restarts; strangler-fig lets us migrate incrementally.
-
 **Cons:** Slightly more ceremony to add new capabilities (must add HTTP endpoint + adapter method).
 
 ### Option B: Python direct import (rejected)
