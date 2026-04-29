@@ -60,7 +60,7 @@ Expected when both nodes live:
 ```
 Tier:    1
   mac: ✅ localhost:1234 — N models
-  win: ✅ 192.168.254.101:1234 — N models
+  win: ✅ 192.168.254.105:1234 — N models
 Source:  tier1
 ```
 
