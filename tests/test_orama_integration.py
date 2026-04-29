@@ -148,7 +148,7 @@ class TestUltrathinkRouting:
 
     def test_deep_reasoning_response_has_ultrathink_host(self, client: TestClient):
         """The selected_model host must reference the ultrathink endpoint
-        (127.0.0.1:8001) matching PERPLEXITY_BRIDGE.md ULTRATHINK_ENDPOINT default."""
+        (127.0.0.1:8001) matching PERPLEXITY_BRIDGE.md ORAMA_ENDPOINT default."""
         resp = client.post("/orchestrate", json={
             "task": "Ultra-deep multi-step reasoning task for privacy-critical data.",
             "task_type": "deep_reasoning",
@@ -276,14 +276,14 @@ class TestRoutingYmlUltrathinkContract:
         assert "deep_reasoning" in routes
         route = routes["deep_reasoning"]
         assert "endpoint" in route
-        assert "ULTRATHINK_ENDPOINT" in route["endpoint"]
+        assert "ORAMA_ENDPOINT" in route["endpoint"]
 
     def test_code_analysis_has_ultrathink_endpoint(self, routing: dict):
         routes = routing["routes"]
         assert "code_analysis" in routes
         route = routes["code_analysis"]
         assert "endpoint" in route
-        assert "ULTRATHINK_ENDPOINT" in route["endpoint"]
+        assert "ORAMA_ENDPOINT" in route["endpoint"]
 
     def test_deep_reasoning_has_ultrathink_fallback(self, routing: dict):
         route = routing["routes"]["deep_reasoning"]
@@ -295,12 +295,12 @@ class TestRoutingYmlUltrathinkContract:
         assert "fallback" in route
         assert route["fallback"] == "local_qwen30b"
 
-    def test_deep_reasoning_requires_ultrathink_available(self, routing: dict):
+    def test_deep_reasoning_requires_orama_available(self, routing: dict):
         route = routing["routes"]["deep_reasoning"]
         assert "requires" in route
-        assert "ultrathink_available" in route["requires"]
+        assert "orama_available" in route["requires"]
 
-    def test_code_analysis_requires_ultrathink_available(self, routing: dict):
+    def test_code_analysis_requires_orama_available(self, routing: dict):
         route = routing["routes"]["code_analysis"]
         assert "requires" in route
-        assert "ultrathink_available" in route["requires"]
+        assert "orama_available" in route["requires"]

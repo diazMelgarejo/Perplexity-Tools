@@ -32,7 +32,7 @@ def _make_candidate(
 
 
 def test_orchestrate_calls_ultrathink_bridge_with_mapped_depth(monkeypatch):
-    monkeypatch.setenv("ULTRATHINK_ENDPOINT", "http://127.0.0.1:8001")
+    monkeypatch.setenv("ORAMA_ENDPOINT", "http://127.0.0.1:8001")
 
     ultrathink_candidate = _make_candidate()
     fallback_candidate = _make_candidate(
@@ -75,7 +75,7 @@ def test_orchestrate_calls_ultrathink_bridge_with_mapped_depth(monkeypatch):
             "orchestrator.ecc_tools_sync.get_sync_status",
             return_value={"status": "ok"},
         ),
-        patch("orchestrator.ultrathink_bridge.httpx.AsyncClient",
+        patch("orchestrator.orama_bridge.httpx.AsyncClient",
               return_value=mock_async_client_instance),
         # Ensure no MCP subprocess is attempted
         patch.dict("os.environ", {"ULTRATHINK_MCP_SERVER_CMD": ""}),
