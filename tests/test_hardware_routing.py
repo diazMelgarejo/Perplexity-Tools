@@ -103,22 +103,41 @@ def test_autoresearch_prefers_windows_lmstudio(registry):
 
 
 def test_hardware_policy_blocks_windows_only_on_mac():
+    # Pass explicit policy so test is self-contained (live policy may evolve)
+    policy = {
+        "windows_only": ["Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2"],
+        "mac_only": [],
+        "shared": [],
+    }
     with pytest.raises(HardwareAffinityError, match="NEVER_MAC"):
-        check_affinity("Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2", "mac")
+        check_affinity("Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2", "mac", policy=policy)
 
 
 def test_hardware_policy_blocks_mac_only_on_windows():
+    # Pass explicit policy so test is self-contained (live policy may evolve)
+    policy = {
+        "windows_only": [],
+        "mac_only": ["Qwen3.5-9B-MLX-4bit"],
+        "shared": [],
+    }
     with pytest.raises(HardwareAffinityError, match="NEVER_WIN"):
-        check_affinity("Qwen3.5-9B-MLX-4bit", "win")
+        check_affinity("Qwen3.5-9B-MLX-4bit", "win", policy=policy)
 
 
 def test_hardware_policy_filter_is_case_insensitive():
+    # Pass explicit policy: gemma-4-26B Windows GGUF model is windows_only in this test.
+    # (Live policy uses 'shared' for all models due to LM Studio proxy — tests must be isolated.)
+    policy = {
+        "windows_only": ["gemma-4-26b-a4b-it-q4_k_m"],
+        "mac_only": [],
+        "shared": [],
+    }
     models = [
         "Qwen3.5-9B-MLX-4bit",
         "gemma-4-26B-A4B-it-Q4_K_M",
         "unknown-local-experiment",
     ]
-    assert filter_models_for_platform(models, "mac") == [
+    assert filter_models_for_platform(models, "mac", policy=policy) == [
         "Qwen3.5-9B-MLX-4bit",
         "unknown-local-experiment",
     ]

@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
-log = logging.getLogger("orchestrator.ultrathink_bridge")
+log = logging.getLogger("orchestrator.orama_bridge")
 
 
 OPTIMIZE_FOR_TO_REASONING_DEPTH = {
@@ -97,7 +97,7 @@ async def call_ultrathink_mcp_or_bridge(
     Returns a dict with a 'transport' key: "mcp" or "http".
     The HTTP path uses httpx.AsyncClient to avoid blocking the FastAPI event loop.
     """
-    from orchestrator.ultrathink_mcp_client import UltrathinkMCPClient
+    from orchestrator.orama_mcp_client import UltrathinkMCPClient
 
     cmd = _mcp_server_cmd()
     if cmd:

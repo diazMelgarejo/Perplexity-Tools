@@ -60,10 +60,10 @@ class TestCallUltrathinkMcpOrBridge:
         http_post = AsyncMock()
 
         with patch(
-            "orchestrator.ultrathink_mcp_client.UltrathinkMCPClient",
+            "orchestrator.orama_mcp_client.UltrathinkMCPClient",
             return_value=mock_client,
         ), patch("httpx.AsyncClient.post", http_post):
-            from orchestrator.ultrathink_bridge import call_ultrathink_mcp_or_bridge
+            from orchestrator.orama_bridge import call_ultrathink_mcp_or_bridge
             result = await call_ultrathink_mcp_or_bridge(
                 endpoint="http://localhost:8001",
                 timeout=30.0,
@@ -90,7 +90,7 @@ class TestCallUltrathinkMcpOrBridge:
         mock_http_response.raise_for_status = MagicMock()
 
         with patch(
-            "orchestrator.ultrathink_mcp_client.UltrathinkMCPClient",
+            "orchestrator.orama_mcp_client.UltrathinkMCPClient",
             return_value=mock_client,
         ), patch("httpx.AsyncClient") as mock_async_client_cls:
             mock_async_client_instance = MagicMock()
@@ -99,7 +99,7 @@ class TestCallUltrathinkMcpOrBridge:
             mock_async_client_instance.__aexit__ = AsyncMock(return_value=False)
             mock_async_client_cls.return_value = mock_async_client_instance
 
-            from orchestrator.ultrathink_bridge import (
+            from orchestrator.orama_bridge import (
                 build_ultrathink_http_payload,
                 call_ultrathink_mcp_or_bridge,
             )
@@ -136,7 +136,7 @@ class TestCallUltrathinkMcpOrBridge:
         mock_http_response.raise_for_status = MagicMock()
 
         with patch(
-            "orchestrator.ultrathink_mcp_client.UltrathinkMCPClient",
+            "orchestrator.orama_mcp_client.UltrathinkMCPClient",
             return_value=mock_client,
         ), patch("httpx.AsyncClient") as mock_async_client_cls:
             mock_async_client_instance = MagicMock()
@@ -145,7 +145,7 @@ class TestCallUltrathinkMcpOrBridge:
             mock_async_client_instance.__aexit__ = AsyncMock(return_value=False)
             mock_async_client_cls.return_value = mock_async_client_instance
 
-            from orchestrator.ultrathink_bridge import call_ultrathink_mcp_or_bridge
+            from orchestrator.orama_bridge import call_ultrathink_mcp_or_bridge
             result = await call_ultrathink_mcp_or_bridge(
                 endpoint="http://localhost:8001",
                 timeout=30.0,
@@ -166,7 +166,7 @@ class TestCallUltrathinkMcpOrBridge:
         mock_http_response.raise_for_status = MagicMock()
 
         with patch(
-            "orchestrator.ultrathink_mcp_client.UltrathinkMCPClient"
+            "orchestrator.orama_mcp_client.UltrathinkMCPClient"
         ) as mock_mcp_cls, patch("httpx.AsyncClient") as mock_async_client_cls:
             mock_async_client_instance = MagicMock()
             mock_async_client_instance.post = AsyncMock(return_value=mock_http_response)
@@ -174,7 +174,7 @@ class TestCallUltrathinkMcpOrBridge:
             mock_async_client_instance.__aexit__ = AsyncMock(return_value=False)
             mock_async_client_cls.return_value = mock_async_client_instance
 
-            from orchestrator.ultrathink_bridge import call_ultrathink_mcp_or_bridge
+            from orchestrator.orama_bridge import call_ultrathink_mcp_or_bridge
             result = await call_ultrathink_mcp_or_bridge(
                 endpoint="http://localhost:8001",
                 timeout=30.0,
@@ -205,7 +205,7 @@ class TestCallUltrathinkMcpOrBridge:
         mock_http_response.raise_for_status = MagicMock()
 
         with patch(
-            "orchestrator.ultrathink_mcp_client.UltrathinkMCPClient",
+            "orchestrator.orama_mcp_client.UltrathinkMCPClient",
             _SlowClient,
         ), patch("httpx.AsyncClient") as mock_async_client_cls:
             mock_async_client_instance = MagicMock()
@@ -214,7 +214,7 @@ class TestCallUltrathinkMcpOrBridge:
             mock_async_client_instance.__aexit__ = AsyncMock(return_value=False)
             mock_async_client_cls.return_value = mock_async_client_instance
 
-            from orchestrator.ultrathink_bridge import call_ultrathink_mcp_or_bridge
+            from orchestrator.orama_bridge import call_ultrathink_mcp_or_bridge
 
             result = await call_ultrathink_mcp_or_bridge(
                 endpoint="http://localhost:8001",
@@ -234,7 +234,7 @@ class TestUltrathinkMCPClientCallSolve:
     @pytest.mark.asyncio
     async def test_call_solve_raises_on_stub_response(self):
         """call_solve raises ValueError when server returns stub (no 'result' key)."""
-        from orchestrator.ultrathink_mcp_client import UltrathinkMCPClient
+        from orchestrator.orama_mcp_client import UltrathinkMCPClient
 
         client = UltrathinkMCPClient(["python", "fake.py"], timeout=10.0)
         client._proc = MagicMock()
@@ -249,7 +249,7 @@ class TestUltrathinkMCPClientCallSolve:
     @pytest.mark.asyncio
     async def test_call_solve_returns_result_on_success(self):
         """call_solve returns the result dict when server returns a full response."""
-        from orchestrator.ultrathink_mcp_client import UltrathinkMCPClient
+        from orchestrator.orama_mcp_client import UltrathinkMCPClient
 
         client = UltrathinkMCPClient(["python", "fake.py"], timeout=10.0)
         client._proc = MagicMock()
@@ -268,7 +268,7 @@ class TestUltrathinkMCPClientStop:
 
     @pytest.mark.asyncio
     async def test_stop_kills_and_waits_when_terminate_times_out(self):
-        from orchestrator.ultrathink_mcp_client import UltrathinkMCPClient
+        from orchestrator.orama_mcp_client import UltrathinkMCPClient
 
         client = UltrathinkMCPClient(["python", "fake.py"], timeout=10.0)
         stdin = MagicMock()
@@ -287,7 +287,7 @@ class TestUltrathinkMCPClientStop:
             awaitable.close()
             raise asyncio.TimeoutError
 
-        with patch("orchestrator.ultrathink_mcp_client.asyncio.wait_for", side_effect=_timeout_and_close):
+        with patch("orchestrator.orama_mcp_client.asyncio.wait_for", side_effect=_timeout_and_close):
             await client.stop()
 
         proc.terminate.assert_called_once()
