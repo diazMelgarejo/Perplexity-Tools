@@ -2,7 +2,7 @@
 """
 agent_launcher.py
 -----------------
-Hardware-aware agent launcher for the Perplexity-Tools orchestration stack.
+Hardware-aware agent launcher for the Perpetua-Tools orchestration stack.
 
 Detects whether the remote Windows worker (Dell RTX 3080) is reachable and
 routes the coder/heavy-reasoning role accordingly. Falls back gracefully to
@@ -90,7 +90,10 @@ else:
 WINDOWS_IP        = os.getenv("WINDOWS_IP",   _win_ip_default)
 WINDOWS_PORT      = int(os.getenv("WINDOWS_PORT", "11434"))
 REMOTE_WINDOWS_URL   = f"http://{WINDOWS_IP}:{WINDOWS_PORT}"
-WINDOWS_CODER_MODEL  = os.getenv("WINDOWS_CODER_MODEL", "qwen3-coder:14b")
+WINDOWS_CODER_MODEL  = os.getenv(
+    "WINDOWS_CODER_MODEL",
+    "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2",  # verified Windows-only model
+)
 
 WINDOWS_LMS_PORT      = int(os.getenv("WINDOWS_LMS_PORT", "1234"))
 REMOTE_WINDOWS_LMS_URL = f"http://{WINDOWS_IP}:{WINDOWS_LMS_PORT}"
@@ -575,7 +578,7 @@ async def main(args: argparse.Namespace) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Hardware-aware agent launcher for Perplexity-Tools",
+        description="Hardware-aware agent launcher for Perpetua-Tools",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"

@@ -1,4 +1,4 @@
-"""orchestrator.py — Perplexity-Tools Orchestrator (port 8000)
+"""orchestrator.py — Perpetua-Tools Orchestrator (port 8000)
 Routes AI tasks across local Ollama models + Perplexity cloud with budget controls.
 
 Design principles
@@ -101,7 +101,7 @@ _redis_health_error: Optional[str] = None
 # Rate limiter (OWASP API4 — Unrestricted Resource Consumption)
 limiter = Limiter(key_func=get_remote_address, default_limits=["60/minute"])
 
-app = FastAPI(title="Perplexity-Tools Orchestrator", version=VERSION)
+app = FastAPI(title="Perpetua-Tools Orchestrator", version=VERSION)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
@@ -404,7 +404,7 @@ async def health():
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Perplexity-Tools orchestrator entrypoint",
+        description="Perpetua-Tools orchestrator entrypoint",
     )
     subparsers = parser.add_subparsers(dest="command")
 

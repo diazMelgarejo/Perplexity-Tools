@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from orchestrator.ultrathink_bridge import (
+from orchestrator.orama_bridge import (
     call_ultrathink_bridge,
     normalize_ultrathink_endpoint,
     parse_ultrathink_timeout,
@@ -76,7 +76,7 @@ class TestBuildPayload:
 
 
 class TestCallBridge:
-    @patch("orchestrator.ultrathink_bridge.httpx.post")
+    @patch("orchestrator.orama_bridge.httpx.post")
     def test_success_returns_response(self, mock_post):
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"result": "analysis complete", "status": "ok"}
@@ -93,7 +93,7 @@ class TestCallBridge:
         assert result["response"]["result"] == "analysis complete"
         mock_post.assert_called_once()
 
-    @patch("orchestrator.ultrathink_bridge.httpx.post")
+    @patch("orchestrator.orama_bridge.httpx.post")
     def test_failure_raises_exception(self, mock_post):
         mock_post.side_effect = Exception("Connection refused")
 
