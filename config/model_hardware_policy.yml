@@ -1,25 +1,51 @@
 # Perpetua-Tools/config/model_hardware_policy.yml
 # SINGLE SOURCE OF TRUTH — all enforcement reads this file
 #
-# Safety context:
-# - lmstudio-mac must never advertise or run Windows-only 27B/26B GGUF models.
-# - lmstudio-win must never advertise or run Mac-only MLX / Apple Silicon models.
-# - shared is intentionally empty until a model is verified on both physical hosts.
+# ── Key architectural insight (discovered 2026-04-29) ────────────────────────
+# LM Studio proxies all configured remote LAN endpoints' models as "local".
+# This means Mac's /v1/models returns Win models AND vice versa.
+# You CANNOT determine a model's physical hardware by which endpoint lists it.
+#
+# Routing rule: use the PROVIDER NAME (lmstudio-mac / lmstudio-win) as the
+# routing key, not model presence. Policy enforces at the provider level.
+#
+# mac_only / windows_only: enforce "never route this model to this provider"
+# (for models too large for one machine or wrong quantization format).
+# Currently empty — all loaded models run correctly on both provider endpoints.
+#
+# Physical homes for PERFORMANCE routing (not hard enforcement):
+#   qwen3.5-9b-mlx                    → prefer lmstudio-mac  (Apple MLX native)
+#   qwen3.5-27b-claude-4.6-opus-...   → prefer lmstudio-win  (RTX 3080 GGUF)
+#   gemma-4-26b-a4b-it                → prefer lmstudio-win  (RTX 3080 GGUF)
+#   gemma-4-e4b-it                    → either (small model)
+#   text-embedding-nomic-embed-text   → either (embedding model)
+#
+# ── v1.2+ note ───────────────────────────────────────────────────────────────
+# When RTX 5080 arrives: add affinity "win-rtx5080" alongside "win-rtx3080"
+# in agent_registry.json. Update this file if that machine gets exclusive models.
+# ─────────────────────────────────────────────────────────────────────────────
 
-windows_only:
-  - gemma-4-26b-a4b-it
-  - gemma-4-26B-A4B-it-Q4_K_M
-  - qwen3.5-27b-claude-4.6-opus-reasoning-distilled-v2
-  - Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2
+# No models are exclusively Mac-only as of 2026-04-29.
+# LMS proxy makes /v1/models presence unreliable for exclusion detection.
+# Add entries here only for models that will BREAK if routed to the wrong machine
+# (e.g., MLX-only format on Win with no CPU fallback, or OOM on a weaker machine).
+mac_only: []
 
-mac_only:
-  - gemma-4-e4b-it
-  - qwen3.5-9b-mlx
-  - qwen3.5-9b-mlx-4bit
+# No models are exclusively Windows-only as of 2026-04-29.
+windows_only: []
+
+# All 5 models confirmed accessible from both lmstudio-mac and lmstudio-win — 2026-04-29
+# (Some run natively; some are served via LM Studio's LAN proxy — both work for inference)
+shared:
+  - qwen3.5-9b-mlx                                        # native: Mac MLX | proxied: Win
+  - qwen3.5-27b-claude-4.6-opus-reasoning-distilled-v2    # native: Win GGUF | proxied: Mac
+  - gemma-4-e4b-it                                        # native: both confirmed
+  - gemma-4-26b-a4b-it                                    # native: Win GGUF | proxied: Mac
+  - text-embedding-nomic-embed-text-v1.5                  # native: both confirmed
+
+# Case-insensitive aliases (LM Studio sometimes capitalises model IDs)
+shared_aliases:
   - Qwen3.5-9B-MLX-4bit
-
-# TODO(shared-models): Populate this section once both Mac and Windows machines
-# are online simultaneously and `discover.py --status` has been run on both.
-# Steps documented in: docs/tripartite-plan/2026-04-26-hardware-model-routing-004-PART2-PLAN.md § Phase 5
-# Out of scope until both machines are verified online.
-# shared:
+  - qwen3.5-9b-mlx-4bit
+  - Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2
+  - gemma-4-26B-A4B-it-Q4_K_M
