@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# pre-commit: catch stale ultrathink/Perplexity-Tools naming before it lands
+# Enforces the Phase B rename: ultrathink-system → orama-system (docs/configs)
+# and the module rename: ultrathink_mcp_client / ultrathink_bridge → orama_*
+#
+# Only scans staged files — does not block working-directory leftovers.
+
+set -euo pipefail
+
+ERRORS=0
+
+# ── 1. Module import drift: tests/orchestrator must not import old module paths ──
+# Exclude hook files themselves (they contain these strings as grep patterns)
+STALE_MODULE_IMPORTS=$(git diff --cached --name-only | grep -v "^\.claude/hooks/" | \
+  xargs grep -l \
+  "orchestrator\.ultrathink_bridge\|orchestrator\.ultrathink_mcp_client" \
+  -- 2>/dev/null || true)
+
+if [ -n "$STALE_MODULE_IMPORTS" ]; then
+  echo "❌ [pre-commit] Stale module imports detected (ultrathink_bridge / ultrathink_mcp_client)."
+  echo "   These modules were renamed → orchestrator.orama_bridge / orchestrator.orama_mcp_client"
+  echo "   Offending files:"
+  echo "$STALE_MODULE_IMPORTS" | sed 's/^/     /'
+  ERRORS=$((ERRORS + 1))
+fi
+
+# ── 2. Routing config env var drift: tests must use ORAMA_ENDPOINT ──────────────
+STALE_ENV_VARS=$(git diff --cached --name-only -- 'tests/*.py' | xargs grep -l \
+  "ULTRATHINK_ENDPOINT" -- 2>/dev/null || true)
+
+if [ -n "$STALE_ENV_VARS" ]; then
+  echo "❌ [pre-commit] ULTRATHINK_ENDPOINT found in staged test files."
+  echo "   routing.yml now uses ORAMA_ENDPOINT — update setenv/monkeypatch calls."
+  echo "   Offending files:"
+  echo "$STALE_ENV_VARS" | sed 's/^/     /'
+  ERRORS=$((ERRORS + 1))
+fi
+
+# ── 3. requires key drift: tests must use orama_available ───────────────────────
+STALE_REQUIRES=$(git diff --cached --name-only -- 'tests/*.py' | xargs grep -l \
+  "ultrathink_available" -- 2>/dev/null || true)
+
+if [ -n "$STALE_REQUIRES" ]; then
+  echo "❌ [pre-commit] ultrathink_available found in staged test files."
+  echo "   routing.yml now uses orama_available — update requires assertions."
+  echo "   Offending files:"
+  echo "$STALE_REQUIRES" | sed 's/^/     /'
+  ERRORS=$((ERRORS + 1))
+fi
+
+# ── 4. Internal orama_bridge.py must NOT import from ultrathink_mcp_client ──────
+if git diff --cached --name-only | grep -q "orchestrator/orama_bridge.py"; then
+  if git show ":orchestrator/orama_bridge.py" 2>/dev/null | \
+      grep -q "from orchestrator.ultrathink_mcp_client"; then
+    echo "❌ [pre-commit] orama_bridge.py still imports from orchestrator.ultrathink_mcp_client."
+    echo "   Change to: from orchestrator.orama_mcp_client import UltrathinkMCPClient"
+    ERRORS=$((ERRORS + 1))
+  fi
+fi
+
+# ── 5. Perplexity-Tools path drift in ecc-tools.json ────────────────────────────
+if git diff --cached --name-only | grep -q "ecc-tools.json"; then
+  STALE_PATHS=$(git show ":.claude/ecc-tools.json" 2>/dev/null | grep -c "Perplexity-Tools" || true)
+  if [ "$STALE_PATHS" -gt 0 ]; then
+    echo "❌ [pre-commit] .claude/ecc-tools.json still contains Perplexity-Tools paths."
+    echo "   Run: sed -i '' 's|Perplexity-Tools|Perpetua-Tools|g' .claude/ecc-tools.json"
+    ERRORS=$((ERRORS + 1))
+  fi
+fi
+
+if [ "$ERRORS" -gt 0 ]; then
+  echo ""
+  echo "✋ Commit blocked: $ERRORS naming-drift issue(s) found. Fix and re-stage."
+  exit 1
+fi
+
+exit 0
