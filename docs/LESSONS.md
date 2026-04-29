@@ -668,3 +668,44 @@ Commit: `orama-system 3cba5bd`
   — patches are re-verified on version mismatch, so bumping this string is safe when a new
   version is confirmed working
 `Agent: Claude | 2026-04-27`
+
+---
+
+## [2026-04-29] Win IP is dynamic — detect, never hardcode
+
+**Problem:** Win LM Studio IP was hardcoded as `192.168.254.103` in SKILL.md and
+referenced in openclaw.json. After a DHCP reassignment Win moved to `.105`, breaking
+all Win agent dispatches.
+
+**Root cause:** Two separate issues mixed into one symptom:
+1. IP hardcoded in docs/skills instead of reading from openclaw.json
+2. `discover.py` used `--force` flag for "always probe" — unintuitive for automation
+
+**Fixes (automated, no manual steps required going forward):**
+
+1. **discover.py default reversed:** Always probes on every call (no TTL skip by default).
+   `--cached` flag is the new opt-in to use TTL-cached state. `--force` kept as no-op alias.
+   ```bash
+   python3 ~/.openclaw/scripts/discover.py          # always scans — finds new IP
+   python3 ~/.openclaw/scripts/discover.py --cached # skip if < 5 min old
+   ```
+
+2. **SKILL.md updated:** Win IP row now reads "dynamic (auto-detected)" — no IP literal.
+   Lookup pattern:
+   ```python
+   import json, pathlib
+   cfg = json.loads(pathlib.Path.home().joinpath('.openclaw/openclaw.json').read_text())
+   win_ip = cfg['models']['providers']['lmstudio-win']['baseUrl'].split('//')[1].split(':')[0]
+   ```
+
+3. **thinkingDefault fix:** OpenClaw schema rejected `thinkingLevel`/`modelParameters`.
+   Correct field is `thinkingDefault: "off"` (enum, schema-valid). setup_macos.py step 3b
+   now writes `thinkingDefault` and strips stale `thinkingLevel`/`modelParameters` on startup.
+
+4. **gateway.js PATH fix (Patch G in setup_macos.py):** AlphaClaw spawned `openclaw gateway`
+   with system PATH → Node v14 → "Node.js v22.12+ required" crash on every gateway start.
+   Fix: `gatewayEnv()` prepends `path.dirname(process.execPath)` so child inherits Node v24.
+   Applied idempotently by `step_patch_gateway()` on every `start.sh` run.
+
+**Current state:** Win at `.105`, gateway live (`{"ok":true,"status":"live"}`), all 6 agents reachable.
+`Agent: Claude | 2026-04-29`

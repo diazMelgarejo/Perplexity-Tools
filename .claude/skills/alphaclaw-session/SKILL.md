@@ -1,11 +1,11 @@
 ---
 name: alphaclaw-session
-version: 1.3.0
+version: 1.4.0
 description: Commandeer AlphaClaw/OpenClaw runtime defaults. Set environment profiles, backup/restore sessions, enumerate live agents, self-heal connectivity issues. Run when starting any OpenClaw-dependent session.
 user-invocable: true
 ---
 
-# AlphaClaw Session — v1.3.0
+# AlphaClaw Session — v1.4.0
 
 Encodes durable knowledge about the AlphaClaw/OpenClaw environment so you never have to figure it out again each time.
 
@@ -18,7 +18,11 @@ Encodes durable knowledge about the AlphaClaw/OpenClaw environment so you never 
 | Machine | Hardware | LM Studio | Notes |
 |---------|----------|-----------|-------|
 | Mac (cyre) | Apple Silicon M-series | `localhost:1234` | MLX inference, qwen3.5-9b-mlx is native MLX |
-| Win (cyre) | **DELL Precision Tower 3660, 32GB RAM, RTX 3080 10GB** | `192.168.254.103:1234` | GGUF via CUDA, RTX 3080 constraint: ONE model at a time |
+| Win (cyre) | **DELL Precision Tower 3660, 32GB RAM, RTX 3080 10GB** | auto-detected (currently `.105`) | GGUF via CUDA, RTX 3080 constraint: ONE model at a time |
+
+> **Win IP is dynamic (DHCP).** Never hardcode it. Always read from
+> `~/.openclaw/openclaw.json → models.providers.lmstudio-win.baseUrl`
+> which is kept current by `discover.py` on every startup.
 
 ---
 
@@ -27,14 +31,14 @@ Encodes durable knowledge about the AlphaClaw/OpenClaw environment so you never 
 | Item | Value | Source |
 |------|-------|--------|
 | Mac LM Studio | `localhost:1234` | self-probe always via localhost |
-| Win LM Studio | `192.168.254.103:1234` | from `~/.openclaw/openclaw.json → models.providers.lmstudio-win.baseUrl` |
+| Win LM Studio | **dynamic** | `discover.py` auto-detects via LAN scan → writes to `~/.openclaw/openclaw.json` |
 | Mac model ID | `qwen3.5-9b-mlx` | **all lowercase, no `-4bit` suffix** |
 | Win model ID | `qwen3.5-27b-claude-4.6-opus-reasoning-distilled-v2` | **all lowercase** |
 | OpenClaw gateway | `http://localhost:18789` | loopback only |
 | Bearer token | `d3aea7fea7ba51a1dff69b84662ae97d53dd3c2bcb182781` | from openclaw.json |
 | openclaw CLI Node | `/Users/lawrencecyremelgarejo/.nvm/versions/node/v24.14.1/bin/openclaw` | Node v14 is too old |
 | Agent timeout | 300s (300000ms) | reasoning models need long budget |
-| Mac thinking | `thinkingLevel: off` in openclaw.json + LM Studio UI toggle | reasoning mode slows turns 5× |
+| Mac thinking | `thinkingDefault: "off"` in openclaw.json agents | correct field (NOT `thinkingLevel`/`modelParameters` — schema rejects those) |
 | Win thinking | leave as-is | Win 27B returns `reasoning_content`; `text` often empty — check both |
 
 ---
@@ -42,8 +46,10 @@ Encodes durable knowledge about the AlphaClaw/OpenClaw environment so you never 
 ## Quick Start
 
 ```bash
-# 1. Check what tier we're on right now
-python3 ~/.openclaw/scripts/discover.py --status
+# 1. Check/refresh endpoints (always probes by default — no --force needed)
+python3 ~/.openclaw/scripts/discover.py         # always re-scans
+python3 ~/.openclaw/scripts/discover.py --cached # skip if gossip is < 5 min old
+python3 ~/.openclaw/scripts/discover.py --status # read state without probing
 
 # 2. Run an agent turn (use full openclaw path — Node v24 required)
 /Users/lawrencecyremelgarejo/.nvm/versions/node/v24.14.1/bin/node \
@@ -134,7 +140,7 @@ python3 ~/.openclaw/scripts/discover.py --status | head -4
 
 ### DON'T ❌
 
-- DON'T use IPs `.101`, `.107`, `.109` — all stale; Win = `.103`, Mac LAN = `.105`
+- DON'T hardcode any Win IP — Win is DHCP-assigned; read from openclaw.json or run `discover.py`
 - DON'T hardcode IPs in PT/orama scripts — always derive from `discover.py` or openclaw.json
 - DON'T run `discover.py` without `--force` when debugging connectivity (5-min TTL hides stale state)
 - DON'T `require()` AlphaClaw internals from PT or orama — CLI + HTTP only
@@ -152,25 +158,20 @@ python3 ~/.openclaw/scripts/discover.py --status | head -4
 ### Win node shows offline (drops to Tier 2)
 
 ```bash
-# Step 1: Ping Win to confirm reachability
-ping -c 1 192.168.254.103
-# → If timeout: Win is off or DHCP reassigned IP
+# Step 1: Let discover.py find the new IP automatically (it scans 192.168.254.1-254)
+python3 ~/.openclaw/scripts/discover.py      # always re-probes, updates openclaw.json + PT config
 
-# Step 2: If IP may have changed — find new lease from router or Win machine
-# Then update EVERYWHERE:
-#   ~/.openclaw/openclaw.json  → models.providers.lmstudio-win.baseUrl
-#   Perpetua-Tools/config/devices.yml  → win.lan_ip
-#   Perpetua-Tools/.env.local  → WINDOWS_IP
-# Pattern:
-sed -i '' 's|192.168.254.OLD|192.168.254.NEW|g' \
-  ~/.openclaw/openclaw.json \
-  "/path/to/Perpetua-Tools/config/devices.yml"
+# Step 2: Check result
+python3 ~/.openclaw/scripts/discover.py --status | head -6
+# Expected: Tier 1, win: ✅ 192.168.254.XXX:1234
 
-# Step 3: Force-refresh discovery
-python3 ~/.openclaw/scripts/discover.py --force
-
-# Step 4: Verify Tier 1 restored
-python3 ~/.openclaw/scripts/discover.py --status | head -4
+# Step 3 (only if Win is truly off, not just a DHCP reassignment):
+ping -c 1 "$(python3 -c "
+import json,pathlib
+cfg=json.loads(pathlib.Path.home().joinpath('.openclaw/openclaw.json').read_text())
+print(cfg['models']['providers']['lmstudio-win']['baseUrl'].split('//')[1].split(':')[0])
+")"
+# → If still timeout after discover, Win machine is powered off
 ```
 
 ### Gateway unreachable (http_code 000 = connection refused)
