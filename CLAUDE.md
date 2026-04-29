@@ -132,7 +132,7 @@ orama-system (Layer 3 — orchestration/meta-intelligence)
 - PT drives AlphaClaw via `GET /health`, `GET /api/status`, `POST /api/gateway/restart`, etc. — see `docs/adapter-interface-contract.md`
 - `ALPHACLAW_ROOT` env var tells PT where AlphaClaw is installed (default: sibling directory)
 - No patch proposed by local agents is applied without Claude review (`proposeCodeEdit` returns diff only)
-- All local agent backends: Ollama at `127.0.0.1:11435`, LM Studio Win at `192.168.254.103:1234` (IP is dynamic — read from `~/.openclaw/openclaw.json`, never hardcode)
+- All local agent backends: Ollama at `127.0.0.1:11434`, LM Studio Win at `192.168.254.105:1234` (IP is dynamic — read from `~/.openclaw/openclaw.json`, never hardcode)
 
 ### MCP server registration (after Gate 1)
 

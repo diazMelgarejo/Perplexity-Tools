@@ -200,14 +200,15 @@ critic_pass: true
 ### Mode 3: Mac + Win LAN (Full Orchestration — RECOMMENDED)
 ```yaml
 mode: lan_full
-# LM Studio endpoints (canonical — v0.9.9.7)
-lmstudio_mac: http://192.168.254.103:1234    # Qwen3.5-9B-MLX-4bit, verifier/orchestrator fallback
-lmstudio_win: http://192.168.254.100:1234    # Qwen3.5-27B, gpu_offload=40, context 16384
+# LM Studio endpoints — IPs are DHCP; read live values from ~/.openclaw/openclaw.json
+# Last confirmed 2026-04-29: Mac .106, Win .105
+lmstudio_mac: http://192.168.254.106:1234    # Qwen3.5-9B-MLX-4bit, verifier/orchestrator fallback
+lmstudio_win: http://192.168.254.105:1234    # Qwen3.5-27B, gpu_offload=40, context 16384
 # Portal dashboard
-portal: http://192.168.254.103:8002          # LAN status (auto-refresh 10s)
+portal: http://192.168.254.106:8002          # LAN status (auto-refresh 10s)
 # Ollama lanes
-ollama_mac: http://192.168.254.103:11434     # glm-5.1:cloud local client
-ollama_win: http://192.168.254.100:11434     # qwen3-coder:14b / critic / backup
+ollama_mac: http://192.168.254.106:11434     # glm-5.1:cloud local client
+ollama_win: http://192.168.254.105:11434     # qwen3-coder:14b / critic / backup
 cloud_enabled: true
 critic_pass: true
 fallback_chain:

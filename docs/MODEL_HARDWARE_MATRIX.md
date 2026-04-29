@@ -11,10 +11,10 @@ Canonical runtime summary for **Perpetua-Tools v0.9.9.7**.
 
 | Lane | Primary Model | Backend | Endpoint | Notes |
 |---|---|---|---|---|
-| Mac orchestrator | `glm-5.1:cloud` | Ollama client | `http://192.168.254.103:11434` | Preferred only when a short live probe succeeds. |
-| Mac verifier / orchestrator fallback | `Qwen3.5-9B-MLX-4bit` | LM Studio | `http://192.168.254.103:1234` | Immediate local fallback when GLM is unavailable or rate-limited. |
-| Windows heavy coder / executor / autoresearch | `Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2` | LM Studio | `http://192.168.254.100:1234` | Canonical Windows coding lane. |
-| Windows coder fallback | `qwen3-coder:14b` | Ollama | `http://192.168.254.100:11434` | Explicit fallback for coding and autoresearch. |
+| Mac orchestrator | `glm-5.1:cloud` | Ollama client | `http://127.0.0.1:11434` (self) / `http://192.168.254.106:11434` (LAN) | Preferred only when a short live probe succeeds. |
+| Mac verifier / orchestrator fallback | `Qwen3.5-9B-MLX-4bit` | LM Studio | `http://localhost:1234` (self) / `http://192.168.254.106:1234` (LAN) | Immediate local fallback when GLM is unavailable or rate-limited. |
+| Windows heavy coder / executor / autoresearch | `Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2` | LM Studio | `http://192.168.254.105:1234` (DHCP — confirm via discover.py) | Canonical Windows coding lane. |
+| Windows coder fallback | `qwen3-coder:14b` | Ollama | `http://192.168.254.105:11434` (DHCP — confirm via discover.py) | Explicit fallback for coding and autoresearch. |
 | Shared backup fallback | `qwen3.5:35b-a3b-q4_K_M` | Ollama | `${OLLAMA_HOST}` | Known backup fallback model; keep documented, not primary. |
 
 ## Device Profiles

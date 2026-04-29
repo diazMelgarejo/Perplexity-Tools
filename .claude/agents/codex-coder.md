@@ -169,4 +169,4 @@ Codex outputs should always be:
   ```
   If no error, stay on `gpt-5.5`. Do NOT preemptively downgrade.
 - For concurrent Win LM Studio calls: check `is_gpu_idle()` before dispatching (one model at a time)
-- Win RTX 3080 = `192.168.254.103:1234` (use `coder` or `win-researcher` OpenClaw agents for local model alternative to Codex)
+- Win RTX 3080 = `192.168.254.105:1234` (DHCP — confirm via discover.py; use `coder` or `win-researcher` OpenClaw agents for local model alternative to Codex)

@@ -74,7 +74,7 @@ Choose the profile that matches which nodes are reachable right now.
 | Item | Value |
 |------|-------|
 | Mac LM Studio | `localhost:1234` |
-| Win LM Studio | `192.168.254.103:1234` |
+| Win LM Studio | `192.168.254.105:1234` |
 | Active agents | all 6: main, mac-researcher, win-researcher, orchestrator, coder, autoresearcher |
 | Max parallel | 4 (2 per node, memory-bound) |
 | Primary model | `lmstudio-mac/qwen3.5-9b-mlx` |
@@ -86,7 +86,7 @@ python3 ~/.openclaw/scripts/discover.py --status | head -4
 # Expected:
 # Tier:    1
 #   mac: ✅ localhost:1234 — N models
-#   win: ✅ 192.168.254.103:1234 — N models
+#   win: ✅ 192.168.254.105:1234 — N models
 ```
 
 ### `mac-only` — Mac node only (Tier 2)
@@ -117,7 +117,7 @@ python3 ~/.openclaw/scripts/discover.py --status | head -4
 
 | Item | Value |
 |------|-------|
-| Win LM Studio | `192.168.254.103:1234` |
+| Win LM Studio | `192.168.254.105:1234` |
 | Active agents | win-researcher, coder, autoresearcher |
 | Degraded | main, mac-researcher, orchestrator |
 
@@ -130,7 +130,7 @@ python3 ~/.openclaw/scripts/discover.py --status | head -4
 - Run `discover.py --status` before starting any multi-agent session
 - Use `--force` flag after any IP change or when nodes are suspected offline
 - Use `localhost:1234` for Mac self-referencing — always
-- Use `192.168.254.103:1234` for Win (from Mac); `192.168.254.105:1234` for Mac (from Win)
+- Use `192.168.254.105:1234` for Win (from Mac); `192.168.254.106:1234` for Mac (from Win)
 - Include `Authorization: Bearer ...` on every gateway request (loopback, no TLS)
 - Monitor usage-tracker plugin logs when on Tier 3 (cloud) — costs are non-zero
 - Check `discover.py --status` FIRST when any agent call fails unexpectedly
