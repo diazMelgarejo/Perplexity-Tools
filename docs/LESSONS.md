@@ -811,3 +811,19 @@ for plumbing workarounds. The plumbing workaround we used for weeks (write-tree
 itself was healthy; the working tree was the problem.
 
 `Agent: Claude | 2026-04-29`
+
+## [2026-04-29] Module Rename → Test Drift Pattern
+
+**Problem**: File renames (ultrathink_bridge.py → orama_bridge.py, ultrathink_mcp_client.py → orama_mcp_client.py) caused 16 test failures because:
+1. Internal import in orama_bridge.py still referenced old module path
+2. `patch()` strings in tests referenced old module paths
+3. Routing config env vars changed (ULTRATHINK_ENDPOINT → ORAMA_ENDPOINT, ultrathink_available → orama_available) but test assertions were not updated
+4. Hardware affinity tests relied on live policy file content, which was intentionally emptied
+
+**Fix pattern**:
+- After any file rename: `grep -rn "old_module_name" tests/` immediately
+- Hardware policy tests: always pass explicit `policy={}` dict — never couple test logic to live YAML
+- Routing contract tests: env var names come from `routing.yml`; update tests when routing.yml changes
+
+**Guard**: Pre-commit hook at `.claude/hooks/pre-commit` enforces 5 naming-drift checks on every `git commit`.
+To install on a fresh clone: `cp .claude/hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`
