@@ -343,6 +343,25 @@ All lessons above are expanded with root causes, exact fixes, and verification c
 | 07 | [Multi-Agent Collab](wiki/07-multi-agent-collab.md) | version registry, scope claims, orphan branches |
 | 08 | [macOS alphaclaw Compat](wiki/08-macos-alphaclaw-compat.md) | EACCES fixes, ~/.local/bin, setup_macos.py |
 
+## [2026-04-21] Configuration Portability: OS-Agnostic Paths
+*(synced from AlphaClaw/7-Lessons.md)*
+
+- **Problem**: Absolute paths (e.g. `/Users/user/...`) in `openclaw.json` break cross-platform deployments.
+- **Solution**: Always use `${HOME}` variables in configuration templates. AlphaClaw gateway and onboarding runtime MUST resolve these relative to the OS-specific home directory.
+- **Rule**: Enforce `${HOME}` in all `openclaw.json.template` and active config files. No hardcoded usernames or absolute paths.
+
+---
+
+## [2026-04-21] Core Policy: Additive Ghost Orchestration
+*(synced from AlphaClaw/7-Lessons.md)*
+
+- **Additive Configuration**: Never overwrite `openclaw.json`. Always read → deep-merge (spread) → write back.
+- **Upstream Autonomy**: PT and orama act as ghost orchestrators — absorb and extend OpenClaw/AlphaClaw features without becoming structural dependencies.
+- **Non-Destructive Injection**: Use native onboarding hooks (e.g. `writeManagedImportOpenclawConfig`) to inject PT/orama configs.
+- **Portability**: Always use `${HOME}` for all path construction — OS-agnostic across Mac/Win/Linux.
+
+---
+
 ## [2026-04-22] Symlink Portability & Validation
 
 - **Requirement**: Git must track symlinks as Mode 120000. Use `git ls-files -s` to verify.
