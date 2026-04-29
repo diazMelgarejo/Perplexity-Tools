@@ -1,9 +1,10 @@
 # Perpetua-Tools — Unified Migration Guide
 
-**Status:** Living document — PT is the canonical migration repo from 2026-04-20 forward
-**Version target:** `0.9.9.8` across all three packages simultaneously
-**Gate 0:** ✅ Complete (2026-04-20)
-**Gate 1:** ✅ Complete (2026-04-20) — adapter HTTP client, alphaclaw_manager.py, thinned start.sh
+* **Status:** Living document — PT is the canonical migration repo from 2026-04-20 forward
+* **Version target:** `0.9.9.8` across all three packages simultaneously
+* **Gate 0:** ✅ Complete (2026-04-20)
+* **Gate 1:** ✅ Complete (2026-04-20) — adapter HTTP client, alphaclaw_manager.py, thinned start.sh
+
 **Sources merged:**
 - Migration Plan 3 + Plan Review (AlphaClaw `docs/plan-review-migration-plan-3.md`)
 - System Design: Three-Repo Architecture (`docs/system-design-three-repo-architecture.md`)
@@ -114,9 +115,9 @@ Current state: `lib/mcp/alphaclaw-mcp.js`, `lib/agents/local-agent-client.js`, `
 - [x] CLAUDE.md updated in PT and orama with new identities
 - [x] All plans/migration docs moved to PT as canonical migration repo
 - [ ] npm scopes reserved: `@diazmelgarejo/perpetua-tools`, `@diazmelgarejo/orama-system`
-- [ ] gstack installed on Mac (`bash scripts/install-gstack.sh`, requires bun)
-- [ ] orama test imports repaired: `multi_agent/shared` → `bin/shared`
-- [ ] `bin/agents/orchestrator/orchestrator_logic.py` baseline written
+- [x] gstack installed on Mac (`bash scripts/install-gstack.sh`, requires bun)
+- [x] orama test imports repaired: `multi_agent/shared` → `bin/shared`
+- [ ] `bin/agents/orchestrator/orchestrator_logic.py` baseline written?
 
 ### Gate 1 — AlphaClaw Adapter Working ✅ COMPLETE (2026-04-20)
 
@@ -125,21 +126,21 @@ Current state: `lib/mcp/alphaclaw-mcp.js`, `lib/agents/local-agent-client.js`, `
 - [x] `packages/alphaclaw-adapter/scripts/smoke-test.js` — covers all adapter methods with colored PASS/FAIL output. Run: `SETUP_PASSWORD=<pass> node packages/alphaclaw-adapter/scripts/smoke-test.js`
 - [x] `packages/alphaclaw-adapter/package.json` — removed `"type": "module"` (CJS conflict fixed)
 - [x] PT can start/stop/query AlphaClaw via HTTP+CLI (no internal imports)
-- [ ] MCP server registered: `claude mcp add --transport stdio alphaclaw -- node packages/alphaclaw-adapter/src/mcp/server.js`
-- [ ] All 11 MCP tools smoke-tested against live AlphaClaw (run `smoke-test.js` when AC live)
+- [ ] MCP server registered: `claude mcp add --transport stdio alphaclaw -- node packages/alphaclaw-adapter/src/mcp/server.js` [WiP]?
+- [ ] All 11 MCP tools smoke-tested against live AlphaClaw (run `smoke-test.js` when AC live) NOT yet, but anecdotal evidence says YES
 - [ ] `packages/local-agents/tests/client.test.js` passes (Vitest, fully offline)
 - [ ] `lib/mcp/` and `lib/agents/` in AlphaClaw tagged for removal (but NOT deleted yet)
-- [x] orama `start.sh` thinned to PT delegator — delegates via `python -m orchestrator.alphaclaw_manager --resolve --env-only`
+- [x] orama `start.sh` thinned to PT delegator — delegates via `python -m orchestrator.alphaclaw_manager --resolve --env-only` MOSTLY yes, but needs more rigorous testing
 - [ ] orama `openclaw_bootstrap.py` scoped down to apply-config only (Gate 2)
 
 ### Gate 2 — MCP Toolpack + Local Agents Fully Operational
 
-- [ ] `packages/local-agents/`: Ollama (127.0.0.1:11435, GLM-5.1:cloud → qwen3.5-local:latest) + LM Studio (192.168.254.101:1234) integration tests pass on Mac
+- [ ] `packages/local-agents/`: Ollama (127.0.0.1:11435, GLM-5.1:cloud → qwen3.5-local:latest) + LM Studio (192.168.254.101:1234) integration tests pass on Mac, MOSTLY yes, patchy/flaky, but 90% works
 - [ ] `packages/mcpb-agents/`: `ollama-agent.mcpb`, `lmstudio-agent.mcpb` scaffolded
 - [ ] PT's `orchestrator.py` wired as idempotent lifecycle entrypoint (old contract requirement)
 - [ ] LM Studio multi-model + AlphaClaw role-routing config workflow implemented
 - [ ] `orchestrator/autoresearch_bridge.py` gets staged progress hooks
-- [ ] Xcode integration scripts (`fix-xcode-claude.sh`) moved from AlphaClaw to PT — verified working
+- [ ] Xcode integration scripts (`fix-xcode-claude.sh`) moved from AlphaClaw to PT — verified working, anecdotal evidence says YES
 - [ ] `lib/mcp/` and `lib/agents/` removed from AlphaClaw `feature/MacOS-post-install` (after Gate 2 green)
 
 ### Gate 3 — orama First Flow

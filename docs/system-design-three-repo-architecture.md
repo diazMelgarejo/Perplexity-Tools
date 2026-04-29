@@ -1,12 +1,10 @@
 # System Design: Three-Repo Architecture
 
-# @diazmelgarejo/alphaclaw · @diazmelgarejo/perpetua-tools · @diazmelgarejo/orama-system
+@diazmelgarejo/alphaclaw · @diazmelgarejo/perpetua-tools · @diazmelgarejo/orama-system
 
-# Version: 0.9.9.8 (all three, post-migration)
-
-# Status: SCAFFOLDING — not committed | Branch: feature/MacOS-post-install
-
-# Merges: Migration Plan 3 + Plan Review + Session decisions (2026-04-19)
+> Version: 0.9.9.8 (all three, post-migration)
+> Status: SCAFFOLDING — not committed | Branch: feature/MacOS-post-install
+> Merges: Migration Plan 3 + Plan Review + Session decisions (2026-04-19)
 
 ---
 
@@ -35,7 +33,7 @@ AlphaClaw (`diazMelgarejo/AlphaClaw`) is a macOS ARM64 port of `chrysb/alphaclaw
 ┌───────────────────────────▼─────────────────────────────────────────┐
 │  LAYER 2 — Middleware / Adapters / Tooling                          │
 │  @diazmelgarejo/perpetua-tools  (github: diazMelgarejo/Perpetua-Tools) │
-│  (renamed from Perpetua-Tools — trademark risk eliminated)        │
+│  (renamed from Perplexity-Tools — trademark risk eliminated)        │
 │  Contains: AlphaClaw adapter · MCP toolpack · local-agent clients   │
 │            (Ollama + LM Studio) · Xcode integration scripts         │
 │            · .agent/ portable folder skeleton · CI for adapters     │
@@ -44,7 +42,7 @@ AlphaClaw (`diazMelgarejo/AlphaClaw`) is a macOS ARM64 port of `chrysb/alphaclaw
 ┌───────────────────────────▼─────────────────────────────────────────┐
 │  LAYER 3 — Application / Orchestration / Meta-Intelligence          │
 │  @diazmelgarejo/orama-system  (github: diazMelgarejo/orama-system)  │
-│  (renamed from orama-system — ὅραμα = vision/revelation)      │
+│  (renamed from ultrathink-system — ὅραμα = vision/revelation) │
 │  Contains: Orchestrator service · Planning/execution flows          │
 │            · Session management · Knowledge routing                 │
 │            · E2E tests · OTel observability stack                   │
@@ -425,13 +423,13 @@ A. The Repo Links that will serve as example and inspiration, or we can git subm
 1. <https://github.com/yayoboy/Claude-Desktop-LLM> Take a cue from handling ollama and LM-Studio models with two files:
  •  ollama-agent.mcpb reasoning and reading code for analysis
  •  lmstudio-agent.mcpb could expose the server for Claude to spawn sub-agents, this repo can be a dependency?
-2. <https://github.com/rusiaaman/wcgw> MCP could do the actual code editing recursively called by any agent
+2. <https://github.com/rusiaaman/wcgw> MCP could do the actual code editing recursively called by any agent ([The maintainer’s own warning matters: for clients that already have shell/filesystem tools, wcgw may create duplicate tool choices and token waste. It shines more in clients that lack strong local shell and file access.](https://github.com/rusiaaman/wcgw/discussions/58))
 3. <https://github.com/codejunkie99/agentic-stack> get only the pluggability here, do not ingest, converge with its logic for Portable ".agent/" folder (memory + skills + protocols) that plugs into Claude Code, Cursor, Windsurf, OpenCode, OpenClaw, Hermes, or DIY Python and keeps accumulated knowledge, we need this
 
 B. The Repo Links we are working on (where it will land):
 
 i. <https://github.com/diazMelgarejo/AlphaClaw> the branch "feature/MacOS-post-install" will be our home to prepare the thin custom add-ons and configuration on top of it for PT & UTS use (dependency)
 
-ii. old PT = `diazMelgarejo/Perpetua-Tools` renamed → <https://github.com/diazMelgarejo/Perpetua-Tools> main
+ii. old PT = `diazMelgarejo/Perplexity-Tools` renamed → <https://github.com/diazMelgarejo/Perpetua-Tools> main
 
-iii. old UTS = `diazMelgarejo/orama-system` renamed → <https://github.com/diazMelgarejo/orama-system> main
+iii. old UTS = `diazMelgarejo/ultrathink-system` renamed → <https://github.com/diazMelgarejo/orama-system> main
