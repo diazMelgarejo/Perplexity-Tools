@@ -28,7 +28,7 @@ from orchestrator.perplexity_client import PerplexityClient
 
 async def _run_tests() -> None:
     print("\n" + "═" * 54)
-    print("   Perplexity-Tools  ·  Connection Smoke Test")
+    print("   Perpetua-Tools  ·  Connection Smoke Test")
     print("═" * 54)
 
     # Singleton construction — key prompt fires here if PERPLEXITY_API_KEY missing
