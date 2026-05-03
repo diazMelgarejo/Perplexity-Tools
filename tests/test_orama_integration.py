@@ -1,6 +1,6 @@
 """test_ultrathink_integration.py — Unified integration test (SYNC_ANALYSIS OPT 3)
 
-Verifies the end-to-end contract between Perplexity-Tools and ultrathink-system:
+Verifies the end-to-end contract between Perpetua-Tools and orama-system:
   POST /orchestrate with task_type="deep_reasoning"  →  ultrathink endpoint in response
   POST /orchestrate with task_type="code_analysis"   →  ultrathink endpoint in response
   Response structure matches the MCP-first bridge contract, with HTTP `/ultrathink`
