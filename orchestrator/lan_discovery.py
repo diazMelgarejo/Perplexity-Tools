@@ -5,7 +5,7 @@ orchestrator/lan_discovery.py
 LAN-wide AI model discovery and orchestration takeover system.
 
 Scans the local network for running AI inference servers (Ollama, LM Studio, MLX)
-and presents a user-consent UI for selective or full takeover by Perplexity-Tools.
+and presents a user-consent UI for selective or full takeover by Perpetua-Tools.
 
 Based on distributed AI orchestration patterns:
 - Service registration & discovery (IETF draft-yang-dmsc)
@@ -249,7 +249,7 @@ class LANDiscovery:
         
         self.print_discovery_table()
         
-        print("\nPerplexity-Tools can take over these AI endpoints for distributed orchestration.")
+        print("\nPerpetua-Tools can take over these AI endpoints for distributed orchestration.")
         print("You can:")
         print("  - Select specific endpoints by number (e.g., '1,3,5')")
         print("  - Take over ALL endpoints by typing 'all'")

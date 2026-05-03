@@ -3,7 +3,7 @@
 orchestrator/spawn_reconciliation.py
 ------------------------------------
 Recruits existing/orphaned agent spawns (ECC, autoresearch) back into 
-Perplexity-Tools management.
+Perpetua-Tools management.
 
 Features:
 - Detects orphaned processes on LAN machines.
