@@ -77,7 +77,7 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Perplexity-Tools Orchestrator",
+    title="Perpetua-Tools Orchestrator",
     version="0.9.9.7",
     description=(
         "Top-level idempotent multi-agent orchestrator. "

@@ -18,14 +18,14 @@ Responsibilities
 ----------------
 - Idempotent git sync of the canonical autoresearch clone on the Windows GPU runner.
 - Spawning the three cognitive swarm agents (Coder, Evaluator, Orchestrator) via
-  the top-level Perplexity-Tools AgentTracker so lifecycle and idempotency are
+  the top-level Perpetua-Tools AgentTracker so lifecycle and idempotency are
   consistent with the rest of the stack.
 - Reading swarm_state.md for GPU lock status before dispatching any training run.
 - Installing the uditgoenka/autoresearch Claude Code plugin (idempotent).
 
 Design rules (from approved interoperability contract)
 ------------------------------------------------------
-1. ONLY Perplexity-Tools/orchestrator.py (or the FastAPI /autoresearch/* endpoints)
+1. ONLY Perpetua-Tools/orchestrator.py (or the FastAPI /autoresearch/* endpoints)
    may call sync_autoresearch_idempotent().  Layers 2-4 treat autoresearch as
    read-only from a lifecycle perspective.
 2. The autoresearch clone lives in ONE canonical path on the Windows GPU runner:
@@ -351,7 +351,7 @@ def init_swarm_state(run_tag: str) -> None:
     """Write a fresh swarm_state.md into the local autoresearch repo."""
     content = textwrap.dedent(f"""\
         # Swarm State — {run_tag}
-        <!-- Managed by Perplexity-Tools autoresearch_bridge.py -->
+        <!-- Managed by Perpetua-Tools autoresearch_bridge.py -->
         <!-- DO NOT commit this file; it is ephemeral session state. -->
 
         ## Current Baseline

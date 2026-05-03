@@ -55,7 +55,7 @@ STATE_FILE: Path = Path(".state/ecc_sync.json")
 
 # Subfolder mapping:
 # ECC paths are relative to the ECC repo root.
-# We copy them verbatim into the Perplexity-Tools project root.
+# We copy them verbatim into the Perpetua-Tools project root.
 # Override specific paths here if destination should differ.
 # Format: { "ecc/relative/path": "destination/relative/path" }
 DESTINATION_OVERRIDES: dict[str, str] = {

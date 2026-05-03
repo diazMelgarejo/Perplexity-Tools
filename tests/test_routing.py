@@ -1,4 +1,4 @@
-"""test_routing.py — Perplexity-Tools routing unit tests
+"""test_routing.py — Perpetua-Tools routing unit tests
 
 Tests ModelRegistry.route_task() with routing.yml config.
 Runs offline (no Ollama/ultrathink required).
