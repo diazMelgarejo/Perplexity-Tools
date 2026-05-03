@@ -95,6 +95,37 @@ WINDOWS_CODER_MODEL  = os.getenv(
     "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2",  # verified Windows-only model
 )
 
+# ---------------------------------------------------------------------------
+# Startup assertion — validate hardware policy on module load
+# ---------------------------------------------------------------------------
+
+_launcher_logger = logging.getLogger(__name__)
+
+
+def _validate_hardware_policy(resolved_model: str) -> None:
+    """Raise HardwareAffinityError if resolved_model is not valid for Windows execution."""
+    try:
+        from utils.hardware_policy import load_policy
+        policy = load_policy()
+        valid_for_windows = {
+            m.lower()
+            for m in (policy.get("windows_only", []) or []) + (policy.get("shared", []) or [])
+        }
+        if valid_for_windows and resolved_model.lower() not in valid_for_windows:
+            _launcher_logger.critical(
+                "Hardware Policy Violation: Resolved model '%s' is not validated "
+                "for Windows execution. Halting orchestration.",
+                resolved_model,
+            )
+            raise HardwareAffinityError(f"Invalid model affinity: {resolved_model}")
+    except HardwareAffinityError:
+        raise
+    except Exception as _e:
+        _launcher_logger.warning("Hardware policy startup validation skipped: %s", _e)
+
+
+_validate_hardware_policy(WINDOWS_CODER_MODEL)
+
 WINDOWS_LMS_PORT      = int(os.getenv("WINDOWS_LMS_PORT", "1234"))
 REMOTE_WINDOWS_LMS_URL = f"http://{WINDOWS_IP}:{WINDOWS_LMS_PORT}"
 LMS_API_TOKEN         = os.getenv("LM_STUDIO_API_TOKEN", "")
