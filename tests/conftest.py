@@ -1,4 +1,4 @@
-"""conftest.py — session-scoped test fixtures for Perplexity-Tools.
+"""conftest.py — session-scoped test fixtures for Perpetua-Tools.
 
 Cleans ephemeral state files that are written by the real AgentTracker and
 CostGuard during test runs. Without this, stale "idle" agents from a previous
@@ -9,6 +9,14 @@ Also disables ECC Tools live git sync so tests never hit the network.
 """
 
 from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+# Ensure the Perpetua-Tools repo root is on sys.path regardless of pytest CWD
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 import os
 from pathlib import Path

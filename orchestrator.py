@@ -36,7 +36,7 @@ from orchestrator.control_plane import bootstrap_runtime_sync, load_runtime_payl
 try:
     from loguru import logger
 except ImportError:
-    logger = logging.getLogger("perplexity_tools.orchestrator")
+    logger = logging.getLogger("perpetua_tools.orchestrator")
 try:
     from dotenv import load_dotenv
 except ImportError:

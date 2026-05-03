@@ -1,5 +1,5 @@
 """
-orchestrator/onboarding.py — Perplexity-Tools
+orchestrator/onboarding.py — Perpetua-Tools
 ----------------------------------------------
 Manages .state/onboarding.json — lightweight forward-compat state bridge
 for portal v1.1 and the start.sh security warning.

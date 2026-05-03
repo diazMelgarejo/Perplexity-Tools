@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-alphaclaw_bootstrap.py — Perplexity-Tools
+alphaclaw_bootstrap.py — Perpetua-Tools
 ------------------------------------------
 Canonical AlphaClaw (@chrysb/alphaclaw) gateway install / commandeer / start
 logic. ultrathink-system delegates to this script via PT_HOME env var.
@@ -20,7 +20,7 @@ Usage:
     python alphaclaw_bootstrap.py --bootstrap [--force]
 
 Environment variables:
-    PT_HOME               path to this repo (default: $HOME/Perplexity-Tools)
+    PT_HOME               path to this repo (default: $HOME/Perpetua-Tools)
     UTS_HOME              path to ultrathink-system (fallback for bin/agents/)
     ALPHACLAW_INSTALL_DIR npm install target directory (default: $HOME/.alphaclaw)
     OPENCLAW_GATEWAY_PORT gateway port (default: 18789)
@@ -692,7 +692,7 @@ async def bootstrap_alphaclaw(force: bool = False) -> dict[str, object]:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Perplexity-Tools AlphaClaw gateway bootstrap",
+        description="Perpetua-Tools AlphaClaw gateway bootstrap",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
