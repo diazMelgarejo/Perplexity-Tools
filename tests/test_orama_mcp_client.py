@@ -47,7 +47,7 @@ _HTTP_MOCK_RESPONSE = {
 
 class TestCallUltrathinkMcpOrBridge:
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_mcp_success_does_not_touch_http(self, monkeypatch):
         """When MCP succeeds, httpx.AsyncClient.post must never be called."""
         monkeypatch.setenv("ULTRATHINK_MCP_SERVER_CMD", "python fake_server.py")
@@ -75,7 +75,7 @@ class TestCallUltrathinkMcpOrBridge:
         assert result["result"] == _GOOD_MCP_RESULT
         http_post.assert_not_called()
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_mcp_failure_falls_back_to_http_with_correct_payload(self, monkeypatch):
         """When MCP raises, HTTP fallback is called with the correct mapped payload."""
         monkeypatch.setenv("ULTRATHINK_MCP_SERVER_CMD", "python fake_server.py")
@@ -119,7 +119,7 @@ class TestCallUltrathinkMcpOrBridge:
         _, call_kwargs = mock_async_client_instance.post.call_args
         assert call_kwargs["json"] == expected_payload
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_stub_response_triggers_http_fallback(self, monkeypatch):
         """Stub response (no 'result' key) raises ValueError → HTTP fallback."""
         monkeypatch.setenv("ULTRATHINK_MCP_SERVER_CMD", "python fake_server.py")
@@ -156,7 +156,7 @@ class TestCallUltrathinkMcpOrBridge:
         assert result["transport"] == "http"
         mock_async_client_instance.post.assert_called_once()
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_no_mcp_cmd_goes_straight_to_http(self, monkeypatch):
         """When ULTRATHINK_MCP_SERVER_CMD is unset, MCP is never attempted."""
         monkeypatch.delenv("ULTRATHINK_MCP_SERVER_CMD", raising=False)
@@ -185,7 +185,7 @@ class TestCallUltrathinkMcpOrBridge:
         assert result["transport"] == "http"
         mock_mcp_cls.assert_not_called()
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_total_mcp_timeout_falls_back_to_http(self, monkeypatch):
         monkeypatch.setenv("ULTRATHINK_MCP_SERVER_CMD", "python fake_server.py")
 
@@ -231,7 +231,7 @@ class TestCallUltrathinkMcpOrBridge:
 
 class TestUltrathinkMCPClientCallSolve:
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_call_solve_raises_on_stub_response(self):
         """call_solve raises ValueError when server returns stub (no 'result' key)."""
         from orchestrator.orama_mcp_client import UltrathinkMCPClient
@@ -246,7 +246,7 @@ class TestUltrathinkMCPClientCallSolve:
         with pytest.raises(ValueError, match="stub response"):
             await client.call_solve("test task", "deep_reasoning")
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_call_solve_returns_result_on_success(self):
         """call_solve returns the result dict when server returns a full response."""
         from orchestrator.orama_mcp_client import UltrathinkMCPClient
@@ -266,7 +266,7 @@ class TestUltrathinkMCPClientCallSolve:
 
 class TestUltrathinkMCPClientStop:
 
-    @pytest.mark.asyncio
+    @pytest.mark.anyio
     async def test_stop_kills_and_waits_when_terminate_times_out(self):
         from orchestrator.orama_mcp_client import UltrathinkMCPClient
 

@@ -237,6 +237,24 @@ def test_coder_routes_to_lmstudio_when_ollama_offline():
     assert state["mac_only"] is False
 
 
+def test_affinity_violation_does_not_silent_fallback():
+    """Affinity errors in coder lane must escalate instead of silently degrading to Mac."""
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    async def run():
+        with (
+            patch("agent_launcher.check_remote_worker", new=AsyncMock(return_value=False)),
+            patch("agent_launcher.check_lmstudio_worker", new=AsyncMock(return_value=True)),
+            patch("agent_launcher.check_affinity", side_effect=HardwareAffinityError("NEVER_MAC")),
+        ):
+            import agent_launcher
+            return await agent_launcher.initialize_environment()
+
+    with pytest.raises(HardwareAffinityError, match="NEVER_MAC"):
+        asyncio.run(run())
+
+
 def test_fallback_chain_across_hardware(registry):
     """
     Ensures that fallback chain includes models from other devices if local fails.
