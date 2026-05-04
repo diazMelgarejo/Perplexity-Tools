@@ -112,7 +112,7 @@ On next successful Tier 1 probe, state is re-established and a new backup is wri
 ~/.openclaw/scripts/discover.py --restore profile:lan-full
 ~/.openclaw/scripts/discover.py --restore profile:mac-only
 ~/.openclaw/scripts/discover.py --force          # bypass 5-min gossip, re-probe now
-python3 scripts/discover.py --status         # show current tier + endpoint health
+python3 ~/.openclaw/scripts/discover.py --status         # show current tier + endpoint health, move from AlphaClaw repo?
 ```
 
 ---
@@ -318,7 +318,7 @@ All files above are pushed to their respective repos via `gh` API / git commits.
 
 ## 10. Invariants (must hold at all times)
 
-1. `scripts/discover.py --status` always exits 0 and reports a tier, even if both nodes are down
+1. `~/.openclaw/scripts/discover.py --status` always exits 0 and reports a tier, even if both nodes are down; GET from AlphaClaw repo if not in this repo
 2. `.env.lmstudio` is always gitignored in all 3 repos
 3. YAML files are never fully rewritten — only the changed fields are patched
 4. Backup count never exceeds 30; the 31st triggers auto-deletion of the oldest. Files older than 30 days are archived to `~/.openclaw/state/archive/`, not deleted
