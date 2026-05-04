@@ -1150,8 +1150,8 @@ git log --oneline pr-4-macos ^main | head -15
 # 3. Test health
 npm test --reporter=dot 2>&1 | tail -8
 
-# 4. LM Studio endpoint status
-python3 scripts/discover.py --status
+# 4. LM Studio endpoint status - MIGRATE properly as first-class feature, de-hack-ify?
+python3 ~/.openclaw/scripts/discover.py --status
 ```
 
 Report:
@@ -1787,8 +1787,8 @@ dependency base for Perpetua-Tools and orama-system.
 Cherry-pick direction: feature → pr-4-macos (never the reverse). Use `/cherry-pick-down`.
 Use `/upstream-compat-reviewer` before any cherry-pick to pr-4-macos.
 
-## LM Studio (auto-discovered)
-Run `python3 scripts/discover.py --status` to see live endpoints.
+## LM Studio (auto-discovered) if this is not in PT-repo, copy from AlphaClaw integration?
+Run `python3 ~/.openclaw/scripts/discover.py --status` to see live endpoints.
 If stale, run `~/.openclaw/scripts/discover.py --force`.
 Discovery runs automatically on every Claude Code SessionStart.
 
@@ -1939,7 +1939,7 @@ lesson = textwrap.dedent("""
 ### Key invariants learned
 - Never hardcode LM Studio IPs — always use `$LM_STUDIO_WIN_ENDPOINTS` from `.env.lmstudio`
 - `.env.lmstudio` is auto-generated and gitignored — it's safe to delete and re-run discover.py
-- `python3 scripts/discover.py --status` is always the first check when endpoints seem wrong
+- `python3 ~/.openclaw/scripts/discover.py --status` is always the first check when endpoints seem wrong, CHECK?
 - The gossip TTL is 5 min — if you need fresh data NOW: `discover.py --force`
 - orama-system was renamed from orama-system; the `ORAMA_ENDPOINT` in .env still works
 
