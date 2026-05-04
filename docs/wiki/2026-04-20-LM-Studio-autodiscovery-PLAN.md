@@ -703,7 +703,7 @@ Expected: all 9 tests PASS.
 
 ```bash
 python3 ~/.openclaw/scripts/discover.py --force
-python3 ~/.openclaw/scripts/discover.py --status
+python3 scripts/discover.py --status
 ```
 
 Expected output includes `Mac: 192.168.254.107` and `Win: 192.168.254.101` (or both as `localhost`/LAN).
@@ -777,11 +777,11 @@ EOF
 
 ```bash
 python3 ~/.openclaw/scripts/discover.py --restore profile:mac-only
-python3 ~/.openclaw/scripts/discover.py --status
+python3 scripts/discover.py --status
 # Expect: Mac reachable, Win not reachable
 python3 ~/.openclaw/scripts/discover.py --force
 # Re-probe and restore live state
-python3 ~/.openclaw/scripts/discover.py --status
+python3 scripts/discover.py --status
 # Expect: both live
 ```
 
@@ -1151,7 +1151,7 @@ git log --oneline pr-4-macos ^main | head -15
 npm test --reporter=dot 2>&1 | tail -8
 
 # 4. LM Studio endpoint status
-~/.openclaw/scripts/discover.py --status
+python3 scripts/discover.py --status
 ```
 
 Report:
@@ -1788,7 +1788,7 @@ Cherry-pick direction: feature → pr-4-macos (never the reverse). Use `/cherry-
 Use `/upstream-compat-reviewer` before any cherry-pick to pr-4-macos.
 
 ## LM Studio (auto-discovered)
-Run `~/.openclaw/scripts/discover.py --status` to see live endpoints.
+Run `python3 scripts/discover.py --status` to see live endpoints.
 If stale, run `~/.openclaw/scripts/discover.py --force`.
 Discovery runs automatically on every Claude Code SessionStart.
 
@@ -1846,7 +1846,7 @@ Run `source .env.lmstudio` before any manual agent launch.
 
 ## Quick start for a new agent
 ```bash
-python3 ~/.openclaw/scripts/discover.py --status  # confirm endpoints
+python3 scripts/discover.py --status  # confirm endpoints
 source .env && source .env.lmstudio
 python agent_launcher.py --list-agents            # see available roles
 ```
@@ -1939,7 +1939,7 @@ lesson = textwrap.dedent("""
 ### Key invariants learned
 - Never hardcode LM Studio IPs — always use `$LM_STUDIO_WIN_ENDPOINTS` from `.env.lmstudio`
 - `.env.lmstudio` is auto-generated and gitignored — it's safe to delete and re-run discover.py
-- `~/.openclaw/scripts/discover.py --status` is always the first check when endpoints seem wrong
+- `python3 scripts/discover.py --status` is always the first check when endpoints seem wrong
 - The gossip TTL is 5 min — if you need fresh data NOW: `discover.py --force`
 - orama-system was renamed from orama-system; the `ORAMA_ENDPOINT` in .env still works
 
@@ -1994,7 +1994,7 @@ Expected: all 3 show `skills/`, `agents/` (or `skills` entries), `settings.json`
 
 ```bash
 python3 ~/.openclaw/scripts/discover.py --force && \
-python3 ~/.openclaw/scripts/discover.py --status
+python3 scripts/discover.py --status
 ```
 
 Expected:
