@@ -62,7 +62,7 @@ Each represents a different architectural bet. Pulling all three into PT at once
 
 ### 5. "Public NPM starting with 1.0 RC, but not now" defers a decision that affects everything
 
-Package naming, export shape, semver strategy, and scoping all flow from whether PT/UTS are intended to be published. If they are, the internal module structure needs to be designed for it from day one (no barrel exports of internal-only modules, proper `exports` field in package.json, etc.). Deferring this decision means potential painful restructuring later. This restructuring will also pivot to a "release early, release often" strategy that starts with a single RC release (0.9.9.6) and then a series of minor versions leading up to 1.0 Release.
+Package naming, export shape, semver strategy, and scoping all flow from whether PT/UTS are intended to be published. If they are, the internal module structure needs to be designed for it from day one (no barrel exports of internal-only modules, proper `exports` field in package.json, etc.). Deferring this decision means potential painful restructuring later. This restructuring will also pivot to a "release early, release often" strategy that starts with a single RC release (0.9.9.8) and then a series of minor versions leading up to 1.0 Release.
 
 ### 6. Observability is hand-wavy
 
