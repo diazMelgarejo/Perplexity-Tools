@@ -826,4 +826,6 @@ itself was healthy; the working tree was the problem.
 - Routing contract tests: env var names come from `routing.yml`; update tests when routing.yml changes
 
 **Guard**: Pre-commit hook at `.claude/hooks/pre-commit` enforces 5 naming-drift checks on every `git commit`.
+
+**Runbook note (P2 badge restore):** This repo does **not** contain `scripts/discover.py`; use `python3 ~/.openclaw/scripts/discover.py --status` until a canonical in-repo wrapper is added in a future session.
 To install on a fresh clone: `cp .claude/hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`

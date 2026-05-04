@@ -19,6 +19,7 @@ References:
 """
 
 import os
+import logging
 import sys
 import json
 import asyncio
@@ -333,12 +334,8 @@ def _build_routing_state(
         check_affinity(coder_model, coder_platform)
     except HardwareAffinityError as exc:
         print(f"[agent_launcher] ✗  {exc}")
-        print("[agent_launcher]   unsafe coder lane disabled; falling back to manager lane")
-        win_ok = False
-        lms_ok = False
-        coder_endpoint = manager_endpoint
-        coder_model = manager_model
-        coder_backend = "mac-degraded"
+        print("[agent_launcher]   affinity violation escalates to controller; refusing silent fallback")
+        raise
 
     return {
         "manager_endpoint":      manager_endpoint,

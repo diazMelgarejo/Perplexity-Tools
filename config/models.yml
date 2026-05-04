@@ -3,7 +3,7 @@
 # Subagents use ECC-tools default logic unless parent overrides role assignment.
 # priority: lower number = preferred. Local models before online models.
 
-version: "0.9.9.6"
+version: "0.9.9.8"
 
 models:
 

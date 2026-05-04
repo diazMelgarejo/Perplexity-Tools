@@ -103,8 +103,10 @@ async def call_ultrathink_mcp_or_bridge(
     if cmd:
         try:
             async with UltrathinkMCPClient(cmd, timeout=timeout) as client:
-                async with asyncio.timeout(timeout):
-                    result = await client.call_solve(task, task_type)
+                result = await asyncio.wait_for(
+                    client.call_solve(task, task_type),
+                    timeout=timeout,
+                )
             return {"transport": "mcp", "result": result}
         except Exception as exc:
             log.warning("MCP transport failed (%s), falling back to HTTP", exc)
