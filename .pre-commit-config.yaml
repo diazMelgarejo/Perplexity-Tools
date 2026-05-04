@@ -39,6 +39,14 @@ repos:
         pass_filenames: false
         types: [python, yaml, json]
 
+
+      - id: env-assignment-syntax
+        name: "Reject invalid env assignment spacing"
+        entry: python scripts/check_env_assignments.py
+        language: system
+        pass_filenames: false
+        files: (^|/)\.env
+
       - id: pytest-gate
         name: "Run tests before commit (Python changes only)"
         entry: pytest -q tests/
