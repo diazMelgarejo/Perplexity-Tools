@@ -53,3 +53,10 @@ repos:
         language: system
         pass_filenames: false
         types: [python]
+
+      - id: env-assignment-hygiene
+        name: "Reject FOO= value (WS after =) and FOO =value (WS before =)"
+        entry: python scripts/check_env_assignment.py
+        language: system
+        pass_filenames: false
+        types: [text]
