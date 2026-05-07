@@ -25,10 +25,17 @@ import json
 import asyncio
 import argparse
 import socket
+import time
+from collections import deque
 from pathlib import Path
 from urllib.parse import urlparse
 
 from utils.hardware_policy import HardwareAffinityError, check_affinity
+from orchestrator.startup_intelligence import (
+    StartupScenario,
+    classify_scenario,
+    build_routing_hints,
+)
 
 try:
     import httpx
@@ -140,6 +147,64 @@ DETECT_TIMEOUT = int(os.getenv("AGENT_DETECT_TIMEOUT", "3"))
 # State file for routing state (separate from AgentTracker's agents.json)
 STATE_FILE = Path(".state/routing.json")
 
+# Startup history — records probe results per run so future runs adapt
+HISTORY_FILE  = Path(".state/startup_history.jsonl")
+HISTORY_MAX   = 10  # keep last N runs
+
+
+# ---------------------------------------------------------------------------
+# Startup history helpers — experience as a tool
+# ---------------------------------------------------------------------------
+
+def _load_history() -> list[dict]:
+    """Read the last HISTORY_MAX entries from startup_history.jsonl.
+
+    Returns an empty list if the file is missing or unreadable.
+    """
+    if not HISTORY_FILE.exists():
+        return []
+    try:
+        lines = HISTORY_FILE.read_text(encoding="utf-8").splitlines()
+        entries = []
+        for line in lines:
+            line = line.strip()
+            if line:
+                try:
+                    entries.append(json.loads(line))
+                except json.JSONDecodeError:
+                    pass
+        return entries[-HISTORY_MAX:]
+    except OSError:
+        return []
+
+
+def _record_startup(scenario: StartupScenario, latencies: dict[str, int | None]) -> None:
+    """Append one startup record to startup_history.jsonl.
+
+    Args:
+        scenario: The classified scenario for this run.
+        latencies: Dict with optional keys win_lms_latency_ms, mac_ol_latency_ms.
+
+    Trims the file to HISTORY_MAX lines after writing.
+    Non-fatal on any I/O error.
+    """
+    record: dict = {
+        "ts": int(time.time()),
+        "scenario": scenario.value,
+        "win_ip": WINDOWS_IP,
+        **{k: v for k, v in latencies.items() if v is not None},
+    }
+    try:
+        HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
+        with open(HISTORY_FILE, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(record) + "\n")
+        # Trim to last HISTORY_MAX lines
+        lines = HISTORY_FILE.read_text(encoding="utf-8").splitlines(keepends=True)
+        if len(lines) > HISTORY_MAX:
+            HISTORY_FILE.write_text("".join(lines[-HISTORY_MAX:]), encoding="utf-8")
+    except OSError as exc:
+        print(f"[agent_launcher] ⚠  could not write startup history: {exc}")
+
 
 # ---------------------------------------------------------------------------
 # Device identity — detect when two URLs point to the same physical machine
@@ -186,29 +251,60 @@ def _is_local_endpoint(url: str, local_ips: frozenset[str]) -> bool:
 # Helper: check if a remote Ollama instance is reachable
 # ---------------------------------------------------------------------------
 
-async def check_remote_worker(base_url: str, timeout: int = DETECT_TIMEOUT) -> bool:
-    """Return True if the Ollama instance at base_url is reachable."""
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(f"{base_url}/api/tags")
-            return resp.status_code == 200
-    except Exception:
-        return False
+async def check_remote_worker(
+    base_url: str,
+    timeout: int = DETECT_TIMEOUT,
+    _retries: int = 1,
+) -> tuple[bool, int | None]:
+    """Return (reachable, latency_ms) for the Ollama instance at base_url.
+
+    Retries once (2 s gap) when the first attempt fails with a connection
+    error — catches backends that are mid-boot. Returns (False, None) if all
+    attempts fail.
+    """
+    for attempt in range(_retries + 1):
+        t0 = time.monotonic()
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.get(f"{base_url}/api/tags")
+                if resp.status_code == 200:
+                    latency = int((time.monotonic() - t0) * 1000)
+                    return True, latency
+        except Exception:
+            pass
+        if attempt < _retries:
+            print(f"[agent_launcher]   ↻  retrying {base_url} (attempt {attempt + 2}/{_retries + 1})…")
+            await asyncio.sleep(2)
+    return False, None
 
 
-async def check_lmstudio_worker(base_url: str, timeout: int = DETECT_TIMEOUT) -> bool:
-    """Reachability probe for Windows LM Studio (/v1/models).
+async def check_lmstudio_worker(
+    base_url: str,
+    timeout: int = DETECT_TIMEOUT,
+    _retries: int = 1,
+) -> tuple[bool, int | None]:
+    """Return (reachable, latency_ms) for the LM Studio instance at base_url.
+
     Passes LM_STUDIO_API_TOKEN as Bearer if set, so secured deployments are
-    not misreported as unreachable. Timeout is honoured via AsyncClient.
+    not misreported as unreachable. Retries once (2 s gap) to catch backends
+    still booting.
     """
     url = f"{base_url.rstrip('/')}/v1/models"
     headers = {"Authorization": f"Bearer {LMS_API_TOKEN}"} if LMS_API_TOKEN else {}
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.get(url, headers=headers)
-            return resp.status_code < 400
-    except Exception:
-        return False
+    for attempt in range(_retries + 1):
+        t0 = time.monotonic()
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.get(url, headers=headers)
+                if resp.status_code < 400:
+                    latency = int((time.monotonic() - t0) * 1000)
+                    return True, latency
+        except Exception:
+            pass
+        if attempt < _retries:
+            print(f"[agent_launcher]   ↻  retrying {base_url} (attempt {attempt + 2}/{_retries + 1})…")
+            await asyncio.sleep(2)
+    return False, None
 
 
 # ---------------------------------------------------------------------------
@@ -226,6 +322,7 @@ async def _fetch_models(
     mac_lms_ok: bool,
     lms_url: str,
 ) -> dict[str, list[str]]:
+    # (signature unchanged — internal callers still pass bool flags)
     """Query live local backends for their actual loaded model names.
 
     Runs while LAN probes are still in flight — adds no extra latency.
@@ -311,11 +408,16 @@ def _build_routing_state(
     mac_lms_is_local: bool,
     local_ips: frozenset[str],
     manager_affinity_alert: str | None = None,
+    scenario: StartupScenario | None = None,
 ) -> dict:
     """Construct the routing state dict.
 
     Agent assignment happens here — only after hardware is confirmed and
     actual model names have been queried from live backends.
+
+    Cloud fallback: when all local backends are offline and PERPLEXITY_API_KEY
+    is set, the coder is routed to the Perplexity API instead of leaving a
+    'mac-degraded' dead-end pointing at an unreachable URL.
     """
     def _first(key: str, fallback: str) -> str:
         models = local_models.get(key, [])
@@ -344,12 +446,35 @@ def _build_routing_state(
                      else "mac-degraded")
     coder_platform = "win" if coder_backend.startswith("windows-") else "mac"
 
-    try:
-        check_affinity(coder_model, coder_platform)
-    except HardwareAffinityError as exc:
-        print(f"[agent_launcher] ✗  {exc}")
-        print("[agent_launcher]   affinity violation escalates to controller; refusing silent fallback")
-        raise
+    # ── Cloud fallback ───────────────────────────────────────────────────────
+    # When all local backends are offline (coder_backend == "mac-degraded") and
+    # a cloud API key is configured, route to the cloud instead of a dead URL.
+    _perplexity_key = os.getenv("PERPLEXITY_API_KEY", "")
+    _anthropic_key  = os.getenv("ANTHROPIC_API_KEY", "")
+    if coder_backend == "mac-degraded" and (_perplexity_key or _anthropic_key):
+        if _perplexity_key and not _perplexity_key.startswith("your_"):
+            coder_endpoint = "https://api.perplexity.ai"
+            coder_model    = os.getenv("CLOUD_CODER_MODEL", "sonar-reasoning-pro")
+            coder_backend  = "perplexity"
+            coder_platform = "cloud"
+            print("[agent_launcher] ☁  all local backends offline — routing coder to Perplexity API")
+        elif _anthropic_key:
+            coder_endpoint = "https://api.anthropic.com"
+            coder_model    = os.getenv("CLOUD_CODER_MODEL", "claude-4-5-thinking")
+            coder_backend  = "anthropic"
+            coder_platform = "cloud"
+            print("[agent_launcher] ☁  all local backends offline — routing coder to Anthropic API")
+
+    if coder_platform not in ("cloud",):
+        try:
+            check_affinity(coder_model, coder_platform)
+        except HardwareAffinityError as exc:
+            print(f"[agent_launcher] ✗  {exc}")
+            print("[agent_launcher]   affinity violation escalates to controller; refusing silent fallback")
+            raise
+
+    _scenario = scenario or classify_scenario(mac_ok, mac_lms_ok, win_ok, lms_ok,
+                                               cloud_ok=coder_backend in ("perplexity", "anthropic"))
 
     return {
         "manager_endpoint":      manager_endpoint,
@@ -375,6 +500,7 @@ def _build_routing_state(
         "local_ips":             sorted(local_ips),
         "discovered_models":     local_models,
         "manager_affinity_alert": manager_affinity_alert,
+        "scenario_name":          _scenario.value,
     }
 
 
@@ -385,21 +511,40 @@ def _build_routing_state(
 async def initialize_environment() -> dict:
     """Detect available hardware and return agent routing state.
 
-    All four backend probes fire concurrently at t=0. Local (Mac) results are
-    awaited first and gate agent-role commitment. LAN results (Win LM Studio is
-    always online) are collected as soon as they arrive — no sequential blocking.
+    All four backend probes fire concurrently at t=0 using adaptive timeouts
+    derived from startup history. Local (Mac) results are awaited first and
+    gate agent-role commitment. LAN results are collected as soon as they
+    arrive — no sequential blocking.
+
+    Each probe returns (ok: bool, latency_ms: int | None) so we can record
+    probe durations in startup_history.jsonl for future adaptive tuning.
 
     Returns a dict suitable for writing to .state/routing.json.
     """
+    # ── Load history hints for adaptive timeouts ──────────────────────────
+    history = _load_history()
+    hints = build_routing_hints(history)
+    win_timeout = hints["suggested_timeout_win_lms"]
+    if win_timeout != DETECT_TIMEOUT:
+        print(f"[agent_launcher] ℹ  adaptive timeout: Win LMS → {win_timeout}s "
+              f"(P50={hints['win_lms_p50_ms']}ms from last {len(history)} runs)")
+    if hints["win_ip_hint"] and hints["win_ip_hint"] != WINDOWS_IP:
+        print(f"[agent_launcher] ℹ  history hint: Win IP was {hints['win_ip_hint']} "
+              f"last run (current config: {WINDOWS_IP})")
+
     # ── All probes start at t=0 ───────────────────────────────────────────
-    t_mac_ol  = asyncio.create_task(check_remote_worker(LOCAL_MAC_URL),            name="mac-ollama")
-    t_mac_lms = asyncio.create_task(check_lmstudio_worker(MAC_LMS_URL),            name="mac-lmstudio")
-    t_win_ol  = asyncio.create_task(check_remote_worker(REMOTE_WINDOWS_URL),       name="win-ollama")
-    t_win_lms = asyncio.create_task(check_lmstudio_worker(REMOTE_WINDOWS_LMS_URL), name="win-lmstudio")
+    t_mac_ol  = asyncio.create_task(
+        check_remote_worker(LOCAL_MAC_URL, timeout=DETECT_TIMEOUT),   name="mac-ollama")
+    t_mac_lms = asyncio.create_task(
+        check_lmstudio_worker(MAC_LMS_URL, timeout=DETECT_TIMEOUT),   name="mac-lmstudio")
+    t_win_ol  = asyncio.create_task(
+        check_remote_worker(REMOTE_WINDOWS_URL, timeout=DETECT_TIMEOUT), name="win-ollama")
+    t_win_lms = asyncio.create_task(
+        check_lmstudio_worker(REMOTE_WINDOWS_LMS_URL, timeout=win_timeout), name="win-lmstudio")
 
     # ── Step 1: await local results — they gate agent-role commitment ─────
     print("[agent_launcher] Probing backends…")
-    mac_ok, mac_lms_ok = await asyncio.gather(t_mac_ol, t_mac_lms)
+    (mac_ok, _mac_ol_lat), (mac_lms_ok, _mac_lms_lat) = await asyncio.gather(t_mac_ol, t_mac_lms)
     _log_backend("Mac Ollama",    mac_ok,    LOCAL_MAC_URL)
     _log_backend("Mac LM Studio", mac_lms_ok, MAC_LMS_URL)
 
@@ -412,7 +557,7 @@ async def initialize_environment() -> dict:
             print(f"[agent_launcher]   ↳ {backend}: {preview}")
 
     # ── Step 3: collect LAN results (Win LM Studio usually already done) ──
-    win_ok, lms_ok = await asyncio.gather(t_win_ol, t_win_lms)
+    (win_ok, _win_ol_lat), (lms_ok, _win_lms_lat) = await asyncio.gather(t_win_ol, t_win_lms)
     _log_backend("Win Ollama",    win_ok, REMOTE_WINDOWS_URL)
     _log_backend("Win LM Studio", lms_ok, REMOTE_WINDOWS_LMS_URL)
 
@@ -469,9 +614,23 @@ async def initialize_environment() -> dict:
             manager_affinity_alert = str(exc)
         else:
             raise
+
+    # ── Step 7: classify scenario and record startup experience ──────────
+    _cloud_ok = bool(os.getenv("PERPLEXITY_API_KEY", "").strip() or
+                     os.getenv("ANTHROPIC_API_KEY", "").strip())
+    scenario = classify_scenario(mac_ok, mac_lms_ok, win_ok, lms_ok, cloud_ok=_cloud_ok)
+    print(f"[agent_launcher] ✓  scenario: {scenario.value}")
+    _record_startup(scenario, {
+        "mac_ol_latency_ms":  _mac_ol_lat,
+        "mac_lms_latency_ms": _mac_lms_lat,
+        "win_ol_latency_ms":  _win_ol_lat,
+        "win_lms_latency_ms": _win_lms_lat,
+    })
+
     return _build_routing_state(
         mac_ok, mac_lms_ok, win_ok, lms_ok, local_models, mac_lms_is_local, local_ips,
         manager_affinity_alert=manager_affinity_alert,
+        scenario=scenario,
     )
 
 
@@ -479,23 +638,13 @@ async def initialize_environment() -> dict:
 # Auto-write detected IPs back to .env so future runs are pre-configured
 # ---------------------------------------------------------------------------
 
-def _persist_detected_ips(state: dict) -> None:
-    """Write confirmed live endpoints back into .env so the next run is pre-configured.
-
-    Only updates lines that already exist in the file (safe, non-destructive).
-    Skips writing if both endpoints are already correct to keep the file stable.
-    """
-    env_path = Path(__file__).parent / ".env"
-    if not env_path.exists():
-        return
-
-    mac_lms_url = state.get("mac_lmstudio_endpoint") or MAC_LMS_URL
-    win_lms_url = state.get("lmstudio_endpoint") or REMOTE_WINDOWS_LMS_URL
-
+def _patch_env_file(env_path: Path, mac_lms_url: str, win_lms_url: str) -> bool:
+    """Patch LM_STUDIO_MAC_ENDPOINT, LM_STUDIO_WIN_ENDPOINTS, and WINDOWS_IP
+    in a .env-style file. Returns True if any line was updated."""
     try:
         lines = env_path.read_text(encoding="utf-8").splitlines(keepends=True)
     except OSError:
-        return
+        return False
 
     updated = False
     new_lines = []
@@ -507,7 +656,6 @@ def _persist_detected_ips(state: dict) -> None:
                 line = want
                 updated = True
         elif stripped.startswith("LM_STUDIO_WIN_ENDPOINTS="):
-            # Preserve comma-separated extras; replace first entry only
             rest = stripped[len("LM_STUDIO_WIN_ENDPOINTS="):]
             parts = [p.strip() for p in rest.split(",")]
             if parts[0] != win_lms_url:
@@ -525,12 +673,38 @@ def _persist_detected_ips(state: dict) -> None:
     if updated:
         try:
             env_path.write_text("".join(new_lines), encoding="utf-8")
-            print(f"[agent_launcher] ✎  .env updated with live endpoints"
+        except OSError as exc:
+            print(f"[agent_launcher] ⚠  could not write {env_path.name}: {exc}")
+            return False
+    return updated
+
+
+def _persist_detected_ips(state: dict) -> None:
+    """Write confirmed live endpoints back into .env AND .env.local.
+
+    Patching both files prevents the stale-.env.local-override bug:
+    .env.local is loaded with override=True, so a stale WINDOWS_IP there
+    would silently win on the next run even after .env is corrected.
+
+    Only updates lines that already exist in each file (safe, non-destructive).
+    """
+    _here = Path(__file__).parent
+    mac_lms_url = state.get("mac_lmstudio_endpoint") or MAC_LMS_URL
+    win_lms_url = state.get("lmstudio_endpoint") or REMOTE_WINDOWS_LMS_URL
+
+    patched_any = False
+    for env_name in (".env", ".env.local"):
+        env_path = _here / env_name
+        if not env_path.exists():
+            continue
+        changed = _patch_env_file(env_path, mac_lms_url, win_lms_url)
+        if changed:
+            print(f"[agent_launcher] ✎  {env_name} updated with live endpoints"
                   f" (Mac LMS: {mac_lms_url}  Win LMS: {win_lms_url})")
-        except OSError as e:
-            print(f"[agent_launcher] ⚠  could not write .env: {e}")
-    else:
-        print(f"[agent_launcher] ✔  .env already has correct endpoints — no update needed")
+            patched_any = True
+
+    if not patched_any:
+        print(f"[agent_launcher] ✔  .env/.env.local already have correct endpoints — no update needed")
 
 
 # ---------------------------------------------------------------------------
