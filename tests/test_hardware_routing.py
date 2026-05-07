@@ -382,7 +382,7 @@ def test_manager_affinity_violation_raises_when_no_override(monkeypatch):
     monkeypatch.setattr("agent_launcher.check_remote_worker",   AsyncMock(return_value=False))
     monkeypatch.setattr("agent_launcher.check_lmstudio_worker", _lms_win_only)
     monkeypatch.setattr("agent_launcher.check_affinity",        _fake_check)
-    monkeypatch.setattr("agent_launcher._await_manager_override_async", _no_override, raising=False)
+    monkeypatch.setattr("agent_launcher._await_manager_override_async", _no_override)
 
     with pytest.raises(HardwareAffinityError):
         asyncio.run(agent_launcher.initialize_environment())
@@ -407,7 +407,7 @@ def test_manager_affinity_violation_degrades_gracefully_with_override(monkeypatc
     monkeypatch.setattr("agent_launcher.check_remote_worker",   AsyncMock(return_value=False))
     monkeypatch.setattr("agent_launcher.check_lmstudio_worker", _lms_win_only)
     monkeypatch.setattr("agent_launcher.check_affinity",        _fake_check)
-    monkeypatch.setattr("agent_launcher._await_manager_override_async", _yes_override, raising=False)
+    monkeypatch.setattr("agent_launcher._await_manager_override_async", _yes_override)
 
     result = asyncio.run(agent_launcher.initialize_environment())
     assert result.get("manager_affinity_alert") is not None, (
