@@ -238,15 +238,23 @@ def test_coder_routes_to_lmstudio_when_ollama_offline():
 
 
 def test_affinity_violation_does_not_silent_fallback():
-    """Affinity errors in coder lane must escalate instead of silently degrading to Mac."""
+    """Affinity errors must escalate instead of silently degrading to Mac.
+
+    Task-1 note: _await_manager_override_async is patched to return False so
+    that the 10 s stdin prompt is never invoked during pytest capture.
+    """
     import asyncio
     from unittest.mock import AsyncMock, patch
+
+    async def _no_override(exc, timeout=10.0):
+        return False
 
     async def run():
         with (
             patch("agent_launcher.check_remote_worker", new=AsyncMock(return_value=False)),
             patch("agent_launcher.check_lmstudio_worker", new=AsyncMock(return_value=True)),
             patch("agent_launcher.check_affinity", side_effect=HardwareAffinityError("NEVER_MAC")),
+            patch("agent_launcher._await_manager_override_async", new=_no_override),
         ):
             import agent_launcher
             return await agent_launcher.initialize_environment()
@@ -349,3 +357,59 @@ def test_routing_affinity_keys_normalized():
         assert "device_affinity" not in entry, (
             f"Route '{name}' still uses deprecated 'device_affinity' key — migrate to 'affinity'"
         )
+
+
+# ---------------------------------------------------------------------------
+# P3.3 — Manager affinity escalation re-raise path
+# ---------------------------------------------------------------------------
+
+def test_manager_affinity_violation_raises_when_no_override(monkeypatch):
+    """P3.3a: When _await_manager_override_async returns False (timeout), manager must re-raise."""
+    import asyncio
+    from unittest.mock import AsyncMock
+    import agent_launcher
+
+    def _fake_check(model_id, platform):
+        if platform == "mac":
+            raise HardwareAffinityError(f"Model {model_id} not allowed on mac")
+
+    async def _lms_win_only(url, timeout=agent_launcher.DETECT_TIMEOUT):
+        return url == agent_launcher.REMOTE_WINDOWS_LMS_URL
+
+    async def _no_override(exc, timeout=10.0):
+        return False
+
+    monkeypatch.setattr("agent_launcher.check_remote_worker",   AsyncMock(return_value=False))
+    monkeypatch.setattr("agent_launcher.check_lmstudio_worker", _lms_win_only)
+    monkeypatch.setattr("agent_launcher.check_affinity",        _fake_check)
+    monkeypatch.setattr("agent_launcher._await_manager_override_async", _no_override, raising=False)
+
+    with pytest.raises(HardwareAffinityError):
+        asyncio.run(agent_launcher.initialize_environment())
+
+
+def test_manager_affinity_violation_degrades_gracefully_with_override(monkeypatch):
+    """P3.3b: When _await_manager_override_async returns True (operator override), manager degrades."""
+    import asyncio
+    from unittest.mock import AsyncMock
+    import agent_launcher
+
+    def _fake_check(model_id, platform):
+        if platform == "mac":
+            raise HardwareAffinityError(f"Model {model_id} not allowed on mac")
+
+    async def _lms_win_only(url, timeout=agent_launcher.DETECT_TIMEOUT):
+        return url == agent_launcher.REMOTE_WINDOWS_LMS_URL
+
+    async def _yes_override(exc, timeout=10.0):
+        return True
+
+    monkeypatch.setattr("agent_launcher.check_remote_worker",   AsyncMock(return_value=False))
+    monkeypatch.setattr("agent_launcher.check_lmstudio_worker", _lms_win_only)
+    monkeypatch.setattr("agent_launcher.check_affinity",        _fake_check)
+    monkeypatch.setattr("agent_launcher._await_manager_override_async", _yes_override, raising=False)
+
+    result = asyncio.run(agent_launcher.initialize_environment())
+    assert result.get("manager_affinity_alert") is not None, (
+        "Routing state must contain manager_affinity_alert when degraded"
+    )
