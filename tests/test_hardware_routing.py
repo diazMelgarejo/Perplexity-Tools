@@ -224,8 +224,8 @@ def test_coder_routes_to_lmstudio_when_ollama_offline():
 
     async def run():
         with (
-            patch("agent_launcher.check_remote_worker",   new=AsyncMock(return_value=False)),
-            patch("agent_launcher.check_lmstudio_worker", new=AsyncMock(return_value=True)),
+            patch("agent_launcher.check_remote_worker",   new=AsyncMock(return_value=(False, None))),
+            patch("agent_launcher.check_lmstudio_worker", new=AsyncMock(return_value=(True, 0))),
         ):
             import agent_launcher
             return await agent_launcher.initialize_environment()
@@ -251,8 +251,8 @@ def test_affinity_violation_does_not_silent_fallback():
 
     async def run():
         with (
-            patch("agent_launcher.check_remote_worker", new=AsyncMock(return_value=False)),
-            patch("agent_launcher.check_lmstudio_worker", new=AsyncMock(return_value=True)),
+            patch("agent_launcher.check_remote_worker", new=AsyncMock(return_value=(False, None))),
+            patch("agent_launcher.check_lmstudio_worker", new=AsyncMock(return_value=(True, 0))),
             patch("agent_launcher.check_affinity", side_effect=HardwareAffinityError("NEVER_MAC")),
             patch("agent_launcher._await_manager_override_async", new=_no_override),
         ):
@@ -373,13 +373,14 @@ def test_manager_affinity_violation_raises_when_no_override(monkeypatch):
         if platform == "mac":
             raise HardwareAffinityError(f"Model {model_id} not allowed on mac")
 
-    async def _lms_win_only(url, timeout=agent_launcher.DETECT_TIMEOUT):
-        return url == agent_launcher.REMOTE_WINDOWS_LMS_URL
+    async def _lms_win_only(url, timeout=agent_launcher.DETECT_TIMEOUT, _retries=1):
+        reachable = url == agent_launcher.REMOTE_WINDOWS_LMS_URL
+        return (reachable, 0 if reachable else None)
 
     async def _no_override(exc, timeout=10.0):
         return False
 
-    monkeypatch.setattr("agent_launcher.check_remote_worker",   AsyncMock(return_value=False))
+    monkeypatch.setattr("agent_launcher.check_remote_worker",   AsyncMock(return_value=(False, None)))
     monkeypatch.setattr("agent_launcher.check_lmstudio_worker", _lms_win_only)
     monkeypatch.setattr("agent_launcher.check_affinity",        _fake_check)
     monkeypatch.setattr("agent_launcher._await_manager_override_async", _no_override)
@@ -398,13 +399,14 @@ def test_manager_affinity_violation_degrades_gracefully_with_override(monkeypatc
         if platform == "mac":
             raise HardwareAffinityError(f"Model {model_id} not allowed on mac")
 
-    async def _lms_win_only(url, timeout=agent_launcher.DETECT_TIMEOUT):
-        return url == agent_launcher.REMOTE_WINDOWS_LMS_URL
+    async def _lms_win_only(url, timeout=agent_launcher.DETECT_TIMEOUT, _retries=1):
+        reachable = url == agent_launcher.REMOTE_WINDOWS_LMS_URL
+        return (reachable, 0 if reachable else None)
 
     async def _yes_override(exc, timeout=10.0):
         return True
 
-    monkeypatch.setattr("agent_launcher.check_remote_worker",   AsyncMock(return_value=False))
+    monkeypatch.setattr("agent_launcher.check_remote_worker",   AsyncMock(return_value=(False, None)))
     monkeypatch.setattr("agent_launcher.check_lmstudio_worker", _lms_win_only)
     monkeypatch.setattr("agent_launcher.check_affinity",        _fake_check)
     monkeypatch.setattr("agent_launcher._await_manager_override_async", _yes_override)
