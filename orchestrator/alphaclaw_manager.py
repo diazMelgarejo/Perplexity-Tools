@@ -259,6 +259,12 @@ class AlphaClawManager:
         return True
 
 
+def validate_routing_affinity(model_id: str, platform: str) -> bool:
+    """Module-level wrapper so callers don't need an AlphaClawManager instance."""
+    mgr = AlphaClawManager()
+    return mgr.validate_routing_affinity(model_id=model_id, platform=platform)
+
+
 # ─── AlphaClaw bootstrap ───────────────────────────────────────────────────────
 
 def bootstrap_alphaclaw(mac_ip: str = "", win_ip: str = "") -> AlphaClawState:
@@ -365,6 +371,24 @@ def resolve_runtime(
     # Step 2: mode
     mode = determine_mode(probe)
     print(f"  [alphaclaw_manager] mode={mode.mode}  ({mode.description})", file=sys.stderr)
+
+    # Step 2.5 — affinity pre-flight on resolved models
+    _coder_model = os.getenv("CODER_MODEL", "")
+    _mgr_model = os.getenv("MANAGER_MODEL", "")
+    _coder_backend = os.getenv("CODER_BACKEND", "unknown")
+    _coder_platform = "windows" if "win" in _coder_backend else "mac"
+    if _coder_model:
+        try:
+            validate_routing_affinity(_coder_model, _coder_platform)
+            print(f"  [alphaclaw_manager] ✓ coder affinity OK: {_coder_model} → {_coder_platform}", file=sys.stderr)
+        except Exception as exc:
+            print(f"  [alphaclaw_manager] ⚠ coder affinity violation: {exc}", file=sys.stderr)
+    if _mgr_model:
+        try:
+            validate_routing_affinity(_mgr_model, "mac")
+            print(f"  [alphaclaw_manager] ✓ manager affinity OK: {_mgr_model} → mac", file=sys.stderr)
+        except Exception as exc:
+            print(f"  [alphaclaw_manager] ⚠ manager affinity violation: {exc}", file=sys.stderr)
 
     # Step 3: bootstrap AlphaClaw
     ac_state = AlphaClawState()
