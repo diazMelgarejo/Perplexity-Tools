@@ -7,7 +7,7 @@
  * to local models, keeping main Claude as planner/reviewer.
  *
  * Endpoints (configurable via env or constructor):
- *   Ollama:    http://127.0.0.1:11435  (try GLM-5.1:cloud → qwen3.5-local:latest)
+ *   Ollama:    http://127.0.0.1:11435  (try GLM-5.1:cloud → qwen3.5:9b-nvfp4)
  *   LM Studio: http://192.168.254.101:1234  (OpenAI-compatible)
  *
  * API compatibility:
@@ -31,7 +31,7 @@ const { URL } = require("url");
 const DEFAULTS = {
   ollama: {
     baseUrl:  process.env.OLLAMA_BASE_URL  || "http://127.0.0.1:11435",
-    models:   (process.env.OLLAMA_MODELS   || "GLM-5.1:cloud,qwen3.5-local:latest").split(",").map(m => m.trim()),
+    models:   (process.env.OLLAMA_MODELS   || "GLM-5.1:cloud,qwen3.5:9b-nvfp4").split(",").map(m => m.trim()),
     timeoutMs: parseInt(process.env.OLLAMA_TIMEOUT_MS || "30000", 10),
   },
   lmstudio: {
