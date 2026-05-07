@@ -376,7 +376,7 @@ def resolve_runtime(
     _coder_model = os.getenv("CODER_MODEL", "")
     _mgr_model = os.getenv("MANAGER_MODEL", "")
     _coder_backend = os.getenv("CODER_BACKEND", "unknown")
-    _coder_platform = "windows" if "win" in _coder_backend else "mac"
+    _coder_platform = "win" if "win" in _coder_backend else "mac"  # canonical: "win" not "windows"
     if _coder_model:
         try:
             validate_routing_affinity(_coder_model, _coder_platform)
