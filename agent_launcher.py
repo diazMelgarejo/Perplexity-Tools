@@ -281,6 +281,27 @@ def _prompt_missing(items: list[str]) -> None:
         sys.exit(1)
 
 
+async def _await_manager_override_async(exc: Exception, timeout: float = 10.0) -> bool:
+    """Prompt operator to degrade-or-raise on manager affinity violation.
+
+    Returns True  → operator chose degraded mode (swallow exception).
+    Returns False → operator declined / timed out → caller should re-raise.
+    """
+    print(
+        f"\n[agent_launcher] ⚠  Manager affinity violation: {exc}\n"
+        f"  Press ENTER within {timeout:.0f}s to run in degraded mode, "
+        f"or wait for timeout to abort.\n",
+        flush=True,
+    )
+    try:
+        await asyncio.wait_for(asyncio.to_thread(sys.stdin.readline), timeout=timeout)
+        print("[agent_launcher] → Operator chose degraded mode.", flush=True)
+        return True
+    except asyncio.TimeoutError:
+        print("[agent_launcher] ✗  Timeout — re-raising HardwareAffinityError.", flush=True)
+        return False
+
+
 def _build_routing_state(
     mac_ok: bool,
     mac_lms_ok: bool,
@@ -289,6 +310,7 @@ def _build_routing_state(
     local_models: dict[str, list[str]],
     mac_lms_is_local: bool,
     local_ips: frozenset[str],
+    manager_affinity_alert: str | None = None,
 ) -> dict:
     """Construct the routing state dict.
 
@@ -310,14 +332,6 @@ def _build_routing_state(
         manager_backend  = "mac-lmstudio"
 
     mac_any = mac_ok or mac_lms_ok
-
-    try:
-        check_affinity(manager_model, "mac")
-    except HardwareAffinityError as exc:
-        print(f"[agent_launcher] ✗  {exc}")
-        mac_ok = False
-        mac_lms_ok = False
-        mac_any = False
 
     coder_endpoint = (REMOTE_WINDOWS_LMS_URL if lms_ok
                       else REMOTE_WINDOWS_URL if win_ok
@@ -360,6 +374,7 @@ def _build_routing_state(
         "mac_lmstudio_is_local": mac_lms_is_local,
         "local_ips":             sorted(local_ips),
         "discovered_models":     local_models,
+        "manager_affinity_alert": manager_affinity_alert,
     }
 
 
@@ -433,8 +448,30 @@ async def initialize_environment() -> dict:
         ])
 
     # ── Step 6: assign agents — hardware confirmed, models identified ─────
+    # Pre-compute manager model (mirrors _build_routing_state logic) so we can
+    # run the async override prompt before committing to routing state.
+    manager_affinity_alert: str | None = None
+    _mac_ol = local_models.get("mac-ollama", [])
+    _mac_lms = local_models.get("mac-lmstudio", [])
+    _mgr_model = (
+        (_mac_ol[0] if _mac_ol else MAC_MANAGER_MODEL)
+        if mac_ok
+        else (_mac_lms[0] if _mac_lms else MAC_LMS_MODEL)
+    )
+    try:
+        check_affinity(_mgr_model, "mac")
+    except HardwareAffinityError as exc:
+        override = await _await_manager_override_async(exc, timeout=10.0)
+        if override:
+            mac_ok = False
+            mac_lms_ok = False
+            mac_any = False
+            manager_affinity_alert = str(exc)
+        else:
+            raise
     return _build_routing_state(
-        mac_ok, mac_lms_ok, win_ok, lms_ok, local_models, mac_lms_is_local, local_ips
+        mac_ok, mac_lms_ok, win_ok, lms_ok, local_models, mac_lms_is_local, local_ips,
+        manager_affinity_alert=manager_affinity_alert,
     )
 
 
