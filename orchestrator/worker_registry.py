@@ -1,0 +1,213 @@
+"""Static worker registry for the V1 OrchestrationSupervisor.
+
+No dynamic registration at runtime — security boundary per Anthropic pattern §3
+(v2/5-Anthropic-agent-design.md §3 anti-patterns table).
+
+Each worker is ``async (spec: JobSpec) -> dict``.
+
+Model instantiation rules (from user session instructions):
+  - Always use POST /api/chat (Ollama) or POST /v1/chat/completions (LM Studio/OpenAI).
+  - NEVER use ``ollama run`` in a shared shell (spawns untracked subprocess, blocks GPU).
+  - Max 1 instance per model per physical device at a time.
+  - Safest simultaneous LAN pair: Mac Ollama (localhost:11434) + Windows LM Studio
+    (remote IP:1234 via LM Link).  Never load two models on the Windows GPU at once.
+
+Token-efficiency pattern from B2-ai-cli-mcp.md:
+  - File-system-first: pass artifact file paths, not raw content, through MCP/CLI calls.
+  - Always use --json / --format=json for CLI workers to strip ANSI artifacts.
+  - Background polling: fire-and-collect, never stream raw CLI stdout into LLM context.
+"""
+from __future__ import annotations
+
+import asyncio
+from typing import Any, Awaitable, Callable
+
+
+# ── Intent → backend routing table ───────────────────────────────────────────
+_INTENT_BACKEND_MAP: dict[str, str] = {
+    "code-review":    "codex",
+    "debug":          "codex",
+    "ml-experiment":  "gemini",
+    "research":       "gemini",
+    "freeform":       "ollama-mac",
+    "echo":           "echo",
+}
+
+
+def resolve_backend(spec: Any) -> str:
+    """Resolve backend from spec.backend_hint (explicit) or spec.intent (fallback)."""
+    hint = getattr(spec, "backend_hint", None)
+    if hint and hint not in {"auto", None, ""}:
+        return hint
+    return _INTENT_BACKEND_MAP.get(getattr(spec, "intent", ""), "echo")
+
+
+# ── Worker implementations ────────────────────────────────────────────────────
+
+async def _echo_worker(spec: Any) -> dict:
+    """Smoke-test / stub worker — returns the prompt as its own output.
+
+    Used by: test_supervisor_smoke.py, any job with backend_hint='echo'.
+    """
+    await asyncio.sleep(0)   # yield to event loop; instant success
+    return {
+        "backend": "echo",
+        "intent": getattr(spec, "intent", ""),
+        "output": f"[echo] {getattr(spec, 'prompt', '')}",
+        "tokens": 0,
+    }
+
+
+async def _ollama_mac_worker(spec: Any) -> dict:
+    """Mac Ollama worker — POST /api/chat.
+
+    Model instantiation rules:
+      - POST /api/chat endpoint, never ``ollama run``.
+      - 1 active model per Mac at a time (VRAM guard is caller's responsibility).
+      - Default endpoint: http://localhost:11434/api/chat
+    """
+    import httpx
+
+    endpoint = "http://localhost:11434/api/chat"
+    model = getattr(spec, "metadata", {}).get("model", "qwen3:8b")
+    prompt = getattr(spec, "prompt", "")
+    timeout = float(getattr(spec, "constraints", {}).get("max_seconds", 120))
+
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "stream": False,
+    }
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.post(endpoint, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+
+    return {
+        "backend": "ollama-mac",
+        "model": model,
+        "output": data.get("message", {}).get("content", ""),
+        "tokens": data.get("eval_count", 0),
+    }
+
+
+async def _lmstudio_mac_worker(spec: Any) -> dict:
+    """Mac LM Studio worker — POST /v1/chat/completions (OpenAI-compatible).
+
+    Default endpoint: http://localhost:1234/v1/chat/completions
+    Use this for Mac-tier local models (e.g., qwen3.5-9b-mlx).
+    This is a thinking model — set max_tokens ≥ 500 in constraints.
+    """
+    import httpx
+
+    endpoint = "http://localhost:1234/v1/chat/completions"
+    model = getattr(spec, "metadata", {}).get("model", "")
+    prompt = getattr(spec, "prompt", "")
+    timeout = float(getattr(spec, "constraints", {}).get("max_seconds", 120))
+    max_tokens = int(getattr(spec, "constraints", {}).get("max_tokens", 2048))
+
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_tokens,
+    }
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.post(endpoint, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+
+    return {
+        "backend": "lmstudio-mac",
+        "model": model,
+        "output": data["choices"][0]["message"]["content"],
+        "tokens": data.get("usage", {}).get("completion_tokens", 0),
+    }
+
+
+async def _codex_worker(spec: Any) -> dict:
+    """Codex CLI worker — headless, isolated context, file-system-first.
+
+    B2-ai-cli-mcp.md patterns applied:
+      - Use --approval-mode auto-edit (headless fork, no interactive gate).
+      - stdin=DEVNULL so the subprocess cannot hang on input.
+      - Pass prompt directly — file results saved by codex to cwd, not echoed.
+    """
+    prompt = getattr(spec, "prompt", "")
+    timeout = float(getattr(spec, "constraints", {}).get("max_seconds", 300))
+
+    cmd = [
+        "codex",
+        "--approval-mode", "auto-edit",
+        "--quiet",
+        prompt,
+    ]
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        stdin=asyncio.subprocess.DEVNULL,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
+        proc.terminate()
+        raise RuntimeError(f"codex worker timed out after {timeout}s")
+
+    if proc.returncode != 0:
+        raise RuntimeError(f"codex exited {proc.returncode}: {stderr.decode()[:500]}")
+
+    return {
+        "backend": "codex",
+        "output": stdout.decode(errors="replace").strip(),
+        "returncode": proc.returncode,
+    }
+
+
+async def _gemini_worker(spec: Any) -> dict:
+    """Gemini CLI worker — requires --yolo for non-interactive dispatch.
+
+    SKILL.md rule: always pass --yolo before -p; without it the subprocess
+    hangs on the first tool-prompt gate (confirmed 2026-05-08 session).
+
+    B2-ai-cli-mcp.md patterns:
+      - File-system-first: if spec.prompt references a file path, Gemini writes
+        its result to disk; the MCP response is a status + file path, not content.
+      - stdin=DEVNULL prevents interactive hangs.
+    """
+    prompt = getattr(spec, "prompt", "")
+    timeout = float(getattr(spec, "constraints", {}).get("max_seconds", 300))
+
+    cmd = ["gemini", "--yolo", "-p", prompt]
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        stdin=asyncio.subprocess.DEVNULL,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
+        proc.terminate()
+        raise RuntimeError(f"gemini worker timed out after {timeout}s")
+
+    if proc.returncode != 0:
+        raise RuntimeError(f"gemini exited {proc.returncode}: {stderr.decode()[:500]}")
+
+    return {
+        "backend": "gemini",
+        "output": stdout.decode(errors="replace").strip(),
+        "returncode": proc.returncode,
+    }
+
+
+# ── Registry ──────────────────────────────────────────────────────────────────
+WORKER_REGISTRY: dict[str, Callable[[Any], Awaitable[dict]]] = {
+    "echo":          _echo_worker,
+    "ollama-mac":    _ollama_mac_worker,
+    "lmstudio-mac":  _lmstudio_mac_worker,
+    "codex":         _codex_worker,
+    "gemini":        _gemini_worker,
+    # Future backends — add as hardware comes online:
+    # "lmstudio-win": _lmstudio_win_worker,   # Windows LM Studio via LM Link
+    # "ollama-win":   _ollama_win_worker,
+}

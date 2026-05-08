@@ -590,6 +590,85 @@ def autoresearch_gpu_status() -> Dict[str, Any]:
     }
 
 
+# ── V1 Supervisor endpoints ───────────────────────────────────────────────────
+# Thin HTTP surface over OrchestrationSupervisor — handlers ≤ 10 lines each.
+# Brainstorm ref: orama-system/docs/2026-05-08-v1-supervisor-brainstorm.md §5
+# Legacy /orchestrate route (orchestrator.py) stays intact — backwards compatible.
+
+from orchestrator.supervisor import JobSpec, JobStatus, OrchestrationSupervisor, _new_id
+
+_supervisor: OrchestrationSupervisor | None = None
+
+
+def _get_supervisor() -> OrchestrationSupervisor:
+    global _supervisor
+    if _supervisor is None:
+        _supervisor = OrchestrationSupervisor()
+    return _supervisor
+
+
+class _JobSubmitRequest(BaseModel):
+    intent:       str = "freeform"
+    prompt:       str
+    backend_hint: Optional[str] = None
+    constraints:  Dict[str, Any] = {}
+    metadata:     Dict[str, Any] = {}
+
+
+@app.post("/v1/jobs", tags=["supervisor"])
+async def supervisor_submit_job(req: _JobSubmitRequest):
+    """Submit a job to the V1 OrchestrationSupervisor (file-based persistence)."""
+    spec = JobSpec(
+        job_id=_new_id(),
+        intent=req.intent,
+        prompt=req.prompt,
+        backend_hint=req.backend_hint,
+        constraints=req.constraints,
+        metadata=req.metadata,
+    )
+    try:
+        job_id = await _get_supervisor().submit_job(spec)
+        return {"job_id": job_id, "state": JobStatus.QUEUED.value}
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.get("/v1/jobs", tags=["supervisor"])
+async def supervisor_list_jobs(status: Optional[str] = None):
+    """List all known jobs, optionally filtered by status string."""
+    try:
+        filter_status = JobStatus(status) if status else None
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Unknown status: {status}")
+    return {"jobs": _get_supervisor().list_jobs(status=filter_status)}
+
+
+@app.get("/v1/jobs/{job_id}", tags=["supervisor"])
+async def supervisor_get_job(job_id: str):
+    """Get the last-known state of a job."""
+    result = await _get_supervisor().get_status(job_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+    return result
+
+
+@app.post("/v1/jobs/{job_id}/cancel", tags=["supervisor"])
+async def supervisor_cancel_job(job_id: str):
+    """Request cancellation of a running job."""
+    cancelled = await _get_supervisor().cancel(job_id)
+    return {"job_id": job_id, "cancel_requested": cancelled}
+
+
+@app.post("/v1/jobs/{job_id}/replay", tags=["supervisor"])
+async def supervisor_replay_job(job_id: str):
+    """Re-run a failed or cancelled job under a new job_id."""
+    try:
+        new_id = await _get_supervisor().replay(job_id)
+        return {"original_job_id": job_id, "new_job_id": new_id, "state": JobStatus.QUEUED.value}
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+
 if __name__ == "__main__":
     import uvicorn
 
