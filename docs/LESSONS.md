@@ -908,3 +908,98 @@ python3 -m pytest tests/ -k "distributed or real_p50" -v
 - `test_supervisor_lan.py::test_winonly_model_routes_to_win` — Win node required
 - `test_supervisor_lan.py::test_failclosed_when_win_offline` — Win node required
 - `start.ps1` end-to-end on a real Windows box
+
+---
+
+## 2026-05-08 — mac_probe.sh Linux/cross-platform rewrite
+
+**Context:** `mac_probe.sh` used three macOS-only tools (`sysctl`, `system_profiler`, `ipconfig getifaddr`) and would silently produce zeroed-out JSON on Linux CI runners, Docker containers, and any future Linux node. The script name was also misleading — it probes hardware primitives generically, not macOS specifically.
+
+### What broke
+
+| Tool | macOS | Linux |
+|------|-------|-------|
+| `sysctl -n hw.memsize` | ✓ unified memory in bytes | ✗ — `sysctl` exists but `hw.memsize` key absent; returns empty string → `$(( / 1024...))` division error |
+| `sysctl -n hw.model` | ✓ `Mac14,9` etc. | ✗ — key not present on Linux |
+| `system_profiler SPDisplaysDataType` | ✓ Apple Silicon GPU cores | ✗ — binary not installed |
+| `ipconfig getifaddr en0` | ✓ primary LAN IP | ✗ — `ipconfig` is a Windows command on Linux (wrong binary); `en0` doesn't exist |
+
+Silent failure mode: `RAM_GB=0`, `GPU_CORES=` (empty string), `PRIVATE_IP=0.0.0.0`, `AI_TIER=base`, `OLLAMA_PARALLEL=1` — supervisor would under-provision every Linux node.
+
+### Fixes shipped (commit e670525 on main)
+
+Full rewrite with platform detection at the top (`_OS="$(uname -s)"`):
+
+**RAM:**
+```bash
+# macOS (unchanged)
+RAM_BYTES=$(sysctl -n hw.memsize 2>/dev/null || echo "0")
+# Linux
+RAM_KB=$(grep '^MemTotal:' /proc/meminfo | awk '{print $2}')
+RAM_GB=$(( RAM_KB / 1024 / 1024 ))
+```
+
+**Model ID:**
+```bash
+# macOS
+MODEL_ID=$(sysctl -n hw.model)          # "Mac14,9"
+# Linux — DMI
+MODEL_ID=$(cat /sys/devices/virtual/dmi/id/product_name)  # "ThinkPad X1" etc.
+# Linux — ARM SBC (Raspberry Pi, Jetson)
+MODEL_ID=$(tr -d '\0' < /proc/device-tree/model)          # "Raspberry Pi 4 Model B"
+```
+
+**GPU:**
+```bash
+# macOS — Apple Silicon GPU core count via system_profiler (unchanged)
+# Linux NVIDIA
+SM_COUNT=$(nvidia-smi --query-gpu=multiprocessor_count --format=csv,noheader,nounits)
+# Linux generic (count GPU devices; rough approximation)
+GPU_COUNT=$(lspci | grep -ciE 'VGA|3D|Display')
+```
+
+**Private IP:**
+```bash
+# macOS — interface-based (unchanged)
+ipconfig getifaddr en0 || ipconfig getifaddr en1
+# Linux — routing-table-based (correct interface auto-selected)
+ip route get 8.8.8.8 | awk '/src/{for(i=1;i<=NF;i++) if($i=="src") {print $(i+1); exit}}'
+# Linux fallback
+hostname -I | awk '{print $1}'
+```
+
+**New output field:** `"os": "Darwin"|"Linux"` — backwards-compatible addition.
+
+### Validation on this Mac (2026-05-08)
+
+```json
+{
+  "model_id": "Mac14,9",
+  "ram_gb": 16,
+  "gpu_cores": 16,
+  "private_ip": "10.179.147.43",
+  "arch": "arm64",
+  "os": "Darwin",
+  "is_apple_silicon": true,
+  "ai_tier": "standard",
+  "ollama_recommended_parallel": 2
+}
+```
+
+All fields identical to V1 output except new `"os"` key — supervisor `detect_hardware()` is unaffected.
+
+### Key rules derived
+
+- **Always guard `sysctl` keys** — `sysctl -n hw.memsize` on Linux returns nothing, not an error exit; `|| echo "0"` is mandatory or arithmetic will blow up with `integer expression expected`.
+- **`/proc/meminfo` MemTotal is in kB, not bytes** — divide by `1024 * 1024` (not `1024^3`) to get GB.
+- **`ip route get 8.8.8.8`** is the canonical Linux way to find which interface the machine uses to reach the outside world — it correctly handles multi-homed hosts and avoids guessing interface names (`eth0`, `ens3`, `enp0s3` all work automatically).
+- **`ipconfig` on Linux is a different binary** — it shows DHCP client info (from `isc-dhcp-client`), not interface IPs. Never use `ipconfig getifaddr` on Linux.
+- **`system_profiler` is macOS-only** — on Linux use `nvidia-smi` for NVIDIA or `lspci` for generic GPU detection. For Apple Silicon on macOS, `system_profiler SPDisplaysDataType` remains the only reliable source of Neural Engine / GPU core count.
+- **`/dev/tcp` bash built-in** — available in bash 3.2+ without any external tool. Standard `/dev/tcp/host/port` open succeeds on connection, fails with exit code 1 on refusal. Use as the `nc` fallback everywhere.
+
+### Deferred
+
+- Validate on Ubuntu 22.04 LTS (GitHub Actions runner — expected to work with `/proc/meminfo` + `ip`)
+- Validate on Alpine 3.19 (no `lspci`, no `DMI` in `/sys` — `GPU_CORES` will be 0; acceptable)
+- Validate on Raspberry Pi 4 (`/proc/device-tree/model` path)
+- `nvidia-smi` output format test on a real CUDA box
