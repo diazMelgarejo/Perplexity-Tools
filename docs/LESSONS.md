@@ -864,3 +864,47 @@ Re-run when both nodes are up:
 ```bash
 python3 -m pytest tests/ -k "distributed or real_p50" -v
 ```
+
+---
+
+## 2026-05-08 — V1 OrchestrationSupervisor shipped (file-based, no DB)
+
+**Context:** Synthesised three reference files (`v1/B2-ai-cli-mcp.md`, `v1/003-Gemini-Hardware.md.md`, `v2/5-Anthropic-agent-design.md`) and adapted them for V1 repos under the no-DB/no-SQLite constraint.
+
+**New files shipped:**
+- `orchestrator/supervisor.py` — `OrchestrationSupervisor` + `JobSpec` + `JobStatus` (jsonl-only, no SQLite)
+- `orchestrator/worker_registry.py` — static `WORKER_REGISTRY`; all workers use `POST /api/chat` or `POST /v1/chat/completions`, never `ollama run`
+- `utils/action_validator.py` — two-phase validate-then-execute gate (IRREVERSIBLE + REQUIRES_HITL)
+- `scripts/mac_probe.sh` — zero-dependency hardware detection; emits `{model_id, ram_gb, gpu_cores, private_ip, ai_tier, ollama_recommended_parallel}`
+- `tests/test_supervisor_smoke.py` — 13 Mac-only smoke tests; **192/192 suite green**
+- `tests/test_supervisor_lan.py` — LAN integration tests (auto-skipped until both nodes live)
+
+**FastAPI surface added (`orchestrator/fastapi_app.py`):**
+- `POST /v1/jobs` — submit job
+- `GET /v1/jobs` — list jobs
+- `GET /v1/jobs/{id}` — get status
+- `POST /v1/jobs/{id}/cancel` — cancel
+- `POST /v1/jobs/{id}/replay` — replay
+
+**Anthropic pattern constants:**
+- `MAX_DEPTH = 1` — workers cannot spawn sub-workers (hard limit)
+- `MAX_THREADS = 25` — Anthropic spec ceiling
+- Write final checkpoint BEFORE propagating `CancelledError` (not after)
+
+**Model instantiation rules confirmed:**
+- All workers use `POST /api/chat` (Ollama) or `POST /v1/chat/completions` (LM Studio/OpenAI)
+- Never use `ollama run` in a shared shell
+- Mac Ollama (localhost:11434) + Windows LM Studio (remote IP:1234) = safest simultaneous LAN pair
+- 1 instance per model per physical device
+
+**mac_probe.sh output (this Mac, 2026-05-08):**
+```json
+{"model_id":"Mac14,9","ram_gb":16,"gpu_cores":16,"private_ip":"192.168.1.147","arch":"arm64","is_apple_silicon":true,"ai_tier":"standard","ollama_recommended_parallel":2}
+```
+
+**V2 spec:** `orama-system/docs/v2/14-supervisor-and-anthropic-patterns.md` — DB persistence, audit log, MAESTRO gates, SWARM guardrails (planning only).
+
+**Deferred (LAN):**
+- `test_supervisor_lan.py::test_winonly_model_routes_to_win` — Win node required
+- `test_supervisor_lan.py::test_failclosed_when_win_offline` — Win node required
+- `start.ps1` end-to-end on a real Windows box
