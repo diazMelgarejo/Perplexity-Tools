@@ -483,7 +483,7 @@ Auto-created by `scripts/setup_codex.sh` on every stack startup.
 | Tool | Status | How to use |
 |------|--------|-----------|
 | Codex | ✓ via PTY | `spawn_agents.py --agent codex` |
-| Gemini CLI | ✓ via wrapper | `spawn_agents.py --agent gemini` or `~/.local/bin/gemini -p "..."` |
+| Gemini CLI | ✓ via wrapper | `spawn_agents.py --agent gemini` or `~/.local/bin/gemini --yolo -p "..."` (yolo = auto-approve; required non-interactive) |
 | LM Studio Mac | ✓ when .110 online | `spawn_agents.py --agent lmstudio-mac` |
 | LM Studio Win | ✓ when .101 online | `spawn_agents.py --agent lmstudio-win` (GPU serialized) |
 | All agents | parallel + serial | `spawn_agents.py --agent all` |
@@ -829,3 +829,38 @@ itself was healthy; the working tree was the problem.
 
 **Runbook note (P2 badge restore):** This repo does **not** contain `scripts/discover.py`; use `python3 ~/.openclaw/scripts/discover.py --status` until a canonical in-repo wrapper is added in a future session.
 To install on a fresh clone: `cp .claude/hooks/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`
+
+---
+
+## Session 2026-05-08 — Startup Intelligence Engine (v0.9.9.8 → 0.9.9.9)
+
+**Problem:** Startup probes were single-shot, scenarios were inferred via ad-hoc `if/else`, and a `WINDOWS_IP` line in `.env.local` could silently override a corrected `.env` value.
+
+**Fixes shipped (4 commits, 38/38 tests green):**
+
+1. `orchestrator/startup_intelligence.py` — pure-stdlib scenario engine (zero I/O):
+   - `StartupScenario` enum: `FULL_DISTRIBUTED`, `MAC_DUAL`, `MAC_OLLAMA_ONLY`, `MAC_LMS_ONLY`, `CLOUD_ONLY`, `FULLY_OFFLINE`
+   - `FallbackChain` dataclass + `SCENARIO_TABLE` mapping
+   - `classify_scenario(mac_ok, mac_lms_ok, win_ok, lms_ok, cloud_ok)` — 6 priority rules
+   - `build_routing_hints(history)` — P50 over last 5 runs → adaptive timeout (6s if Win LMS p50 > 2000ms, else 3s)
+2. `agent_launcher.py`:
+   - Probes return `tuple[bool, int | None]` (reachable, latency_ms); 1 retry with 2s sleep
+   - Records each run to `.state/startup_history.jsonl` (rolling 10)
+   - Cloud fallback: when `coder_backend == "mac-degraded"` and `PERPLEXITY_API_KEY` (preferred) or `ANTHROPIC_API_KEY` is present → routes to cloud, skips affinity check
+   - `_persist_detected_ips()` patches **both** `.env` and `.env.local`
+   - `scenario_name` surfaces in routing state dict
+3. `tests/test_startup_intelligence.py` — 20 offline tests
+4. `hardware/startup-intelligence/SKILL.md` — full agent skill doc (scenarios, retry, history, fallback, diagnostics, extension checklist)
+
+**Win-without-Mac is intentionally `FULLY_OFFLINE`** — Mac is the manager tier; Windows is coder-only.
+
+**Gemini CLI syntax update:** all production gemini invocations must use `--yolo` (alias `-y`). Without it, the subprocess hangs on the first sandbox/tool prompt. Updated `spawn_agents.py` + docs.
+
+**Deferred** (needs both Mac + Win on LAN):
+- `test_full_distributed_scenario_e2e` — actual probe both backends
+- `test_routing_hints_with_real_p50` — needs ≥2 real Windows runs
+
+Re-run when both nodes are up:
+```bash
+python3 -m pytest tests/ -k "distributed or real_p50" -v
+```
