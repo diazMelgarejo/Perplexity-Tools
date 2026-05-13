@@ -17,6 +17,7 @@ References:
     hardware/Modelfile.*  - Ollama model definitions
     config/routing.yml    - routing rules that consume the endpoints returned here
 """
+from __future__ import annotations  # PEP 563: postpone annotation eval (Python 3.9 compat)
 
 import os
 import logging
