@@ -13,6 +13,8 @@ Usage
     pip install fastapi uvicorn aiohttp loguru python-dotenv slowapi pydantic>=2.6.0
     python -m uvicorn orchestrator:app --host 0.0.0.0 --port 8000
 """
+from __future__ import annotations  # PEP 563: postpone annotation eval (Python 3.9 compat)
+
 import os
 import json
 import asyncio
