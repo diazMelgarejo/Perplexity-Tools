@@ -20,25 +20,80 @@ Token-efficiency pattern from B2-ai-cli-mcp.md:
 from __future__ import annotations
 
 import asyncio
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 
 
-# ── Intent → backend routing table ───────────────────────────────────────────
-_INTENT_BACKEND_MAP: dict[str, str] = {
+# ── § 5.3  ROLE_BACKEND_MAP — authoritative role-to-backend routing ────────────
+# Source: unified-absorption-plan.md § 5.3 (Ollama-first for Mac roles).
+# Priority order per § 5.2:
+#   1. role + specialization → ROLE_BACKEND_MAP
+#   2. intent → _INTENT_BACKEND_MAP (below)
+#   3. backend_hint → explicit override
+#   4. Policy-defined default
+#
+# Mac fallback chain: "ollama" → "lmstudio-mac" (only when Ollama port 11434 unreachable).
+# All candidates pass through policy.validate_or_raise() — fail-closed on affinity.
+
+ROLE_BACKEND_MAP: Dict[Tuple[str, Optional[str]], Tuple[str, str]] = {
+    # (role, specialization)                   → (backend,        model)
+    ("executor-agent",   "python-coding"):      ("lmstudio-win",  "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2"),
+    ("executor-agent",   "test-writing"):       ("lmstudio-win",  "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2"),
+    ("executor-agent",   None):                 ("lmstudio-win",  "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2"),
+    ("context-agent",    "market-research"):    ("ollama",        "qwen3.5:9b-nvfp4"),
+    ("context-agent",    "m&a-research"):       ("ollama",        "qwen3.5:9b-nvfp4"),
+    ("context-agent",    None):                 ("ollama",        "qwen3.5:9b-nvfp4"),
+    ("verifier-agent",   None):                 ("lmstudio-win",  "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2"),
+    ("crystallizer-agent", None):               ("ollama",        "qwen3.5:9b-nvfp4"),
+    ("architect-agent",  None):                 ("lmstudio-win",  "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2"),
+    ("refiner-agent",    None):                 ("ollama",        "qwen3.5:9b-nvfp4"),
+}
+
+
+def resolve_role_backend(role: str, specialization: Optional[str] = None) -> Optional[Tuple[str, str]]:
+    """Return (backend, model) for a given role + specialization, or None if not in map.
+
+    Looks up specific specialization first, then falls back to (role, None) default.
+    """
+    specific = ROLE_BACKEND_MAP.get((role, specialization))
+    if specific is not None:
+        return specific
+    if specialization is not None:
+        return ROLE_BACKEND_MAP.get((role, None))
+    return None
+
+
+# ── Intent → backend routing table (fallback layer 2) ─────────────────────────
+_INTENT_BACKEND_MAP: Dict[str, str] = {
     "code-review":    "codex",
     "debug":          "codex",
     "ml-experiment":  "gemini",
     "research":       "gemini",
-    "freeform":       "ollama-mac",
+    "freeform":       "ollama",
     "echo":           "echo",
 }
 
 
 def resolve_backend(spec: Any) -> str:
-    """Resolve backend from spec.backend_hint (explicit) or spec.intent (fallback)."""
+    """Resolve backend using priority order from § 5.2.
+
+    1. role + specialization → ROLE_BACKEND_MAP
+    2. intent → _INTENT_BACKEND_MAP
+    3. backend_hint → explicit override (takes precedence if non-empty/non-auto)
+    """
+    # Explicit override (highest priority when set)
     hint = getattr(spec, "backend_hint", None)
     if hint and hint not in {"auto", None, ""}:
         return hint
+
+    # Role-based lookup
+    role = getattr(spec, "role", None)
+    specialization = getattr(spec, "specialization", None)
+    if role:
+        result = resolve_role_backend(role, specialization)
+        if result is not None:
+            return result[0]   # backend name
+
+    # Intent fallback
     return _INTENT_BACKEND_MAP.get(getattr(spec, "intent", ""), "echo")
 
 
@@ -200,14 +255,67 @@ async def _gemini_worker(spec: Any) -> dict:
     }
 
 
+async def _ollama_worker(spec: Any) -> dict:
+    """Canonical Ollama worker (first-class Mac backend).
+
+    Uses POST /api/chat at localhost:11434. Always prefer this over lmstudio-mac
+    for Mac-affinity roles. See CLAUDE.md § 0 hardware routing invariants.
+    """
+    return await _ollama_mac_worker(spec)
+
+
+async def _lmstudio_win_worker(spec: Any) -> dict:
+    """Windows LM Studio worker — POST /v1/chat/completions via LM Link (LAN).
+
+    Endpoint from env: LM_STUDIO_WIN_ENDPOINTS (full URL, never hardcoded).
+    GPU lock: one heavy model at a time (enforced in LMStudioWinBackend; here
+    the worker trusts the caller to serialize via the backend class).
+
+    Model: Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2 (default).
+    """
+    import os
+    import httpx
+
+    raw_endpoints = os.getenv("LM_STUDIO_WIN_ENDPOINTS", "REQUIRED_SET_IN_ENV")
+    endpoint = raw_endpoints.split(",")[0].strip().rstrip("/")
+    if not endpoint or endpoint == "REQUIRED_SET_IN_ENV":
+        raise RuntimeError(
+            "LM_STUDIO_WIN_ENDPOINTS is not set. "
+            "Set it to the Windows LM Studio URL, e.g. http://192.168.254.102:1234"
+        )
+
+    model = getattr(spec, "metadata", {}).get(
+        "model", "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2"
+    )
+    prompt = getattr(spec, "prompt", "")
+    timeout = float(getattr(spec, "constraints", {}).get("max_seconds", 300))
+    max_tokens = int(getattr(spec, "constraints", {}).get("max_tokens", 4096))
+
+    payload = {
+        "model": model,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": max_tokens,
+    }
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.post(f"{endpoint}/v1/chat/completions", json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+
+    return {
+        "backend": "lmstudio-win",
+        "model": model,
+        "output": data["choices"][0]["message"]["content"],
+        "tokens": data.get("usage", {}).get("completion_tokens", 0),
+    }
+
+
 # ── Registry ──────────────────────────────────────────────────────────────────
-WORKER_REGISTRY: dict[str, Callable[[Any], Awaitable[dict]]] = {
-    "echo":          _echo_worker,
-    "ollama-mac":    _ollama_mac_worker,
-    "lmstudio-mac":  _lmstudio_mac_worker,
-    "codex":         _codex_worker,
-    "gemini":        _gemini_worker,
-    # Future backends — add as hardware comes online:
-    # "lmstudio-win": _lmstudio_win_worker,   # Windows LM Studio via LM Link
-    # "ollama-win":   _ollama_win_worker,
+WORKER_REGISTRY: Dict[str, Callable[[Any], Awaitable[dict]]] = {
+    "echo":           _echo_worker,
+    "ollama":         _ollama_worker,       # canonical Mac Ollama (first-class)
+    "ollama-mac":     _ollama_mac_worker,   # alias kept for backward compat
+    "lmstudio-mac":   _lmstudio_mac_worker,
+    "lmstudio-win":   _lmstudio_win_worker, # Windows via LM Link (LAN)
+    "codex":          _codex_worker,
+    "gemini":         _gemini_worker,
 }
