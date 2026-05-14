@@ -139,17 +139,18 @@ def test_latest_status_per_job_last_wins(tmp_path):
 
 @pytest.mark.asyncio
 async def test_depth_limit_enforced(tmp_path):
-    """Jobs with depth > MAX_DEPTH are rejected before worker fires."""
-    sup = _make_sup(tmp_path)
-    spec = JobSpec(
-        job_id=_new_id(),
-        intent="echo",
-        prompt="nested",
-        backend_hint="echo",
-        constraints={"depth": 2},
-    )
-    with pytest.raises(ValueError, match="MAX_DEPTH"):
-        await sup.submit_job(spec)
+    """depth != 0 is rejected at JobSpec construction (V1 invariant: workers never
+    spawn sub-workers).  ValidationError or ValueError raised at model creation time,
+    NOT at submit_job time — the Pydantic @field_validator catches it first."""
+    from pydantic import ValidationError
+    with pytest.raises((ValidationError, ValueError)):
+        JobSpec(
+            job_id=_new_id(),
+            intent="echo",
+            prompt="nested",
+            backend_hint="echo",
+            depth=1,  # depth=0 is the only valid value in V1
+        )
 
 
 @pytest.mark.asyncio
