@@ -17,11 +17,12 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
-from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, List, Optional, Union
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from utils.hardware_policy import HardwareAffinityError, check_affinity
 
@@ -33,7 +34,7 @@ STATE_DIR = Path(".state")
 JOBS_JSONL = STATE_DIR / "jobs.jsonl"
 
 
-# ── Enums & dataclasses ───────────────────────────────────────────────────────
+# ── Enums ─────────────────────────────────────────────────────────────────────
 class JobStatus(str, Enum):
     """Lifecycle states for a supervisor job."""
     QUEUED        = "queued"
@@ -44,23 +45,56 @@ class JobStatus(str, Enum):
     CANCELLED     = "cancelled"
 
 
-@dataclass
-class JobSpec:
-    """Immutable job descriptor submitted to the supervisor."""
-    job_id:       str
-    intent:       str                          # "code-review"|"debug"|"ml-experiment"|"freeform"|"echo"
-    prompt:       str
-    backend_hint: Optional[str] = None         # "auto"|"codex"|"gemini"|"lmstudio-mac"|"ollama-mac"|…
-    constraints:  dict = field(default_factory=dict)  # depth, gpu_lock_required, max_seconds, max_tokens
-    metadata:     dict = field(default_factory=dict)  # model, session_id, …
-    created_at:   str  = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+def _new_id_default() -> str:
+    return str(uuid.uuid4())
 
-    @property
-    def depth(self) -> int:
-        return int(self.constraints.get("depth", 0))
+
+def _now_iso_default() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+class JobSpec(BaseModel):
+    """Immutable job descriptor submitted to the supervisor.
+
+    New fields added in § 5.1 of the unified absorption plan:
+      role, specialization, session_id, parent_orchestrator_id,
+      artifact_policy, depth.
+    All existing fields remain backward-compatible (job_id and prompt
+    now have sensible defaults so old call sites that omit them still work).
+    """
+    model_config = ConfigDict(frozen=True)
+
+    # Core (all optional with safe defaults for backward compat)
+    job_id:       str  = Field(default_factory=_new_id_default)
+    intent:       str  = ""
+    prompt:       str  = ""
+    backend_hint: Optional[str] = None   # "auto"|"codex"|"gemini"|…
+    constraints:  Union[List[str], Dict[str, Any]] = Field(default_factory=dict)   # max_seconds/tokens (dict) or constraint tags (list)
+    metadata:     Dict[str, Any] = Field(default_factory=dict)   # model, …
+    created_at:   str  = Field(default_factory=_now_iso_default)
+
+    # New worker-role fields (§ 5.1)
+    role:                    Optional[str] = None
+    specialization:          Optional[str] = None
+    session_id:              Optional[str] = None
+    parent_orchestrator_id:  Optional[str] = None
+    artifact_policy:         Optional[str] = None   # "default" | None | custom tag
+
+    # V1 depth invariant: workers do NOT spawn sub-workers
+    depth: int = Field(default=0, ge=0)
+
+    @field_validator("depth", mode="before")
+    @classmethod
+    def no_sub_workers(cls, v: Any) -> int:
+        val = int(v)
+        if val != 0:
+            raise ValueError(
+                "Workers cannot spawn sub-workers in V1. depth must be 0."
+            )
+        return val
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        return self.model_dump()
 
 
 # ── Pure persistence helpers ──────────────────────────────────────────────────
@@ -218,6 +252,11 @@ class OrchestrationSupervisor:
             backend_hint=spec_dict.get("backend_hint"),
             constraints=spec_dict.get("constraints", {}),
             metadata=spec_dict.get("metadata", {}),
+            role=spec_dict.get("role"),
+            specialization=spec_dict.get("specialization"),
+            session_id=spec_dict.get("session_id"),
+            parent_orchestrator_id=spec_dict.get("parent_orchestrator_id"),
+            artifact_policy=spec_dict.get("artifact_policy"),
         )
         return await self.submit_job(new_spec)
 
