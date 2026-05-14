@@ -486,7 +486,7 @@ async def orchestrate(req: OrchestrateRequest) -> Dict[str, Any]:
             "status": "needs_user_action",
             "message": (
                 "No viable local coder backend is reachable for autoresearch. "
-                "Start Windows LM Studio Qwen 27B, qwen3-coder:14b on Windows Ollama, "
+                "Start Windows LM Studio (Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2) "
                 "or a reachable local LM Studio fallback, then retry."
             ),
             "runtime": _runtime_summary(),
