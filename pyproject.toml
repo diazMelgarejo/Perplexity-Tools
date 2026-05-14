@@ -74,10 +74,10 @@ dev = [
 ]
 
 [project.urls]
-"Homepage" = "https://github.com/diazMelgarejo/Perplexity-Tools"
-"Bug Tracker" = "https://github.com/diazMelgarejo/Perplexity-Tools/issues"
-"ultrathink-system" = "https://github.com/diazMelgarejo/ultrathink-system"
-"Changelog" = "https://github.com/diazMelgarejo/Perplexity-Tools/blob/main/CHANGELOG.md"
+"Homepage" = "https://github.com/diazMelgarejo/Perpetua-Tools"
+"Bug Tracker" = "https://github.com/diazMelgarejo/Perpetua-Tools/issues"
+"orama-system" = "https://github.com/diazMelgarejo/orama-system"
+"Changelog" = "https://github.com/diazMelgarejo/Perpetua-Tools/blob/main/CHANGELOG.md"
 
 [project.scripts]
 pt-orchestrator = "orchestrator.fastapi_app:app"
