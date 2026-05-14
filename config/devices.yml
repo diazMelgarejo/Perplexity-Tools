@@ -51,7 +51,7 @@ devices:
     runtimes:
       - ollama
     primary_backend: "ollama"
-    lan_ip: "192.168.254.104"
+    lan_ip: "192.168.254.102"
     ports:
       - 11434
     identity_method: "environment_variable"
