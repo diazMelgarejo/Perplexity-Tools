@@ -1,5 +1,11 @@
 # Lessons — Perpetua-Tools
 
+> **Cross-repo companion:** [`orama-system/docs/LESSONS.md`](../../orama-system/docs/LESSONS.md) — read both at session start for joint context.
+> **Architecture authority:** [`orama-system/docs/2026-05-14--UNIFIED-ABSORPTION-PLAN.md`](../../orama-system/docs/2026-05-14--UNIFIED-ABSORPTION-PLAN.md)
+> **Navigation hub:** [`CLAUDE-instru.md`](../../../CLAUDE-instru.md)
+
+---
+
 ## 2026-04-26 — Hardware Model Affinity Incident
 
 **Context:**
