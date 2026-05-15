@@ -4,6 +4,11 @@
 **Version:** 0.9.9.8 (aligned with Perpetua-Tools)
 **Last verified:** 2026-04-20 against AlphaClaw `feature/MacOS-post-install`
 
+**Cross-repo context:**
+- Architecture authority: [`orama-system/docs/2026-05-14--UNIFIED-ABSORPTION-PLAN.md`](../../orama-system/docs/2026-05-14--UNIFIED-ABSORPTION-PLAN.md)
+- Shared types (PT-owned): `orchestrator/contracts.py` (`OrchestrationSession`, `TaskEnvelope`, `WorkerAssignment`, `WorkerResult`, `VerificationResult`)
+- AlphaClaw is L1 (infra) — referenced here but never imported as a module
+
 This is the invariant that Perpetua-Tools tests against. When AlphaClaw's surface changes, update this document first, then update PT adapter code.
 
 ---
