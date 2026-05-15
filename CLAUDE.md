@@ -23,7 +23,7 @@ Full cross-repo instructions → [`../../CLAUDE-instru.md`](../../CLAUDE-instru.
 |-------|-------|
 | Banned terminology (coordinator → orchestrator, etc.) | [Unified Plan § 1](../orama-system/docs/2026-05-14--UNIFIED-ABSORPTION-PLAN.md) |
 | 8 governing principles | [Unified Plan § 1](../orama-system/docs/2026-05-14--UNIFIED-ABSORPTION-PLAN.md) |
-| Hardware routing (Mac=Ollama, Win=LM Studio, one model per GPU) | [Unified Plan § 2](../orama-system/docs/2026-05-14--UNIFIED-ABSORPTION-PLAN.md) |
+| **Hard requirements** (Mac: Ollama + qwen3.5:9b-nvfp4 + bge-m3; Win: LM Studio) | [Unified Plan § 2](../orama-system/docs/2026-05-14--UNIFIED-ABSORPTION-PLAN.md) · [`../../CLAUDE-instru.md § 6`](../../CLAUDE-instru.md) |
 | **Shared types** (`OrchestrationSession`, `TaskEnvelope`, `WorkerAssignment`, `WorkerResult`, `VerificationResult`) | PT owns them in `orchestrator/contracts.py` — orama imports from PT, never reverse |
 | Verifier gate (crystallization blocked without approved VerificationResult) | [Unified Plan § 2](../orama-system/docs/2026-05-14--UNIFIED-ABSORPTION-PLAN.md) |
 | V1 scope (MAESTRO/HITL deferred) | [Unified Plan § 2](../orama-system/docs/2026-05-14--UNIFIED-ABSORPTION-PLAN.md) |
@@ -36,6 +36,9 @@ Full cross-repo instructions → [`../../CLAUDE-instru.md`](../../CLAUDE-instru.
 - orama is stateless (planning/methodology only); imports shared types from PT, never the reverse
 - `@field_validator` (Pydantic V2) — never deprecated `@validator`
 - AlphaClaw: CLI + HTTP only — never `require()` or internal imports
+- **Mac hard requirements:** Ollama (`localhost:11434`) with `qwen3.5:9b-nvfp4` + `bge-m3` — probe on startup; fail closed if absent
+- **Win hard requirement:** LM Studio at `$LM_STUDIO_WIN_ENDPOINTS` — fail loudly if unreachable
+- **Optional:** LM Studio Mac (secondary fallback only), cloud APIs, all other local models
 
 ---
 
