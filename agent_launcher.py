@@ -384,7 +384,16 @@ async def _await_manager_override_async(exc: Exception, timeout: float = 10.0) -
 
     Returns True  → operator chose degraded mode (swallow exception).
     Returns False → operator declined / timed out → caller should re-raise.
+
+    Non-interactive (no TTY): auto-deny — fail closed on hardware policy violations.
     """
+    if not sys.stdin.isatty():
+        print(
+            f"\n[agent_launcher] ⚠  Manager affinity violation: {exc}\n"
+            f"  [non-interactive] auto-denying — fail closed on hardware policy violation.\n",
+            flush=True,
+        )
+        return False
     print(
         f"\n[agent_launcher] ⚠  Manager affinity violation: {exc}\n"
         f"  Press ENTER within {timeout:.0f}s to run in degraded mode, "
