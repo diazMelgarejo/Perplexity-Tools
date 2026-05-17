@@ -6,9 +6,14 @@ from .errors import BackendOfflineError
 from .probe import health_probe
 
 # Seed list for autodetect. Pure data — extend without code changes elsewhere.
+# HARDWARE POLICY: Mac inference ALWAYS goes through ollama-local (localhost:11434).
+# lmstudio-mac (localhost:1234) is a MIRROR ONLY — it proxies Win models but the Mac
+# hardware CANNOT run them (qwen3.5-27b is RTX 3080-only). Dispatching inference to
+# lmstudio-mac while lmstudio-win is also handling the same model = "double barrel" =
+# GPU contention / hardware risk. selector.py enforces mirror exclusion at routing time.
 _SEEDS: tuple[tuple[str, str, BackendKind], ...] = (
     ("ollama-local", "http://localhost:11434/v1", BackendKind.OLLAMA),
-    ("lmstudio-mac", "http://localhost:1234/v1", BackendKind.LMSTUDIO),
+    ("lmstudio-mac", "http://localhost:1234/v1", BackendKind.LMSTUDIO),   # MIRROR — discovery only
     ("lmstudio-win", "http://192.168.254.103:1234/v1", BackendKind.LMSTUDIO),
 )
 
