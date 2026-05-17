@@ -1,8 +1,11 @@
-"""Orchestrator-side agent launcher shim.
+"""Orchestrator-side backend resolver.
 
-Bridges launch specs to the discovery registry so callers no longer hardcode
-LMSTUDIO_WIN_URL or OLLAMA_BASE. Honors caller-forced overrides for direct-IP
-selection.
+Pure policy function: given a launch spec, resolve to a concrete Backend via
+the discovery registry. No I/O, no env-file patching, no interactive prompts —
+that operational logic lives in the top-level `agent_launcher.py` CLI.
+
+Renamed from `orchestrator/agent_launcher.py` (2026-05-18) to remove naming
+collision with the top-level CLI. Same function, same surface.
 """
 from __future__ import annotations
 
@@ -10,6 +13,8 @@ from __future__ import annotations
 from perpetua.discovery.registry import BackendRegistry
 from perpetua.discovery.selector import select_backend
 from perpetua.discovery.backend import Backend
+
+__all__ = ["resolve_backend_for_spec"]
 
 
 def resolve_backend_for_spec(registry: BackendRegistry, spec: dict) -> Backend:
