@@ -19,3 +19,6 @@ __pycache__/
 # node_modules — never commit; was accidentally tracked, caused git status hang
 node_modules/
 **/node_modules/
+
+# gbrain per-worktree code-source pin (local-only, kubectl-style context)
+.gbrain-source
