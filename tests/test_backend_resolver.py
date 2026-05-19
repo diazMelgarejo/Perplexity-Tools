@@ -3,7 +3,7 @@ import pytest
 from datetime import datetime, timezone
 from perpetua.discovery.backend import Backend, BackendKind, BackendHealth
 from perpetua.discovery.registry import BackendRegistry
-from orchestrator.backend_resolver import resolve_backend_for_spec
+from orchestrator.backend_resolver import PolicyUnavailable, resolve_backend_for_spec
 
 
 @pytest.mark.asyncio
@@ -40,3 +40,18 @@ async def test_resolver_override_synthesizes_adhoc_backend_for_unknown_url():
     backend = resolve_backend_for_spec(reg, spec)
     assert backend.name == "adhoc"
     assert backend.base_url == "http://192.168.254.222:1234/v1"
+
+
+@pytest.mark.asyncio
+async def test_resolver_rejects_windows_only_to_mac_mirror():
+    reg = BackendRegistry()
+    reg._backends["lmstudio-mac"] = Backend(
+        "lmstudio-mac", "http://192.168.254.10:1234/v1", BackendKind.LMSTUDIO,
+        ("model-x",), BackendHealth.ONLINE, datetime.now(timezone.utc),
+    )
+    spec = {
+        "base_url_override": "http://192.168.254.10:1234/v1",
+        "windows_only": True,
+    }
+    with pytest.raises(PolicyUnavailable, match="windows_only model cannot dispatch to mirror lmstudio-mac"):
+        resolve_backend_for_spec(reg, spec)
