@@ -14,7 +14,18 @@ from perpetua.discovery.registry import BackendRegistry
 from perpetua.discovery.selector import select_backend
 from perpetua.discovery.backend import Backend
 
-__all__ = ["resolve_backend_for_spec"]
+__all__ = ["PolicyUnavailable", "resolve_backend_for_spec"]
+
+
+class PolicyUnavailable(RuntimeError):
+    """Raised when backend resolution violates hard dispatch policy."""
+
+
+_MIRROR_BACKENDS: frozenset[str] = frozenset({"lmstudio-mac"})
+_TIER_HOSTS: dict[str, frozenset[str]] = {
+    "mac": frozenset({"ollama-local"}),
+    "windows": frozenset({"lmstudio-win"}),
+}
 
 
 def resolve_backend_for_spec(registry: BackendRegistry, spec: dict) -> Backend:
@@ -26,14 +37,21 @@ def resolve_backend_for_spec(registry: BackendRegistry, spec: dict) -> Backend:
     if override:
         for b in registry.all():
             if b.base_url == override:
-                return b
-        # Caller forced a URL we don't know about — synthesize an unverified Backend.
-        return Backend(name="adhoc", base_url=override,
-                       kind=spec.get("kind", "lmstudio"),  # type: ignore[arg-type]
-                       models=(), health="unknown", last_seen=None)  # type: ignore[arg-type]
-    return select_backend(
-        registry,
-        model_hint=spec.get("model_hint"),
-        task_type=spec.get("task_type", "reasoning"),
-        target_tier=spec.get("target_tier", "shared"),
-    )
+                resolved = b
+                break
+        else:
+            # Caller forced a URL we don't know about — synthesize an unverified Backend.
+            resolved = Backend(name="adhoc", base_url=override,
+                               kind=spec.get("kind", "lmstudio"),  # type: ignore[arg-type]
+                               models=(), health="unknown", last_seen=None)  # type: ignore[arg-type]
+    else:
+        resolved = select_backend(
+            registry,
+            model_hint=spec.get("model_hint"),
+            task_type=spec.get("task_type", "reasoning"),
+            target_tier=spec.get("target_tier", "shared"),
+        )
+    windows_only = getattr(spec, "windows_only", False) or spec.get("windows_only", False)
+    if windows_only and resolved.name in _MIRROR_BACKENDS:
+        raise PolicyUnavailable(f"windows_only model cannot dispatch to mirror {resolved.name}")
+    return resolved

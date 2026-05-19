@@ -54,9 +54,24 @@ async def resolve_routing_state() -> dict[str, Any]:
 
 
 async def reconcile_gateway(force: bool = False) -> dict[str, Any]:
-    import alphaclaw_bootstrap
+    from orchestrator.alphaclaw_manager import bootstrap_alphaclaw
 
-    return await alphaclaw_bootstrap.bootstrap_alphaclaw(force=force)
+    state = bootstrap_alphaclaw()
+    ok = not bool(state.error)
+    gateway_ready = bool(state.running and state.port)
+    gateway_url = f"http://127.0.0.1:{state.port}" if state.port else ""
+    return {
+        "ok": ok,
+        "error": state.error,
+        "gateway_ready": gateway_ready,
+        "gateway_url": gateway_url,
+        "commandeered": bool(state.commandeered),
+        "role_routing": {},
+        "running": bool(state.running),
+        "port": int(state.port or 0),
+        "started": bool(state.started),
+        "force_requested": bool(force),
+    }
 
 
 def preflight_autoresearch(

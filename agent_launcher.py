@@ -32,11 +32,14 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from utils.hardware_policy import HardwareAffinityError, check_affinity
+from orchestrator.backend_resolver import resolve_backend_for_spec
 from orchestrator.startup_intelligence import (
     StartupScenario,
     classify_scenario,
     build_routing_hints,
 )
+from perpetua.discovery.backend import Backend, BackendHealth, BackendKind
+from perpetua.discovery.registry import BackendRegistry
 
 try:
     import httpx
@@ -445,15 +448,41 @@ def _build_routing_state(
 
     mac_any = mac_ok or mac_lms_ok
 
-    coder_endpoint = (REMOTE_WINDOWS_LMS_URL if lms_ok
-                      else REMOTE_WINDOWS_URL if win_ok
-                      else manager_endpoint)
-    coder_model = (WINDOWS_LMS_MODEL if lms_ok
-                   else WINDOWS_CODER_MODEL if win_ok
-                   else manager_model)
-    coder_backend = ("windows-lmstudio" if lms_ok
-                     else "windows-ollama" if win_ok
-                     else "mac-degraded")
+    registry = BackendRegistry()
+    if lms_ok:
+        registry._backends["lmstudio-win"] = Backend(
+            "lmstudio-win", REMOTE_WINDOWS_LMS_URL, BackendKind.LMSTUDIO,
+            (WINDOWS_LMS_MODEL,), BackendHealth.ONLINE, None,
+        )
+    if win_ok:
+        registry._backends["ollama-win"] = Backend(
+            "ollama-win", REMOTE_WINDOWS_URL, BackendKind.OLLAMA,
+            (WINDOWS_CODER_MODEL,), BackendHealth.ONLINE, None,
+        )
+    if not lms_ok and not win_ok:
+        manager_kind = BackendKind.OLLAMA if manager_backend == "mac-ollama" else BackendKind.LMSTUDIO
+        registry._backends["mac-degraded"] = Backend(
+            "mac-degraded", manager_endpoint, manager_kind,
+            (manager_model,), BackendHealth.ONLINE, None,
+        )
+
+    spec = {
+        "task_type": "coding",
+        "target_tier": "shared",
+        "model_hint": None,
+        "base_url_override": None,
+    }
+    backend = resolve_backend_for_spec(registry, spec)
+    coder_endpoint = backend.base_url
+    if backend.name == "lmstudio-win":
+        coder_model = WINDOWS_LMS_MODEL
+        coder_backend = "windows-lmstudio"
+    elif backend.name == "ollama-win":
+        coder_model = WINDOWS_CODER_MODEL
+        coder_backend = "windows-ollama"
+    else:
+        coder_model = manager_model
+        coder_backend = "mac-degraded"
     coder_platform = "win" if coder_backend.startswith("windows-") else "mac"
 
     # ── Cloud fallback ───────────────────────────────────────────────────────
