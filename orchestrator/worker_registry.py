@@ -276,9 +276,12 @@ async def _lmstudio_win_worker(spec: Any) -> dict:
     import os
     import httpx
 
+    import logging
+    _log = logging.getLogger(__name__)
+
     raw_endpoints = os.getenv("LM_STUDIO_WIN_ENDPOINTS", "REQUIRED_SET_IN_ENV")
-    endpoint = raw_endpoints.split(",")[0].strip().rstrip("/")
-    if not endpoint or endpoint == "REQUIRED_SET_IN_ENV":
+    endpoints = [e.strip().rstrip("/") for e in raw_endpoints.split(",") if e.strip()]
+    if not endpoints or endpoints == ["REQUIRED_SET_IN_ENV"]:
         raise RuntimeError(
             "LM_STUDIO_WIN_ENDPOINTS is not set. "
             "Set it to the Windows LM Studio URL, e.g. http://192.168.254.102:1234"
@@ -296,6 +299,24 @@ async def _lmstudio_win_worker(spec: Any) -> dict:
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": max_tokens,
     }
+
+    # Pool health check — try each endpoint; skip offline/non-responsive ones
+    endpoint = None
+    async with httpx.AsyncClient(timeout=5.0) as probe_client:
+        for candidate in endpoints:
+            try:
+                r = await probe_client.get(f"{candidate}/v1/models")
+                if r.status_code < 500:
+                    endpoint = candidate
+                    break
+            except Exception as exc:
+                _log.warning("win_coder_pool: %s offline (%s), trying next", candidate, exc)
+    if endpoint is None:
+        raise RuntimeError(
+            f"No Windows coder available in pool: {endpoints}. "
+            "Ensure LM Studio is running and a model is loaded."
+        )
+
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(f"{endpoint}/v1/chat/completions", json=payload)
         resp.raise_for_status()
