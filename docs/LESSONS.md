@@ -1009,3 +1009,32 @@ All fields identical to V1 output except new `"os"` key — supervisor `detect_h
 - Validate on Alpine 3.19 (no `lspci`, no `DMI` in `/sys` — `GPU_CORES` will be 0; acceptable)
 - Validate on Raspberry Pi 4 (`/proc/device-tree/model` path)
 - `nvidia-smi` output format test on a real CUDA box
+
+---
+
+## 2026-05-20 — CI: `respx` missing from workflow pip install
+
+### Problem
+
+GitHub Actions CI (`lint-and-test` matrix, both 3.11 and 3.12) failed at test collection with:
+
+```
+ModuleNotFoundError: No module named 'respx'
+ERROR tests/discovery/test_probe.py
+ERROR tests/discovery/test_registry.py
+```
+
+### Cause
+
+`respx` is declared as a runtime dependency in `pyproject.toml` (line 114: `"respx>=0.23.1"`) and is used by `tests/discovery/` for mocking `httpx` calls via `@respx.mock`. However, the CI workflow installs dependencies with explicit `pip install` lines rather than `pip install -e ".[dev]"` — so `pyproject.toml` is never read by CI, and `respx` is never installed.
+
+The `[project.optional-dependencies].dev` section in `pyproject.toml` also does not list `respx`, which is a secondary inconsistency (it should be there too for anyone doing `pip install -e ".[dev]"`).
+
+### Fix
+
+Added `pip install respx` to `.github/workflows/ci.yml` Install dependencies step, after the `slowapi` line. One-line change.
+
+### Key rule derived
+
+- **CI workflow installs are independent of `pyproject.toml`** — adding a dep to `pyproject.toml` (even under `dependencies`, not `[dev]`) does NOT make it available in CI unless the workflow explicitly installs it or uses `pip install -e "."`. Any new test dependency that isn't in `requirements.txt` must also be added to the `pip install` block in `ci.yml`.
+- **Check `[project.optional-dependencies].dev`** — test-only deps like `respx`, `pytest-asyncio`, `pytest-cov` should live there so `pip install -e ".[dev]"` gives a working local environment. `respx` is missing from that section; fix in a follow-up.
