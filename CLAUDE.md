@@ -1,7 +1,7 @@
 # Perpetua-Tools — Claude Code Navigation
 
 > Renamed: Perplexity-Tools → Perpetua-Tools (2026-04-20, trademark risk eliminated)
-> Package: `@diazmelgarejo/perpetua-tools@0.9.9.8` · Role: Layer 2 — Middleware/Adapters
+> Package: `@diazmelgarejo/perpetua-tools@0.9.9.9` · Role: Layer 2 — Middleware/Adapters
 > GitHub: <https://github.com/diazMelgarejo/Perpetua-Tools>
 
 ---
