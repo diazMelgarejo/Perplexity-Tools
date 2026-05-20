@@ -279,6 +279,50 @@ async def test_dispatch_prefers_windows_coder_when_reachable(tmp_path, monkeypat
 
 
 @pytest.mark.asyncio
+async def test_dispatch_injects_win_endpoint_for_explicit_lmstudio_win(tmp_path, monkeypatch):
+    """Explicit lmstudio-win routes (via role map / backend_hint) get _win_endpoint
+    injected from WIN_CODER_ENDPOINTS, not just Mac-local preemption routes.
+
+    This guards against the regression where environments that only set
+    WIN_CODER_ENDPOINTS (not LM_STUDIO_WIN_ENDPOINTS) would fail on explicit
+    Windows routes because _get_reachable_windows_coder() was never called.
+    """
+    from unittest.mock import AsyncMock
+    import orchestrator.worker_registry as reg_mod
+
+    endpoint_injected = {}
+
+    async def fake_win_worker(spec):
+        endpoint_injected["value"] = spec.metadata.get("_win_endpoint")
+        return {"backend": "lmstudio-win", "output": "explicit win result"}
+
+    monkeypatch.setattr(
+        OrchestrationSupervisor,
+        "_get_reachable_windows_coder",
+        AsyncMock(return_value="http://192.168.254.101:1234"),
+    )
+    monkeypatch.setitem(reg_mod.WORKER_REGISTRY, "lmstudio-win", fake_win_worker)
+
+    sup = _make_sup(tmp_path)
+    spec = JobSpec(
+        job_id=_new_id(),
+        intent="code review",
+        prompt="review this file",
+        backend_hint="lmstudio-win",  # explicit Windows route — NOT Mac-local
+    )
+    result = await sup._dispatch(spec)
+
+    # Explicit lmstudio-win does NOT set routed_to_windows (no preemption occurred)
+    assert result.get("routed_to_windows") is not True, (
+        "Explicit lmstudio-win should not set routed_to_windows flag"
+    )
+    # But _win_endpoint MUST be injected so the worker skips LM_STUDIO_WIN_ENDPOINTS
+    assert endpoint_injected.get("value") == "http://192.168.254.101:1234", (
+        f"_win_endpoint was not injected; got: {endpoint_injected}"
+    )
+
+
+@pytest.mark.asyncio
 async def test_dispatch_skips_windows_coder_when_unreachable(tmp_path, monkeypatch):
     """When Windows coder is unreachable, _dispatch falls through to normal routing."""
     from unittest.mock import AsyncMock

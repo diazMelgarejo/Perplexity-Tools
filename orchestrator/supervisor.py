@@ -332,9 +332,14 @@ class OrchestrationSupervisor:
         Priority:
           1. openclaw-skills primary path (deterministic, zero-LLM)
           2. resolve_backend — compute the intended backend from role/intent/hint
-          3. Windows coder pool — preempts Mac-local backends only (ollama,
-             ollama-mac, lmstudio-mac); never overrides explicit non-local hints
-             such as echo, codex, or gemini.
+          3. Windows coder pool probe — two cases:
+             a. Mac-local backends (ollama, ollama-mac, lmstudio-mac, mlx):
+                Windows preempts entirely when pool is reachable.
+             b. Explicit ``lmstudio-win`` (via role map or backend_hint):
+                Pool is probed to inject ``_win_endpoint``; without it the worker
+                falls back to ``LM_STUDIO_WIN_ENDPOINTS`` which may not be set in
+                environments that only configure ``WIN_CODER_ENDPOINTS``.
+             Non-Windows backends (echo, codex, gemini) are never probed.
           4. Normal backend routing via WORKER_REGISTRY
         """
         import logging
@@ -356,10 +361,13 @@ class OrchestrationSupervisor:
         from orchestrator.worker_registry import WORKER_REGISTRY, resolve_backend
         backend = resolve_backend(spec)
 
-        # 3. Windows coder pool — preempts Mac-local routes only.
-        # Only probe when the intended backend is Mac-local; skip the network
-        # round-trip entirely for echo/codex/gemini/cloud jobs.
-        if backend in _MAC_LOCAL_BACKENDS:
+        # 3. Windows coder pool probe.
+        # Probe whenever the job is destined for any Windows LM Studio path:
+        #   • Mac-local backends → pool preempts routing (override)
+        #   • explicit lmstudio-win → pool injects _win_endpoint (no routing change)
+        # Skipped entirely for echo/codex/gemini/cloud so no unnecessary LAN probe.
+        _needs_win_probe = backend in _MAC_LOCAL_BACKENDS or backend == "lmstudio-win"
+        if _needs_win_probe:
             win_url = await self._get_reachable_windows_coder()
             if win_url is not None:
                 _log.info(
@@ -372,7 +380,13 @@ class OrchestrationSupervisor:
                     update={"metadata": {**(spec.metadata or {}), "_win_endpoint": win_url}}
                 )
                 result = await worker_fn(spec_for_win)
-                return {**result, "routed_to_windows": True, "windows_endpoint": win_url}
+                if backend in _MAC_LOCAL_BACKENDS:
+                    # Mac-local preempted by Windows — flag for callers/tests.
+                    return {**result, "routed_to_windows": True, "windows_endpoint": win_url}
+                # Explicit lmstudio-win: no preemption flag; endpoint was injected above.
+                return result
+            # Pool unreachable: Mac-local falls through to normal routing (may fail);
+            # explicit lmstudio-win falls through to worker's LM_STUDIO_WIN_ENDPOINTS.
 
         # 4. Normal backend routing (resolve_backend already called above)
         worker_fn = WORKER_REGISTRY.get(backend, WORKER_REGISTRY["echo"])
