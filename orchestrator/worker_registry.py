@@ -44,11 +44,11 @@ def _get_constraint(spec: Any, key: str, default: Any = None) -> Any:
 
 # ── § 5.3  ROLE_BACKEND_MAP — authoritative role-to-backend routing ────────────
 # Source: unified-absorption-plan.md § 5.3 (Ollama-first for Mac roles).
-# Priority order per § 5.2:
-#   1. role + specialization → ROLE_BACKEND_MAP
-#   2. intent → _INTENT_BACKEND_MAP (below)
-#   3. backend_hint → explicit override
-#   4. Policy-defined default
+# resolve_backend() priority order per § 5.2:
+#   1. backend_hint — explicit override (highest priority)
+#   2. role + specialization → ROLE_BACKEND_MAP
+#   3. intent → _INTENT_BACKEND_MAP (below)
+#   4. "echo" — catch-all default
 #
 # Mac fallback chain: "ollama" → "lmstudio-mac" (only when Ollama port 11434 unreachable).
 # All candidates pass through policy.validate_or_raise() — fail-closed on affinity.
@@ -89,6 +89,9 @@ _INTENT_BACKEND_MAP: Dict[str, str] = {
     "research":       "gemini",
     "freeform":       "ollama",
     "echo":           "echo",
+    # agy — Antigravity CLI (use when Gemini is offline; same intent surface)
+    "agy-research":   "agy",
+    "agy-freeform":   "agy",
 }
 
 
@@ -275,6 +278,39 @@ async def _gemini_worker(spec: Any) -> dict:
     }
 
 
+async def _agy_worker(spec: Any) -> dict:
+    """Antigravity CLI worker — replaces Gemini CLI for non-interactive dispatch.
+
+    Uses ``agy --dangerously-skip-permissions -p <prompt>`` (headless, no gate).
+    stdin=DEVNULL prevents interactive hangs.  Mirrors _gemini_worker patterns;
+    use this when Gemini CLI is offline or unavailable.
+    """
+    prompt = getattr(spec, "prompt", "")
+    timeout = float(_get_constraint(spec, "max_seconds", 300))
+
+    cmd = ["agy", "--dangerously-skip-permissions", "-p", prompt]
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        stdin=asyncio.subprocess.DEVNULL,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
+        proc.terminate()
+        raise RuntimeError(f"agy worker timed out after {timeout}s")
+
+    if proc.returncode != 0:
+        raise RuntimeError(f"agy exited {proc.returncode}: {stderr.decode()[:500]}")
+
+    return {
+        "backend": "agy",
+        "output": stdout.decode(errors="replace").strip(),
+        "returncode": proc.returncode,
+    }
+
+
 async def _ollama_worker(spec: Any) -> dict:
     """Canonical Ollama worker (first-class Mac backend).
 
@@ -374,4 +410,5 @@ WORKER_REGISTRY: Dict[str, Callable[[Any], Awaitable[dict]]] = {
     "lmstudio-win":   _lmstudio_win_worker, # Windows via LM Link (LAN)
     "codex":          _codex_worker,
     "gemini":         _gemini_worker,
+    "agy":            _agy_worker,          # Antigravity CLI (replaces Gemini when offline)
 }
