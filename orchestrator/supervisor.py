@@ -33,6 +33,14 @@ MAX_THREADS = 25    # Anthropic spec ceiling — 25 concurrent workers max
 STATE_DIR = Path(".state")
 JOBS_JSONL = STATE_DIR / "jobs.jsonl"
 
+# Backends that run entirely on the Mac GPU.  The Windows coder pool preempts
+# these when a healthy Windows endpoint is available.  "mlx" is included so a
+# future MLX worker (Apple Silicon accelerated) is also preempted correctly.
+# Must stay in sync with worker_registry.WORKER_REGISTRY key names.
+_MAC_LOCAL_BACKENDS: frozenset = frozenset(
+    {"ollama", "ollama-mac", "lmstudio-mac", "mlx"}
+)
+
 
 # ── Enums ─────────────────────────────────────────────────────────────────────
 class JobStatus(str, Enum):
@@ -351,7 +359,6 @@ class OrchestrationSupervisor:
         # 3. Windows coder pool — preempts Mac-local routes only.
         # Only probe when the intended backend is Mac-local; skip the network
         # round-trip entirely for echo/codex/gemini/cloud jobs.
-        _MAC_LOCAL_BACKENDS = {"ollama", "ollama-mac", "lmstudio-mac"}
         if backend in _MAC_LOCAL_BACKENDS:
             win_url = await self._get_reachable_windows_coder()
             if win_url is not None:
@@ -373,9 +380,16 @@ class OrchestrationSupervisor:
 
     @staticmethod
     def _try_skill_envelope(spec: "JobSpec"):
-        """Return a SkillEnvelope if this task maps to a known openclaw-skills ID, else None."""
+        """Return a SkillEnvelope if this task maps to a known openclaw-skills ID, else None.
+
+        Routing invariant (fail-closed): if ``task_type`` IS mapped to a skill,
+        any resolver failure raises ``RuntimeError`` — it never silently degrades
+        to a lower-priority backend.  This prevents a misconfigured or missing
+        openclaw-skills tree from routing privileged tasks to the wrong model.
+        """
         from orchestrator.openclaw_skill_resolver import (
             RecursionBudgetExceeded,
+            SkillResolutionError,
             resolve_skill,
         )
 
@@ -402,8 +416,16 @@ class OrchestrationSupervisor:
             # hint. Re-raise so _run_worker marks the job FAILED rather than
             # silently falling through to a lower-priority dispatch path.
             raise
-        except Exception:
-            return None
+        except SkillResolutionError as exc:
+            # task_type IS mapped → the skill MUST resolve or the job FAILS.
+            # Never silently degrade to a lower-priority backend when the caller
+            # explicitly requested a skill-routed task_type.
+            raise RuntimeError(
+                f"Skill routing failed for task_type={task_type!r} "
+                f"(skill_id={skill_id!r}): {exc}"
+            ) from exc
+        # Do NOT catch generic Exception here — unmapped bugs should propagate
+        # and be caught by _run_worker, not swallowed inside the skill gate.
 
     @staticmethod
     async def _get_reachable_windows_coder() -> "str | None":
