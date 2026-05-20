@@ -135,12 +135,14 @@ class TestLMStudioWinWorker:
         }
 
         class _FakeResp:
+            status_code = 200
             def raise_for_status(self): pass
             def json(self): return fake_resp_data
 
         class _FakeClient:
             async def __aenter__(self): return self
             async def __aexit__(self, *a): pass
+            async def get(self, url, **kw): return _FakeResp()
             async def post(self, url, **kw): return _FakeResp()
 
         with patch.dict(os.environ, {"LM_STUDIO_WIN_ENDPOINTS": "http://192.168.254.102:1234"}):
