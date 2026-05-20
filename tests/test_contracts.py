@@ -291,3 +291,42 @@ class TestCrossType:
         import orchestrator.contracts as mod
         for name in __all__:
             assert hasattr(mod, name), f"Missing export: {name}"
+
+
+# ── windows_coder_pool env var parsing ────────────────────────────────────────
+
+def _make_session(**kwargs):
+    """Helper: build a minimal OrchestrationSession with required fields."""
+    from orchestrator.contracts import OrchestrationSession
+    defaults = dict(
+        session_id="sess-pool-test",
+        created_at=_NOW,
+        orchestrator_id="orch-1",
+        objective="test",
+    )
+    defaults.update(kwargs)
+    return OrchestrationSession(**defaults)
+
+
+def test_windows_coder_pool_reads_from_env(monkeypatch):
+    """windows_coder_pool is populated from WIN_CODER_ENDPOINTS env var."""
+    monkeypatch.setenv("WIN_CODER_ENDPOINTS", "http://192.168.254.103:1234,http://192.168.254.104:1234")
+    session = _make_session()
+    assert session.windows_coder_pool == [
+        "http://192.168.254.103:1234",
+        "http://192.168.254.104:1234",
+    ]
+
+
+def test_windows_coder_pool_empty_when_env_not_set(monkeypatch):
+    """windows_coder_pool is empty list when WIN_CODER_ENDPOINTS is not set."""
+    monkeypatch.delenv("WIN_CODER_ENDPOINTS", raising=False)
+    session = _make_session()
+    assert session.windows_coder_pool == []
+
+
+def test_windows_coder_pool_filters_empty_strings(monkeypatch):
+    """windows_coder_pool skips empty entries from malformed env var."""
+    monkeypatch.setenv("WIN_CODER_ENDPOINTS", ",http://192.168.254.103:1234,,")
+    session = _make_session()
+    assert session.windows_coder_pool == ["http://192.168.254.103:1234"]
