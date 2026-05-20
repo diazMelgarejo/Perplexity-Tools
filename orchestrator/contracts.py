@@ -11,6 +11,7 @@ Python 3.9 compat: use Optional[X] / Dict / List / Any from typing, not X | Y sy
 """
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 
@@ -82,6 +83,12 @@ class OrchestrationSession(BaseModel):
     status: Literal["pending", "running", "verifying", "done", "failed", "cancelled"] = "pending"
     checkpoint: Optional[Dict[str, Any]] = None
     audit_log: List[AuditEvent] = []    # append-only, never remove entries
+    windows_coder_pool: List[str] = Field(
+        default_factory=lambda: list(
+            filter(None, os.environ.get("WIN_CODER_ENDPOINTS", "").split(","))
+        ),
+        description="LM Studio endpoints for Windows coders. Checked before Mac-local dispatch.",
+    )
 
 
 # ── § 3.2  TaskEnvelope (generic worker input — all roles receive this) ────────
