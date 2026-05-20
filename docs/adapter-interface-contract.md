@@ -1,7 +1,7 @@
 # AlphaClaw Adapter Interface Contract
 
 **Status:** Living document — update after every AlphaClaw upstream merge
-**Version:** 0.9.9.8 (aligned with Perpetua-Tools)
+**Version:** 0.9.9.9 (aligned with Perpetua-Tools)
 **Last verified:** 2026-04-20 against AlphaClaw `feature/MacOS-post-install`
 
 **Cross-repo context:**
@@ -201,7 +201,7 @@ This contract tracks AlphaClaw version. Breaking changes require a semver bump i
 
 | AlphaClaw version | Contract version | Breaking changes |
 |-------------------|------------------|-----------------|
-| `0.9.9` (upstream) | `0.9.9.8` | Initial enumeration |
+| `0.9.9` (upstream) | `0.9.9.9` | Initial enumeration |
 
 ---
 
