@@ -318,7 +318,7 @@ async def _lmstudio_win_worker(spec: Any) -> dict:
             for candidate in candidates:
                 try:
                     r = await probe_client.get(f"{candidate}/v1/models")
-                    if r.status_code < 500:
+                    if r.status_code < 400:
                         endpoint = candidate
                         break
                 except Exception as exc:

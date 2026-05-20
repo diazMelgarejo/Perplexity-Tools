@@ -323,8 +323,11 @@ class OrchestrationSupervisor:
 
         Priority:
           1. openclaw-skills primary path (deterministic, zero-LLM)
-          2. Windows coder pool (always-utilized before Mac-local)
-          3. Normal backend routing (resolve_backend → WORKER_REGISTRY)
+          2. resolve_backend — compute the intended backend from role/intent/hint
+          3. Windows coder pool — preempts Mac-local backends only (ollama,
+             ollama-mac, lmstudio-mac); never overrides explicit non-local hints
+             such as echo, codex, or gemini.
+          4. Normal backend routing via WORKER_REGISTRY
         """
         import logging
         _log = logging.getLogger(__name__)
@@ -339,26 +342,32 @@ class OrchestrationSupervisor:
             # SkillEnvelope is a @dataclass, not a Pydantic model — use to_dict().
             return {"status": "ok", "skill_envelope": skill_envelope.to_dict()}
 
-        # 2. Windows coder pool — always-utilized before Mac-local dispatch.
-        # _get_reachable_windows_coder is async so the probe never blocks the loop.
-        win_url = await self._get_reachable_windows_coder()
-        if win_url is not None:
-            _log.info(
-                "windows_coder_pool: dispatching job %s to %s", spec.job_id, win_url
-            )
-            from orchestrator.worker_registry import WORKER_REGISTRY
-            worker_fn = WORKER_REGISTRY.get("lmstudio-win", WORKER_REGISTRY["echo"])
-            # Pass the already-probed endpoint so the worker skips its own health
-            # check and always hits the same host the dispatcher selected.
-            spec_for_win = spec.model_copy(
-                update={"metadata": {**(spec.metadata or {}), "_win_endpoint": win_url}}
-            )
-            result = await worker_fn(spec_for_win)
-            return {**result, "routed_to_windows": True, "windows_endpoint": win_url}
-
-        # 3. Normal backend routing (resolve_backend → WORKER_REGISTRY)
+        # 2. Resolve the intended backend first so the Windows override can
+        #    inspect it. Must happen before any probe to avoid hijacking jobs
+        #    whose backend_hint or intent points at non-Mac-local workers.
         from orchestrator.worker_registry import WORKER_REGISTRY, resolve_backend
         backend = resolve_backend(spec)
+
+        # 3. Windows coder pool — preempts Mac-local routes only.
+        # Only probe when the intended backend is Mac-local; skip the network
+        # round-trip entirely for echo/codex/gemini/cloud jobs.
+        _MAC_LOCAL_BACKENDS = {"ollama", "ollama-mac", "lmstudio-mac"}
+        if backend in _MAC_LOCAL_BACKENDS:
+            win_url = await self._get_reachable_windows_coder()
+            if win_url is not None:
+                _log.info(
+                    "windows_coder_pool: dispatching job %s to %s", spec.job_id, win_url
+                )
+                worker_fn = WORKER_REGISTRY.get("lmstudio-win", WORKER_REGISTRY["echo"])
+                # Pass the already-probed endpoint so the worker skips its own health
+                # check and always hits the same host the dispatcher selected.
+                spec_for_win = spec.model_copy(
+                    update={"metadata": {**(spec.metadata or {}), "_win_endpoint": win_url}}
+                )
+                result = await worker_fn(spec_for_win)
+                return {**result, "routed_to_windows": True, "windows_endpoint": win_url}
+
+        # 4. Normal backend routing (resolve_backend already called above)
         worker_fn = WORKER_REGISTRY.get(backend, WORKER_REGISTRY["echo"])
         return await worker_fn(spec)
 
@@ -388,7 +397,12 @@ class OrchestrationSupervisor:
         try:
             args = getattr(spec, "metadata", {}) or {}
             return resolve_skill(skill_id, args, agent_id=spec.job_id)
-        except (RecursionBudgetExceeded, Exception):
+        except RecursionBudgetExceeded:
+            # Fail-closed: recursion budget is a hard safety guard, not a routing
+            # hint. Re-raise so _run_worker marks the job FAILED rather than
+            # silently falling through to a lower-priority dispatch path.
+            raise
+        except Exception:
             return None
 
     @staticmethod
