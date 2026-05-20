@@ -243,24 +243,26 @@ async def test_list_jobs_no_filter(tmp_path):
 
 
 # ── Windows coder pool dispatch ───────────────────────────────────────────────
+# _get_reachable_windows_coder is now async (uses httpx.AsyncClient).
+# Tests mock the method directly instead of patching the sync connectivity helper.
 
 @pytest.mark.asyncio
 async def test_dispatch_prefers_windows_coder_when_reachable(tmp_path, monkeypatch):
     """When a Windows coder endpoint is reachable, _dispatch routes to it before Mac-local."""
-    import orchestrator.connectivity as conn_mod
+    from unittest.mock import AsyncMock
     import orchestrator.worker_registry as reg_mod
 
-    def fake_check_lm_studio(host: str = "http://127.0.0.1:1234"):
-        if "192.168.254.103" in host:
-            return {"ok": True, "backend": "lmstudio-win", "host": host}
-        return {"ok": False}
-
     async def fake_win_worker(spec):
+        # Verify the dispatcher injects the pre-probed endpoint into metadata.
+        assert spec.metadata.get("_win_endpoint") == "http://192.168.254.103:1234"
         return {"backend": "lmstudio-win", "output": "fake win result"}
 
-    monkeypatch.setattr(conn_mod, "check_lm_studio", fake_check_lm_studio)
+    monkeypatch.setattr(
+        OrchestrationSupervisor,
+        "_get_reachable_windows_coder",
+        AsyncMock(return_value="http://192.168.254.103:1234"),
+    )
     monkeypatch.setitem(reg_mod.WORKER_REGISTRY, "lmstudio-win", fake_win_worker)
-    monkeypatch.setenv("WIN_CODER_ENDPOINTS", "http://192.168.254.103:1234")
 
     sup = _make_sup(tmp_path)
     spec = JobSpec(
@@ -273,17 +275,19 @@ async def test_dispatch_prefers_windows_coder_when_reachable(tmp_path, monkeypat
     assert result.get("routed_to_windows") is True, (
         f"Expected Windows coder routing but got: {result}"
     )
+    assert result.get("windows_endpoint") == "http://192.168.254.103:1234"
 
 
 @pytest.mark.asyncio
 async def test_dispatch_skips_windows_coder_when_unreachable(tmp_path, monkeypatch):
     """When Windows coder is unreachable, _dispatch falls through to normal routing."""
-    import orchestrator.connectivity as conn_mod
+    from unittest.mock import AsyncMock
 
     monkeypatch.setattr(
-        conn_mod, "check_lm_studio", lambda host="http://127.0.0.1:1234": {"ok": False}
+        OrchestrationSupervisor,
+        "_get_reachable_windows_coder",
+        AsyncMock(return_value=None),
     )
-    monkeypatch.setenv("WIN_CODER_ENDPOINTS", "http://192.168.254.103:1234")
 
     sup = _make_sup(tmp_path)
     spec = _echo_spec("fallthrough test")
@@ -294,13 +298,18 @@ async def test_dispatch_skips_windows_coder_when_unreachable(tmp_path, monkeypat
 
 @pytest.mark.asyncio
 async def test_dispatch_skips_windows_coder_when_pool_empty(tmp_path, monkeypatch):
-    """When WIN_CODER_ENDPOINTS is empty, _dispatch proceeds to normal routing."""
+    """When WIN_CODER_ENDPOINTS is empty, _get_reachable_windows_coder returns None."""
     monkeypatch.setenv("WIN_CODER_ENDPOINTS", "")
 
     sup = _make_sup(tmp_path)
+    # Call the method directly to confirm it returns None for empty pool.
+    result = await OrchestrationSupervisor._get_reachable_windows_coder()
+    assert result is None
+
+    # Also confirm _dispatch falls through to normal routing.
     spec = _echo_spec("empty pool test")
-    result = await sup._dispatch(spec)
-    assert result.get("routed_to_windows") is not True
+    dispatch_result = await sup._dispatch(spec)
+    assert dispatch_result.get("routed_to_windows") is not True
 
 
 # ── _try_skill_envelope dispatch gate ─────────────────────────────────────────
@@ -328,3 +337,68 @@ def test_try_skill_envelope_returns_none_when_no_task_type():
     )
     result = OrchestrationSupervisor._try_skill_envelope(spec)
     assert result is None
+
+
+# ── replay() preserves task_type ─────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_replay_preserves_task_type(tmp_path):
+    """replay() must carry task_type forward so retried skill-mapped jobs route correctly."""
+    sup = _make_sup(tmp_path)
+    spec = JobSpec(
+        job_id=_new_id(),
+        intent="add channel",
+        prompt="add a webhook channel",
+        backend_hint="echo",
+        task_type="add_channel",
+    )
+    original_id = spec.job_id
+
+    # Inject a FAILED event so replay() has something to replay.
+    _append_event(
+        tmp_path / "jobs.jsonl",
+        original_id,
+        {
+            "status": JobStatus.FAILED.value,
+            "spec": spec.model_dump(),
+            "error": "injected failure",
+        },
+    )
+
+    new_id = await sup.replay(original_id)
+    assert new_id != original_id
+
+    # Load the replayed job's spec from the event log and assert task_type survived.
+    events = _load_events(tmp_path / "jobs.jsonl")
+    states = _latest_status_per_job(events)
+    replayed_state = states.get(new_id) or {}
+    replayed_spec = replayed_state.get("spec", {})
+    assert replayed_spec.get("task_type") == "add_channel", (
+        f"task_type was lost during replay; got: {replayed_spec.get('task_type')!r}"
+    )
+
+
+# ── SkillEnvelope.to_dict() ───────────────────────────────────────────────────
+
+def test_skill_envelope_to_dict_is_json_serialisable():
+    """SkillEnvelope.to_dict() must return plain JSON-serialisable types (no Path objects)."""
+    import json
+    from pathlib import Path as P
+    from orchestrator.openclaw_skill_resolver import SkillEnvelope
+
+    envelope = SkillEnvelope(
+        skill_id="openclaw-status",
+        skill_path=P("/some/path/SKILL.md"),
+        args={"key": "value"},
+        agent_id="test-agent",
+        openclaw_home=P("/home/openclaw"),
+        parent_chain=["openclaw-new-agent"],
+    )
+    d = envelope.to_dict()
+    # Must not raise — all values must be JSON-serialisable.
+    serialised = json.dumps(d)
+    parsed = json.loads(serialised)
+    assert parsed["skill_id"] == "openclaw-status"
+    assert parsed["skill_path"] == "/some/path/SKILL.md"
+    assert parsed["openclaw_home"] == "/home/openclaw"
+    assert parsed["depth"] == 1

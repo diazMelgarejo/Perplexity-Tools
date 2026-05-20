@@ -267,7 +267,14 @@ async def _ollama_worker(spec: Any) -> dict:
 async def _lmstudio_win_worker(spec: Any) -> dict:
     """Windows LM Studio worker — POST /v1/chat/completions via LM Link (LAN).
 
-    Endpoint from env: LM_STUDIO_WIN_ENDPOINTS (full URL, never hardcoded).
+    Endpoint resolution (in priority order):
+      1. ``spec.metadata["_win_endpoint"]`` — pre-probed URL injected by
+         ``OrchestrationSupervisor._dispatch()`` so the dispatcher and the
+         worker always hit the same host.
+      2. ``LM_STUDIO_WIN_ENDPOINTS`` env var — fallback when the worker is
+         called directly (not via the supervisor dispatch path).  In that case
+         the worker probes the pool itself, identical to the old behaviour.
+
     GPU lock: one heavy model at a time (enforced in LMStudioWinBackend; here
     the worker trusts the caller to serialize via the backend class).
 
@@ -275,21 +282,12 @@ async def _lmstudio_win_worker(spec: Any) -> dict:
     """
     import os
     import httpx
-
     import logging
+
     _log = logging.getLogger(__name__)
 
-    raw_endpoints = os.getenv("LM_STUDIO_WIN_ENDPOINTS", "REQUIRED_SET_IN_ENV")
-    endpoints = [e.strip().rstrip("/") for e in raw_endpoints.split(",") if e.strip()]
-    if not endpoints or endpoints == ["REQUIRED_SET_IN_ENV"]:
-        raise RuntimeError(
-            "LM_STUDIO_WIN_ENDPOINTS is not set. "
-            "Set it to the Windows LM Studio URL, e.g. http://192.168.254.102:1234"
-        )
-
-    model = getattr(spec, "metadata", {}).get(
-        "model", "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2"
-    )
+    metadata: dict = getattr(spec, "metadata", {}) or {}
+    model = metadata.get("model", "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2")
     prompt = getattr(spec, "prompt", "")
     timeout = float(getattr(spec, "constraints", {}).get("max_seconds", 300))
     max_tokens = int(getattr(spec, "constraints", {}).get("max_tokens", 4096))
@@ -300,23 +298,40 @@ async def _lmstudio_win_worker(spec: Any) -> dict:
         "max_tokens": max_tokens,
     }
 
-    # Pool health check — try each endpoint; skip offline/non-responsive ones
-    endpoint = None
-    async with httpx.AsyncClient(timeout=5.0) as probe_client:
-        for candidate in endpoints:
-            try:
-                r = await probe_client.get(f"{candidate}/v1/models")
-                if r.status_code < 500:
-                    endpoint = candidate
-                    break
-            except Exception as exc:
-                _log.warning("win_coder_pool: %s offline (%s), trying next", candidate, exc)
-    if endpoint is None:
-        raise RuntimeError(
-            f"No Windows coder available in pool: {endpoints}. "
-            "Ensure LM Studio is running and a model is loaded."
-        )
+    # ── Endpoint resolution ──────────────────────────────────────────────────
+    # Priority 1: dispatcher already probed and selected an endpoint.
+    pre_probed = metadata.get("_win_endpoint")
+    if pre_probed:
+        endpoint = pre_probed.rstrip("/")
+        _log.debug("lmstudio-win: using pre-probed endpoint %s", endpoint)
+    else:
+        # Priority 2: direct invocation — probe LM_STUDIO_WIN_ENDPOINTS ourselves.
+        raw_endpoints = os.getenv("LM_STUDIO_WIN_ENDPOINTS", "REQUIRED_SET_IN_ENV")
+        candidates = [e.strip().rstrip("/") for e in raw_endpoints.split(",") if e.strip()]
+        if not candidates or candidates == ["REQUIRED_SET_IN_ENV"]:
+            raise RuntimeError(
+                "LM_STUDIO_WIN_ENDPOINTS is not set. "
+                "Set it to the Windows LM Studio URL, e.g. http://192.168.254.102:1234"
+            )
+        endpoint = None
+        async with httpx.AsyncClient(timeout=5.0) as probe_client:
+            for candidate in candidates:
+                try:
+                    r = await probe_client.get(f"{candidate}/v1/models")
+                    if r.status_code < 500:
+                        endpoint = candidate
+                        break
+                except Exception as exc:
+                    _log.warning(
+                        "win_coder_pool: %s offline (%s), trying next", candidate, exc
+                    )
+        if endpoint is None:
+            raise RuntimeError(
+                f"No Windows coder available in pool: {candidates}. "
+                "Ensure LM Studio is running and a model is loaded."
+            )
 
+    # ── Request ──────────────────────────────────────────────────────────────
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(f"{endpoint}/v1/chat/completions", json=payload)
         resp.raise_for_status()
