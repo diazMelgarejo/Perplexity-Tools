@@ -77,6 +77,23 @@ class SkillEnvelope:
     def depth(self) -> int:
         return len(self.parent_chain)
 
+    def to_dict(self) -> "dict[str, Any]":
+        """Return a JSON-serialisable dict.
+
+        ``SkillEnvelope`` is a plain ``@dataclass`` — it has no Pydantic
+        ``model_dump()``.  Path fields are converted to ``str`` so callers
+        can safely JSON-encode the result without a custom encoder.
+        """
+        return {
+            "skill_id": self.skill_id,
+            "skill_path": str(self.skill_path),
+            "args": self.args,
+            "agent_id": self.agent_id,
+            "openclaw_home": str(self.openclaw_home),
+            "parent_chain": list(self.parent_chain),
+            "depth": self.depth,
+        }
+
 
 def _find_skills_root() -> Path:
     """Locate openclaw-skills folder. Honor ORAMA_SYSTEM_ROOT env or walk up."""
