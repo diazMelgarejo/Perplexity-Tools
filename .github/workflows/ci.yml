@@ -30,6 +30,8 @@ jobs:
           pip install fastapi aiohttp redis httpx python-dotenv loguru pydantic
           # fix(ci): slowapi must be present before orchestrator.py can be imported
           pip install slowapi
+          # fix(ci): respx is used by tests/discovery/ for mocking httpx calls
+          pip install respx
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
       - name: Lint with flake8 (warnings only)
