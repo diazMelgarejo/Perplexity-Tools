@@ -260,6 +260,8 @@ class OrchestrationSupervisor:
             session_id=spec_dict.get("session_id"),
             parent_orchestrator_id=spec_dict.get("parent_orchestrator_id"),
             artifact_policy=spec_dict.get("artifact_policy"),
+            # Preserve skill-routing field so retries follow the same path.
+            task_type=spec_dict.get("task_type", ""),
         )
         return await self.submit_job(new_spec)
 
@@ -324,26 +326,34 @@ class OrchestrationSupervisor:
           2. Windows coder pool (always-utilized before Mac-local)
           3. Normal backend routing (resolve_backend → WORKER_REGISTRY)
         """
+        import logging
+        _log = logging.getLogger(__name__)
+
         # 1. Spawning gate — check if this task maps to a known openclaw-skills ID
         skill_envelope = self._try_skill_envelope(spec)
         if skill_envelope is not None:
-            import logging
-            logging.getLogger(__name__).info(
+            _log.info(
                 "spawn_gate: routing job %s to skill %s",
                 spec.job_id, skill_envelope.skill_id,
             )
-            return {"status": "ok", "skill_envelope": skill_envelope.model_dump()}
+            # SkillEnvelope is a @dataclass, not a Pydantic model — use to_dict().
+            return {"status": "ok", "skill_envelope": skill_envelope.to_dict()}
 
-        # 2. Windows coder pool — always-utilized before Mac-local dispatch
-        win_url = self._get_reachable_windows_coder()
+        # 2. Windows coder pool — always-utilized before Mac-local dispatch.
+        # _get_reachable_windows_coder is async so the probe never blocks the loop.
+        win_url = await self._get_reachable_windows_coder()
         if win_url is not None:
-            import logging
-            logging.getLogger(__name__).info(
+            _log.info(
                 "windows_coder_pool: dispatching job %s to %s", spec.job_id, win_url
             )
             from orchestrator.worker_registry import WORKER_REGISTRY
             worker_fn = WORKER_REGISTRY.get("lmstudio-win", WORKER_REGISTRY["echo"])
-            result = await worker_fn(spec)
+            # Pass the already-probed endpoint so the worker skips its own health
+            # check and always hits the same host the dispatcher selected.
+            spec_for_win = spec.model_copy(
+                update={"metadata": {**(spec.metadata or {}), "_win_endpoint": win_url}}
+            )
+            result = await worker_fn(spec_for_win)
             return {**result, "routed_to_windows": True, "windows_endpoint": win_url}
 
         # 3. Normal backend routing (resolve_backend → WORKER_REGISTRY)
@@ -382,29 +392,31 @@ class OrchestrationSupervisor:
             return None
 
     @staticmethod
-    def _get_reachable_windows_coder() -> str | None:
+    async def _get_reachable_windows_coder() -> "str | None":
         """Return the first reachable Windows coder URL from WIN_CODER_ENDPOINTS, or None.
 
-        Probes each endpoint synchronously (fast timeout via connectivity.check_lm_studio).
-        Skips silently if pool is empty or all endpoints are unreachable.
+        Uses an async httpx probe so slow/offline endpoints never block the event
+        loop.  Each endpoint is tried in order with a short timeout (2.5 s).
+        Returns None silently when the pool is empty or all endpoints are offline.
         """
         import os
-        from orchestrator.connectivity import check_lm_studio
+        import httpx
 
         raw = os.environ.get("WIN_CODER_ENDPOINTS", "")
-        pool = [url.strip() for url in raw.split(",") if url.strip()]
+        pool = [url.strip().rstrip("/") for url in raw.split(",") if url.strip()]
         if not pool:
             return None
 
         log = __import__("logging").getLogger(__name__)
-        for url in pool:
-            try:
-                result = check_lm_studio(host=url)
-                if result.get("ok"):
-                    log.info("windows_coder_pool: %s is reachable", url)
-                    return url
-            except Exception as exc:  # noqa: BLE001
-                log.warning("windows_coder_pool: probe failed for %s — %s", url, exc)
+        async with httpx.AsyncClient(timeout=2.5) as client:
+            for url in pool:
+                try:
+                    r = await client.get(f"{url}/v1/models")
+                    if r.status_code < 400:
+                        log.info("windows_coder_pool: %s is reachable", url)
+                        return url
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("windows_coder_pool: probe failed for %s — %s", url, exc)
         log.warning("windows_coder_pool: no reachable Windows coder in pool %s", pool)
         return None
 
