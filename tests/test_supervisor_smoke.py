@@ -314,6 +314,61 @@ async def test_dispatch_skips_windows_coder_when_pool_empty(tmp_path, monkeypatc
 
 # ── _try_skill_envelope dispatch gate ─────────────────────────────────────────
 
+def test_try_skill_envelope_raises_for_missing_skill_tree():
+    """Mapped task_type with missing openclaw-skills tree raises RuntimeError (fail-closed).
+
+    _DEFAULT_OPENCLAW_SKILLS_ROOT is computed at module import time, so patching
+    ORAMA_SYSTEM_ROOT after import has no effect.  Instead we patch
+    _find_skills_root directly to raise SkillResolutionError as it would on a
+    fresh machine where the submodule is not yet checked out.
+    """
+    from unittest.mock import patch
+    from orchestrator.openclaw_skill_resolver import SkillResolutionError
+    spec = JobSpec(
+        job_id=_new_id(),
+        intent="add channel",
+        prompt="add webhook",
+        backend_hint="echo",
+        task_type="add_channel",
+    )
+
+    def _raise_resolution_error():
+        raise SkillResolutionError(
+            "openclaw-skills folder not found (injected for test)"
+        )
+
+    with patch(
+        "orchestrator.openclaw_skill_resolver._find_skills_root",
+        side_effect=_raise_resolution_error,
+    ):
+        with pytest.raises(RuntimeError, match="Skill routing failed"):
+            OrchestrationSupervisor._try_skill_envelope(spec)
+
+
+def test_get_constraint_safe_with_list_constraints():
+    """_get_constraint must not raise AttributeError when constraints is a list of tags."""
+    from orchestrator.worker_registry import _get_constraint
+
+    class _FakeSpec:
+        constraints = ["gpu-required", "no-streaming"]
+
+    assert _get_constraint(_FakeSpec(), "max_seconds", 300) == 300
+    assert _get_constraint(_FakeSpec(), "max_tokens", 4096) == 4096
+    assert _get_constraint(_FakeSpec(), "any_key", "default_val") == "default_val"
+
+
+def test_get_constraint_reads_dict_constraints():
+    """_get_constraint returns the keyed value when constraints is a dict."""
+    from orchestrator.worker_registry import _get_constraint
+
+    class _FakeSpec:
+        constraints = {"max_seconds": 600, "max_tokens": 8192}
+
+    assert _get_constraint(_FakeSpec(), "max_seconds", 300) == 600
+    assert _get_constraint(_FakeSpec(), "max_tokens", 4096) == 8192
+    assert _get_constraint(_FakeSpec(), "missing_key", "fallback") == "fallback"
+
+
 def test_try_skill_envelope_returns_none_for_unknown_task_type():
     """_try_skill_envelope returns None for task_types not in the skill map."""
     spec = JobSpec(
