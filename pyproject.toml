@@ -71,6 +71,7 @@ dev = [
     "httpx>=0.26.0",   # TestClient transport
     "flake8>=7.0",
     "mypy>=1.8",
+    "respx>=0.23.1",   # httpx mocking for tests/discovery/
 ]
 
 [project.urls]
