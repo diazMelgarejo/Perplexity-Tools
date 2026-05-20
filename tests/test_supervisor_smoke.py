@@ -240,3 +240,91 @@ async def test_list_jobs_no_filter(tmp_path):
     ids = {j["job_id"] for j in all_jobs}
     assert s1.job_id in ids
     assert s2.job_id in ids
+
+
+# ── Windows coder pool dispatch ───────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_dispatch_prefers_windows_coder_when_reachable(tmp_path, monkeypatch):
+    """When a Windows coder endpoint is reachable, _dispatch routes to it before Mac-local."""
+    import orchestrator.connectivity as conn_mod
+    import orchestrator.worker_registry as reg_mod
+
+    def fake_check_lm_studio(host: str = "http://127.0.0.1:1234"):
+        if "192.168.254.103" in host:
+            return {"ok": True, "backend": "lmstudio-win", "host": host}
+        return {"ok": False}
+
+    async def fake_win_worker(spec):
+        return {"backend": "lmstudio-win", "output": "fake win result"}
+
+    monkeypatch.setattr(conn_mod, "check_lm_studio", fake_check_lm_studio)
+    monkeypatch.setitem(reg_mod.WORKER_REGISTRY, "lmstudio-win", fake_win_worker)
+    monkeypatch.setenv("WIN_CODER_ENDPOINTS", "http://192.168.254.103:1234")
+
+    sup = _make_sup(tmp_path)
+    spec = JobSpec(
+        job_id=_new_id(),
+        intent="code review",
+        prompt="review this file",
+        backend_hint="lmstudio-mac",
+    )
+    result = await sup._dispatch(spec)
+    assert result.get("routed_to_windows") is True, (
+        f"Expected Windows coder routing but got: {result}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_skips_windows_coder_when_unreachable(tmp_path, monkeypatch):
+    """When Windows coder is unreachable, _dispatch falls through to normal routing."""
+    import orchestrator.connectivity as conn_mod
+
+    monkeypatch.setattr(
+        conn_mod, "check_lm_studio", lambda host="http://127.0.0.1:1234": {"ok": False}
+    )
+    monkeypatch.setenv("WIN_CODER_ENDPOINTS", "http://192.168.254.103:1234")
+
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("fallthrough test")
+    result = await sup._dispatch(spec)
+    assert result.get("routed_to_windows") is not True
+    assert "echo" in str(result).lower() or result.get("status") == "ok"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_skips_windows_coder_when_pool_empty(tmp_path, monkeypatch):
+    """When WIN_CODER_ENDPOINTS is empty, _dispatch proceeds to normal routing."""
+    monkeypatch.setenv("WIN_CODER_ENDPOINTS", "")
+
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("empty pool test")
+    result = await sup._dispatch(spec)
+    assert result.get("routed_to_windows") is not True
+
+
+# ── _try_skill_envelope dispatch gate ─────────────────────────────────────────
+
+def test_try_skill_envelope_returns_none_for_unknown_task_type():
+    """_try_skill_envelope returns None for task_types not in the skill map."""
+    spec = JobSpec(
+        job_id=_new_id(),
+        intent="general coding",
+        prompt="write a function",
+        backend_hint="echo",
+        task_type="general",
+    )
+    result = OrchestrationSupervisor._try_skill_envelope(spec)
+    assert result is None
+
+
+def test_try_skill_envelope_returns_none_when_no_task_type():
+    """_try_skill_envelope returns None gracefully when task_type is empty."""
+    spec = JobSpec(
+        job_id=_new_id(),
+        intent="echo",
+        prompt="hello",
+        backend_hint="echo",
+    )
+    result = OrchestrationSupervisor._try_skill_envelope(spec)
+    assert result is None

@@ -83,6 +83,9 @@ class JobSpec(BaseModel):
     # V1 depth invariant: workers do NOT spawn sub-workers
     depth: int = Field(default=0, ge=0)
 
+    # Skill routing: maps to openclaw-skills SKILL_MAP when set
+    task_type: str = ""
+
     @field_validator("depth", mode="before")
     @classmethod
     def no_sub_workers(cls, v: Any) -> int:
@@ -314,11 +317,96 @@ class OrchestrationSupervisor:
             self._active.pop(spec.job_id, None)
 
     async def _dispatch(self, spec: JobSpec) -> dict:
-        """Route spec to the correct backend worker and return its result dict."""
+        """Route spec to the correct backend worker and return its result dict.
+
+        Priority:
+          1. openclaw-skills primary path (deterministic, zero-LLM)
+          2. Windows coder pool (always-utilized before Mac-local)
+          3. Normal backend routing (resolve_backend → WORKER_REGISTRY)
+        """
+        # 1. Spawning gate — check if this task maps to a known openclaw-skills ID
+        skill_envelope = self._try_skill_envelope(spec)
+        if skill_envelope is not None:
+            import logging
+            logging.getLogger(__name__).info(
+                "spawn_gate: routing job %s to skill %s",
+                spec.job_id, skill_envelope.skill_id,
+            )
+            return {"status": "ok", "skill_envelope": skill_envelope.model_dump()}
+
+        # 2. Windows coder pool — always-utilized before Mac-local dispatch
+        win_url = self._get_reachable_windows_coder()
+        if win_url is not None:
+            import logging
+            logging.getLogger(__name__).info(
+                "windows_coder_pool: dispatching job %s to %s", spec.job_id, win_url
+            )
+            from orchestrator.worker_registry import WORKER_REGISTRY
+            worker_fn = WORKER_REGISTRY.get("lmstudio-win", WORKER_REGISTRY["echo"])
+            result = await worker_fn(spec)
+            return {**result, "routed_to_windows": True, "windows_endpoint": win_url}
+
+        # 3. Normal backend routing (resolve_backend → WORKER_REGISTRY)
         from orchestrator.worker_registry import WORKER_REGISTRY, resolve_backend
         backend = resolve_backend(spec)
         worker_fn = WORKER_REGISTRY.get(backend, WORKER_REGISTRY["echo"])
         return await worker_fn(spec)
+
+    @staticmethod
+    def _try_skill_envelope(spec: "JobSpec"):
+        """Return a SkillEnvelope if this task maps to a known openclaw-skills ID, else None."""
+        from orchestrator.openclaw_skill_resolver import (
+            RecursionBudgetExceeded,
+            resolve_skill,
+        )
+
+        _SKILL_MAP = {
+            "new_agent": "openclaw-new-agent",
+            "add_channel": "openclaw-add-channel",
+            "add_cron": "openclaw-add-cron",
+            "dream_setup": "openclaw-dream-setup",
+            "add_script": "openclaw-add-script",
+            "add_secret": "openclaw-add-secret",
+            "status": "openclaw-status",
+            "restart": "openclaw-restart",
+            "stow": "openclaw-stow",
+        }
+        task_type = getattr(spec, "task_type", None) or ""
+        skill_id = _SKILL_MAP.get(task_type)
+        if not skill_id:
+            return None
+        try:
+            args = getattr(spec, "metadata", {}) or {}
+            return resolve_skill(skill_id, args, agent_id=spec.job_id)
+        except (RecursionBudgetExceeded, Exception):
+            return None
+
+    @staticmethod
+    def _get_reachable_windows_coder() -> str | None:
+        """Return the first reachable Windows coder URL from WIN_CODER_ENDPOINTS, or None.
+
+        Probes each endpoint synchronously (fast timeout via connectivity.check_lm_studio).
+        Skips silently if pool is empty or all endpoints are unreachable.
+        """
+        import os
+        from orchestrator.connectivity import check_lm_studio
+
+        raw = os.environ.get("WIN_CODER_ENDPOINTS", "")
+        pool = [url.strip() for url in raw.split(",") if url.strip()]
+        if not pool:
+            return None
+
+        log = __import__("logging").getLogger(__name__)
+        for url in pool:
+            try:
+                result = check_lm_studio(host=url)
+                if result.get("ok"):
+                    log.info("windows_coder_pool: %s is reachable", url)
+                    return url
+            except Exception as exc:  # noqa: BLE001
+                log.warning("windows_coder_pool: probe failed for %s — %s", url, exc)
+        log.warning("windows_coder_pool: no reachable Windows coder in pool %s", pool)
+        return None
 
     def _append_event(self, job_id: str, event: dict) -> None:
         _append_event(self._jobs_file, job_id, event)
