@@ -13,7 +13,7 @@ description: >
 ## Purpose
 
 This skill encodes everything needed to diagnose, extend, or replicate the startup
-scenario engine introduced in Perpetua-Tools v0.9.9.8.  It is the canonical reference
+scenario engine introduced in Perpetua-Tools v0.9.9.9.  It is the canonical reference
 for agents working on `agent_launcher.py`, `start.sh`, or any code that probes LAN
 backends at startup.
 
