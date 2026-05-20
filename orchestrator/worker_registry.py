@@ -23,6 +23,25 @@ import asyncio
 from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 
 
+# ── Constraint helper ─────────────────────────────────────────────────────────
+
+def _get_constraint(spec: Any, key: str, default: Any = None) -> Any:
+    """Return spec.constraints[key] safely for both dict and list constraint shapes.
+
+    JobSpec.constraints is typed as Union[List[str], Dict[str, Any]]:
+      - dict  → key-value pairs (e.g. {"max_seconds": 300, "max_tokens": 4096})
+      - list  → constraint tags only (e.g. ["gpu-required", "no-streaming"])
+
+    Calling ``.get()`` directly on a list raises ``AttributeError``.  Use this
+    helper in every worker instead of the raw ``.get()`` pattern.
+    """
+    constraints = getattr(spec, "constraints", None) or {}
+    if isinstance(constraints, dict):
+        return constraints.get(key, default)
+    # list = tag-only shape — no key-value pairs; always return the default
+    return default
+
+
 # ── § 5.3  ROLE_BACKEND_MAP — authoritative role-to-backend routing ────────────
 # Source: unified-absorption-plan.md § 5.3 (Ollama-first for Mac roles).
 # Priority order per § 5.2:
@@ -76,9 +95,10 @@ _INTENT_BACKEND_MAP: Dict[str, str] = {
 def resolve_backend(spec: Any) -> str:
     """Resolve backend using priority order from § 5.2.
 
-    1. role + specialization → ROLE_BACKEND_MAP
-    2. intent → _INTENT_BACKEND_MAP
-    3. backend_hint → explicit override (takes precedence if non-empty/non-auto)
+    1. backend_hint — explicit override (highest priority when non-empty/non-auto)
+    2. role + specialization → ROLE_BACKEND_MAP
+    3. intent → _INTENT_BACKEND_MAP (fallback)
+    4. "echo" — catch-all default
     """
     # Explicit override (highest priority when set)
     hint = getattr(spec, "backend_hint", None)
@@ -126,7 +146,7 @@ async def _ollama_mac_worker(spec: Any) -> dict:
     endpoint = "http://localhost:11434/api/chat"
     model = getattr(spec, "metadata", {}).get("model", "qwen3:8b")
     prompt = getattr(spec, "prompt", "")
-    timeout = float(getattr(spec, "constraints", {}).get("max_seconds", 120))
+    timeout = float(_get_constraint(spec, "max_seconds", 120))
 
     payload = {
         "model": model,
@@ -158,8 +178,8 @@ async def _lmstudio_mac_worker(spec: Any) -> dict:
     endpoint = "http://localhost:1234/v1/chat/completions"
     model = getattr(spec, "metadata", {}).get("model", "")
     prompt = getattr(spec, "prompt", "")
-    timeout = float(getattr(spec, "constraints", {}).get("max_seconds", 120))
-    max_tokens = int(getattr(spec, "constraints", {}).get("max_tokens", 2048))
+    timeout = float(_get_constraint(spec, "max_seconds", 120))
+    max_tokens = int(_get_constraint(spec, "max_tokens", 2048))
 
     payload = {
         "model": model,
@@ -188,7 +208,7 @@ async def _codex_worker(spec: Any) -> dict:
       - Pass prompt directly — file results saved by codex to cwd, not echoed.
     """
     prompt = getattr(spec, "prompt", "")
-    timeout = float(getattr(spec, "constraints", {}).get("max_seconds", 300))
+    timeout = float(_get_constraint(spec, "max_seconds", 300))
 
     cmd = [
         "codex",
@@ -230,7 +250,7 @@ async def _gemini_worker(spec: Any) -> dict:
       - stdin=DEVNULL prevents interactive hangs.
     """
     prompt = getattr(spec, "prompt", "")
-    timeout = float(getattr(spec, "constraints", {}).get("max_seconds", 300))
+    timeout = float(_get_constraint(spec, "max_seconds", 300))
 
     cmd = ["gemini", "--yolo", "-p", prompt]
     proc = await asyncio.create_subprocess_exec(
@@ -289,8 +309,8 @@ async def _lmstudio_win_worker(spec: Any) -> dict:
     metadata: dict = getattr(spec, "metadata", {}) or {}
     model = metadata.get("model", "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2")
     prompt = getattr(spec, "prompt", "")
-    timeout = float(getattr(spec, "constraints", {}).get("max_seconds", 300))
-    max_tokens = int(getattr(spec, "constraints", {}).get("max_tokens", 4096))
+    timeout = float(_get_constraint(spec, "max_seconds", 300))
+    max_tokens = int(_get_constraint(spec, "max_tokens", 4096))
 
     payload = {
         "model": model,
