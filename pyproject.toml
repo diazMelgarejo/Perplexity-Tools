@@ -8,7 +8,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "perpetua-tools"
-version = "0.9.9.8"
+version = "0.9.9.9"
 description = "Top-level idempotent multi-agent orchestrator: per-device model selection, fallback routing, cost guard, and orama-system integration."
 readme = "README.md"
 license = { text = "AGPL-3.0" }
@@ -71,6 +71,7 @@ dev = [
     "httpx>=0.26.0",   # TestClient transport
     "flake8>=7.0",
     "mypy>=1.8",
+    "respx>=0.23.1",   # httpx mocking for tests/discovery/
 ]
 
 [project.urls]

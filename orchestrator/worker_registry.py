@@ -23,13 +23,32 @@ import asyncio
 from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 
 
+# ── Constraint helper ─────────────────────────────────────────────────────────
+
+def _get_constraint(spec: Any, key: str, default: Any = None) -> Any:
+    """Return spec.constraints[key] safely for both dict and list constraint shapes.
+
+    JobSpec.constraints is typed as Union[List[str], Dict[str, Any]]:
+      - dict  → key-value pairs (e.g. {"max_seconds": 300, "max_tokens": 4096})
+      - list  → constraint tags only (e.g. ["gpu-required", "no-streaming"])
+
+    Calling ``.get()`` directly on a list raises ``AttributeError``.  Use this
+    helper in every worker instead of the raw ``.get()`` pattern.
+    """
+    constraints = getattr(spec, "constraints", None) or {}
+    if isinstance(constraints, dict):
+        return constraints.get(key, default)
+    # list = tag-only shape — no key-value pairs; always return the default
+    return default
+
+
 # ── § 5.3  ROLE_BACKEND_MAP — authoritative role-to-backend routing ────────────
 # Source: unified-absorption-plan.md § 5.3 (Ollama-first for Mac roles).
-# Priority order per § 5.2:
-#   1. role + specialization → ROLE_BACKEND_MAP
-#   2. intent → _INTENT_BACKEND_MAP (below)
-#   3. backend_hint → explicit override
-#   4. Policy-defined default
+# resolve_backend() priority order per § 5.2:
+#   1. backend_hint — explicit override (highest priority)
+#   2. role + specialization → ROLE_BACKEND_MAP
+#   3. intent → _INTENT_BACKEND_MAP (below)
+#   4. "echo" — catch-all default
 #
 # Mac fallback chain: "ollama" → "lmstudio-mac" (only when Ollama port 11434 unreachable).
 # All candidates pass through policy.validate_or_raise() — fail-closed on affinity.
@@ -70,15 +89,19 @@ _INTENT_BACKEND_MAP: Dict[str, str] = {
     "research":       "gemini",
     "freeform":       "ollama",
     "echo":           "echo",
+    # agy — Antigravity CLI (use when Gemini is offline; same intent surface)
+    "agy-research":   "agy",
+    "agy-freeform":   "agy",
 }
 
 
 def resolve_backend(spec: Any) -> str:
     """Resolve backend using priority order from § 5.2.
 
-    1. role + specialization → ROLE_BACKEND_MAP
-    2. intent → _INTENT_BACKEND_MAP
-    3. backend_hint → explicit override (takes precedence if non-empty/non-auto)
+    1. backend_hint — explicit override (highest priority when non-empty/non-auto)
+    2. role + specialization → ROLE_BACKEND_MAP
+    3. intent → _INTENT_BACKEND_MAP (fallback)
+    4. "echo" — catch-all default
     """
     # Explicit override (highest priority when set)
     hint = getattr(spec, "backend_hint", None)
@@ -126,7 +149,7 @@ async def _ollama_mac_worker(spec: Any) -> dict:
     endpoint = "http://localhost:11434/api/chat"
     model = getattr(spec, "metadata", {}).get("model", "qwen3:8b")
     prompt = getattr(spec, "prompt", "")
-    timeout = float(getattr(spec, "constraints", {}).get("max_seconds", 120))
+    timeout = float(_get_constraint(spec, "max_seconds", 120))
 
     payload = {
         "model": model,
@@ -158,8 +181,8 @@ async def _lmstudio_mac_worker(spec: Any) -> dict:
     endpoint = "http://localhost:1234/v1/chat/completions"
     model = getattr(spec, "metadata", {}).get("model", "")
     prompt = getattr(spec, "prompt", "")
-    timeout = float(getattr(spec, "constraints", {}).get("max_seconds", 120))
-    max_tokens = int(getattr(spec, "constraints", {}).get("max_tokens", 2048))
+    timeout = float(_get_constraint(spec, "max_seconds", 120))
+    max_tokens = int(_get_constraint(spec, "max_tokens", 2048))
 
     payload = {
         "model": model,
@@ -188,7 +211,7 @@ async def _codex_worker(spec: Any) -> dict:
       - Pass prompt directly — file results saved by codex to cwd, not echoed.
     """
     prompt = getattr(spec, "prompt", "")
-    timeout = float(getattr(spec, "constraints", {}).get("max_seconds", 300))
+    timeout = float(_get_constraint(spec, "max_seconds", 300))
 
     cmd = [
         "codex",
@@ -230,7 +253,7 @@ async def _gemini_worker(spec: Any) -> dict:
       - stdin=DEVNULL prevents interactive hangs.
     """
     prompt = getattr(spec, "prompt", "")
-    timeout = float(getattr(spec, "constraints", {}).get("max_seconds", 300))
+    timeout = float(_get_constraint(spec, "max_seconds", 300))
 
     cmd = ["gemini", "--yolo", "-p", prompt]
     proc = await asyncio.create_subprocess_exec(
@@ -255,6 +278,39 @@ async def _gemini_worker(spec: Any) -> dict:
     }
 
 
+async def _agy_worker(spec: Any) -> dict:
+    """Antigravity CLI worker — replaces Gemini CLI for non-interactive dispatch.
+
+    Uses ``agy --dangerously-skip-permissions -p <prompt>`` (headless, no gate).
+    stdin=DEVNULL prevents interactive hangs.  Mirrors _gemini_worker patterns;
+    use this when Gemini CLI is offline or unavailable.
+    """
+    prompt = getattr(spec, "prompt", "")
+    timeout = float(_get_constraint(spec, "max_seconds", 300))
+
+    cmd = ["agy", "--dangerously-skip-permissions", "-p", prompt]
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+        stdin=asyncio.subprocess.DEVNULL,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
+        proc.terminate()
+        raise RuntimeError(f"agy worker timed out after {timeout}s")
+
+    if proc.returncode != 0:
+        raise RuntimeError(f"agy exited {proc.returncode}: {stderr.decode()[:500]}")
+
+    return {
+        "backend": "agy",
+        "output": stdout.decode(errors="replace").strip(),
+        "returncode": proc.returncode,
+    }
+
+
 async def _ollama_worker(spec: Any) -> dict:
     """Canonical Ollama worker (first-class Mac backend).
 
@@ -267,7 +323,14 @@ async def _ollama_worker(spec: Any) -> dict:
 async def _lmstudio_win_worker(spec: Any) -> dict:
     """Windows LM Studio worker — POST /v1/chat/completions via LM Link (LAN).
 
-    Endpoint from env: LM_STUDIO_WIN_ENDPOINTS (full URL, never hardcoded).
+    Endpoint resolution (in priority order):
+      1. ``spec.metadata["_win_endpoint"]`` — pre-probed URL injected by
+         ``OrchestrationSupervisor._dispatch()`` so the dispatcher and the
+         worker always hit the same host.
+      2. ``LM_STUDIO_WIN_ENDPOINTS`` env var — fallback when the worker is
+         called directly (not via the supervisor dispatch path).  In that case
+         the worker probes the pool itself, identical to the old behaviour.
+
     GPU lock: one heavy model at a time (enforced in LMStudioWinBackend; here
     the worker trusts the caller to serialize via the backend class).
 
@@ -275,27 +338,56 @@ async def _lmstudio_win_worker(spec: Any) -> dict:
     """
     import os
     import httpx
+    import logging
 
-    raw_endpoints = os.getenv("LM_STUDIO_WIN_ENDPOINTS", "REQUIRED_SET_IN_ENV")
-    endpoint = raw_endpoints.split(",")[0].strip().rstrip("/")
-    if not endpoint or endpoint == "REQUIRED_SET_IN_ENV":
-        raise RuntimeError(
-            "LM_STUDIO_WIN_ENDPOINTS is not set. "
-            "Set it to the Windows LM Studio URL, e.g. http://192.168.254.102:1234"
-        )
+    _log = logging.getLogger(__name__)
 
-    model = getattr(spec, "metadata", {}).get(
-        "model", "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2"
-    )
+    metadata: dict = getattr(spec, "metadata", {}) or {}
+    model = metadata.get("model", "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2")
     prompt = getattr(spec, "prompt", "")
-    timeout = float(getattr(spec, "constraints", {}).get("max_seconds", 300))
-    max_tokens = int(getattr(spec, "constraints", {}).get("max_tokens", 4096))
+    timeout = float(_get_constraint(spec, "max_seconds", 300))
+    max_tokens = int(_get_constraint(spec, "max_tokens", 4096))
 
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": max_tokens,
     }
+
+    # ── Endpoint resolution ──────────────────────────────────────────────────
+    # Priority 1: dispatcher already probed and selected an endpoint.
+    pre_probed = metadata.get("_win_endpoint")
+    if pre_probed:
+        endpoint = pre_probed.rstrip("/")
+        _log.debug("lmstudio-win: using pre-probed endpoint %s", endpoint)
+    else:
+        # Priority 2: direct invocation — probe LM_STUDIO_WIN_ENDPOINTS ourselves.
+        raw_endpoints = os.getenv("LM_STUDIO_WIN_ENDPOINTS", "REQUIRED_SET_IN_ENV")
+        candidates = [e.strip().rstrip("/") for e in raw_endpoints.split(",") if e.strip()]
+        if not candidates or candidates == ["REQUIRED_SET_IN_ENV"]:
+            raise RuntimeError(
+                "LM_STUDIO_WIN_ENDPOINTS is not set. "
+                "Set it to the Windows LM Studio URL, e.g. http://192.168.254.102:1234"
+            )
+        endpoint = None
+        async with httpx.AsyncClient(timeout=5.0) as probe_client:
+            for candidate in candidates:
+                try:
+                    r = await probe_client.get(f"{candidate}/v1/models")
+                    if r.status_code < 400:
+                        endpoint = candidate
+                        break
+                except Exception as exc:
+                    _log.warning(
+                        "win_coder_pool: %s offline (%s), trying next", candidate, exc
+                    )
+        if endpoint is None:
+            raise RuntimeError(
+                f"No Windows coder available in pool: {candidates}. "
+                "Ensure LM Studio is running and a model is loaded."
+            )
+
+    # ── Request ──────────────────────────────────────────────────────────────
     async with httpx.AsyncClient(timeout=timeout) as client:
         resp = await client.post(f"{endpoint}/v1/chat/completions", json=payload)
         resp.raise_for_status()
@@ -318,4 +410,5 @@ WORKER_REGISTRY: Dict[str, Callable[[Any], Awaitable[dict]]] = {
     "lmstudio-win":   _lmstudio_win_worker, # Windows via LM Link (LAN)
     "codex":          _codex_worker,
     "gemini":         _gemini_worker,
+    "agy":            _agy_worker,          # Antigravity CLI (replaces Gemini when offline)
 }

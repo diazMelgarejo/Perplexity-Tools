@@ -1,5 +1,5 @@
 """
-orchestrator/alphaclaw_manager.py — Perpetua-Tools  v0.9.9.8
+orchestrator/alphaclaw_manager.py — Perpetua-Tools  v0.9.9.9
 -------------------------------------------------------------
 Authoritative AlphaClaw lifecycle manager and backend probe.
 

@@ -122,11 +122,19 @@ class TestLMStudioWinWorker:
             )
 
     @pytest.mark.asyncio
-    async def test_returns_correct_shape(self):
-        """Worker result must have backend, model, output, tokens keys."""
+    async def test_returns_correct_shape_with_preprobed_endpoint(self):
+        """When _win_endpoint is injected (supervisor dispatch path), no probe is needed.
+
+        This is the primary production path: OrchestrationSupervisor._dispatch()
+        probes the pool once and injects ``_win_endpoint`` into spec.metadata so
+        the worker skips its own health check and always hits the same host.
+        """
         from orchestrator.worker_registry import _lmstudio_win_worker
         spec = self._make_spec(
-            metadata={"model": "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2"},
+            metadata={
+                "model": "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2",
+                "_win_endpoint": "http://192.168.254.102:1234",
+            },
             prompt="Hello",
         )
         fake_resp_data = {
@@ -135,6 +143,7 @@ class TestLMStudioWinWorker:
         }
 
         class _FakeResp:
+            status_code = 200
             def raise_for_status(self): pass
             def json(self): return fake_resp_data
 
@@ -142,14 +151,52 @@ class TestLMStudioWinWorker:
             async def __aenter__(self): return self
             async def __aexit__(self, *a): pass
             async def post(self, url, **kw): return _FakeResp()
+            # No .get() needed — pre-probed path skips the probe entirely
+
+        with patch("httpx.AsyncClient", return_value=_FakeClient()):
+            result = await _lmstudio_win_worker(spec)
+
+        assert result["backend"] == "lmstudio-win"
+        assert result["output"] == "Hi there"
+        assert result["tokens"] == 3
+        assert "model" in result
+
+    @pytest.mark.asyncio
+    async def test_returns_correct_shape_direct_call_path(self):
+        """When called directly (no _win_endpoint), worker probes then POSTs.
+
+        Tests the fallback path used when the worker is called outside the
+        supervisor dispatch loop (e.g. direct unit tests, Codex invocation).
+        Both .get() (probe) and .post() (request) must be present.
+        """
+        from orchestrator.worker_registry import _lmstudio_win_worker
+        spec = self._make_spec(
+            metadata={"model": "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2"},
+            prompt="Hello",
+        )
+        fake_resp_data = {
+            "choices": [{"message": {"content": "Direct result"}}],
+            "usage": {"completion_tokens": 5},
+        }
+
+        class _FakeResp:
+            status_code = 200
+            def raise_for_status(self): pass
+            def json(self): return fake_resp_data
+
+        class _FakeClient:
+            async def __aenter__(self): return self
+            async def __aexit__(self, *a): pass
+            async def get(self, url, **kw): return _FakeResp()   # probe
+            async def post(self, url, **kw): return _FakeResp()  # request
 
         with patch.dict(os.environ, {"LM_STUDIO_WIN_ENDPOINTS": "http://192.168.254.102:1234"}):
             with patch("httpx.AsyncClient", return_value=_FakeClient()):
                 result = await _lmstudio_win_worker(spec)
 
         assert result["backend"] == "lmstudio-win"
-        assert result["output"] == "Hi there"
-        assert result["tokens"] == 3
+        assert result["output"] == "Direct result"
+        assert result["tokens"] == 5
         assert "model" in result
 
 
