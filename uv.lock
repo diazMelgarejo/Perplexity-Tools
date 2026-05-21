@@ -2535,7 +2535,7 @@ wheels = [
 
 [[package]]
 name = "perpetua-tools"
-version = "0.9.9.8"
+version = "0.9.9.9"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -2567,15 +2567,11 @@ dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
+    { name = "respx" },
 ]
 mlx = [
     { name = "huggingface-hub" },
     { name = "transformers" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "respx" },
 ]
 
 [package.metadata]
@@ -2601,6 +2597,7 @@ requires-dist = [
     { name = "python-multipart", specifier = ">=0.0.9" },
     { name = "pyyaml", specifier = ">=6.0.1" },
     { name = "redis", specifier = ">=5.0.1" },
+    { name = "respx", marker = "extra == 'dev'", specifier = ">=0.23.1" },
     { name = "rich", specifier = ">=13.7.0" },
     { name = "slowapi", specifier = ">=0.1.9" },
     { name = "sqlalchemy", specifier = ">=2.0.25" },
@@ -2609,9 +2606,6 @@ requires-dist = [
     { name = "websockets", specifier = ">=12.0" },
 ]
 provides-extras = ["mlx", "dev"]
-
-[package.metadata.requires-dev]
-dev = [{ name = "respx", specifier = ">=0.23.1" }]
 
 [[package]]
 name = "perplexityai"
