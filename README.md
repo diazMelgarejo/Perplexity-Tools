@@ -1,4 +1,4 @@
-# This is the Legacy Perpetua-Tools v0.9.9.8
+# This is the Legacy Perpetua-Tools v0.9.9.9
 
 > **Top-level idempotent multi-agent orchestrator for Mac + Windows**
 > * we are moving to a new 2.0 repo soon!
@@ -167,7 +167,7 @@ POST /orchestrate
 
 | Field | Value |
 |-------|-------|
-| Version | `0.9.9.8` |
+| Version | `0.9.9.9` |
 | Branch | `main` |
 | Compatible with | orama-system (reasoning layer; version per that repo), ECC Tools standard, uditgoenka/autoresearch (research automation) |
 | Python | `3.11+` |

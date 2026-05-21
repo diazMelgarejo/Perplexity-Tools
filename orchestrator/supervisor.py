@@ -33,6 +33,14 @@ MAX_THREADS = 25    # Anthropic spec ceiling — 25 concurrent workers max
 STATE_DIR = Path(".state")
 JOBS_JSONL = STATE_DIR / "jobs.jsonl"
 
+# Backends that run entirely on the Mac GPU.  The Windows coder pool preempts
+# these when a healthy Windows endpoint is available.  "mlx" is included so a
+# future MLX worker (Apple Silicon accelerated) is also preempted correctly.
+# Must stay in sync with worker_registry.WORKER_REGISTRY key names.
+_MAC_LOCAL_BACKENDS: frozenset = frozenset(
+    {"ollama", "ollama-mac", "lmstudio-mac", "mlx"}
+)
+
 
 # ── Enums ─────────────────────────────────────────────────────────────────────
 class JobStatus(str, Enum):
@@ -82,6 +90,9 @@ class JobSpec(BaseModel):
 
     # V1 depth invariant: workers do NOT spawn sub-workers
     depth: int = Field(default=0, ge=0)
+
+    # Skill routing: maps to openclaw-skills SKILL_MAP when set
+    task_type: str = ""
 
     @field_validator("depth", mode="before")
     @classmethod
@@ -193,7 +204,9 @@ class OrchestrationSupervisor:
         if spec.backend_hint and spec.backend_hint not in {"auto", "cloud", "freeform", "echo", None, ""}:
             platform = self._backend_to_platform(spec.backend_hint)
             # check_affinity raises HardwareAffinityError — fail-closed, no silent reroute
-            check_affinity(spec.intent, platform)
+            model_id = spec.metadata.get("model", "")
+            if model_id:
+                check_affinity(model_id, platform)
 
         self._append_event(spec.job_id, {"status": JobStatus.QUEUED, "spec": spec.to_dict()})
         task = asyncio.create_task(
@@ -257,6 +270,8 @@ class OrchestrationSupervisor:
             session_id=spec_dict.get("session_id"),
             parent_orchestrator_id=spec_dict.get("parent_orchestrator_id"),
             artifact_policy=spec_dict.get("artifact_policy"),
+            # Preserve skill-routing field so retries follow the same path.
+            task_type=spec_dict.get("task_type", ""),
         )
         return await self.submit_job(new_spec)
 
@@ -314,11 +329,155 @@ class OrchestrationSupervisor:
             self._active.pop(spec.job_id, None)
 
     async def _dispatch(self, spec: JobSpec) -> dict:
-        """Route spec to the correct backend worker and return its result dict."""
+        """Route spec to the correct backend worker and return its result dict.
+
+        Priority:
+          1. openclaw-skills primary path (deterministic, zero-LLM)
+          2. resolve_backend — compute the intended backend from role/intent/hint
+          3. Windows coder pool probe — two cases:
+             a. Mac-local backends (ollama, ollama-mac, lmstudio-mac, mlx):
+                Windows preempts entirely when pool is reachable.
+             b. Explicit ``lmstudio-win`` (via role map or backend_hint):
+                Pool is probed to inject ``_win_endpoint``; without it the worker
+                falls back to ``LM_STUDIO_WIN_ENDPOINTS`` which may not be set in
+                environments that only configure ``WIN_CODER_ENDPOINTS``.
+             Non-Windows backends (echo, codex, gemini) are never probed.
+          4. Normal backend routing via WORKER_REGISTRY
+        """
+        import logging
+        _log = logging.getLogger(__name__)
+
+        # 1. Spawning gate — check if this task maps to a known openclaw-skills ID
+        skill_envelope = self._try_skill_envelope(spec)
+        if skill_envelope is not None:
+            _log.info(
+                "spawn_gate: routing job %s to skill %s",
+                spec.job_id, skill_envelope.skill_id,
+            )
+            # SkillEnvelope is a @dataclass, not a Pydantic model — use to_dict().
+            return {"status": "ok", "skill_envelope": skill_envelope.to_dict()}
+
+        # 2. Resolve the intended backend first so the Windows override can
+        #    inspect it. Must happen before any probe to avoid hijacking jobs
+        #    whose backend_hint or intent points at non-Mac-local workers.
         from orchestrator.worker_registry import WORKER_REGISTRY, resolve_backend
         backend = resolve_backend(spec)
+
+        # 3. Windows coder pool probe.
+        # Probe whenever the job is destined for any Windows LM Studio path:
+        #   • Mac-local backends → pool preempts routing (override)
+        #   • explicit lmstudio-win → pool injects _win_endpoint (no routing change)
+        # Skipped entirely for echo/codex/gemini/cloud so no unnecessary LAN probe.
+        _needs_win_probe = backend in _MAC_LOCAL_BACKENDS or backend == "lmstudio-win"
+        if _needs_win_probe:
+            win_url = await self._get_reachable_windows_coder()
+            if win_url is not None:
+                _log.info(
+                    "windows_coder_pool: dispatching job %s to %s", spec.job_id, win_url
+                )
+                # Re-validate affinity for the Windows platform before preempting.
+                # submit_job validated against the original backend_hint; when a
+                # Mac-local job is preempted the effective platform changes to "win"
+                # so we must re-run the hardware-affinity gate (fail-closed).
+                model_id = spec.metadata.get("model", "")
+                if model_id:
+                    check_affinity(model_id, "win")
+                worker_fn = WORKER_REGISTRY.get("lmstudio-win", WORKER_REGISTRY["echo"])
+                # Pass the already-probed endpoint so the worker skips its own health
+                # check and always hits the same host the dispatcher selected.
+                spec_for_win = spec.model_copy(
+                    update={"metadata": {**(spec.metadata or {}), "_win_endpoint": win_url}}
+                )
+                result = await worker_fn(spec_for_win)
+                if backend in _MAC_LOCAL_BACKENDS:
+                    # Mac-local preempted by Windows — flag for callers/tests.
+                    return {**result, "routed_to_windows": True, "windows_endpoint": win_url}
+                # Explicit lmstudio-win: no preemption flag; endpoint was injected above.
+                return result
+            # Pool unreachable: Mac-local falls through to normal routing (may fail);
+            # explicit lmstudio-win falls through to worker's LM_STUDIO_WIN_ENDPOINTS.
+
+        # 4. Normal backend routing (resolve_backend already called above)
         worker_fn = WORKER_REGISTRY.get(backend, WORKER_REGISTRY["echo"])
         return await worker_fn(spec)
+
+    @staticmethod
+    def _try_skill_envelope(spec: "JobSpec"):
+        """Return a SkillEnvelope if this task maps to a known openclaw-skills ID, else None.
+
+        Routing invariant (fail-closed): if ``task_type`` IS mapped to a skill,
+        any resolver failure raises ``RuntimeError`` — it never silently degrades
+        to a lower-priority backend.  This prevents a misconfigured or missing
+        openclaw-skills tree from routing privileged tasks to the wrong model.
+        """
+        from orchestrator.openclaw_skill_resolver import (
+            RecursionBudgetExceeded,
+            SkillResolutionError,
+            resolve_skill,
+        )
+
+        _SKILL_MAP = {
+            "new_agent": "openclaw-new-agent",
+            "add_channel": "openclaw-add-channel",
+            "add_cron": "openclaw-add-cron",
+            "dream_setup": "openclaw-dream-setup",
+            "add_script": "openclaw-add-script",
+            "add_secret": "openclaw-add-secret",
+            "status": "openclaw-status",
+            "restart": "openclaw-restart",
+            "stow": "openclaw-stow",
+        }
+        task_type = getattr(spec, "task_type", None) or ""
+        skill_id = _SKILL_MAP.get(task_type)
+        if not skill_id:
+            return None
+        try:
+            args = getattr(spec, "metadata", {}) or {}
+            return resolve_skill(skill_id, args, agent_id=spec.job_id)
+        except RecursionBudgetExceeded:
+            # Fail-closed: recursion budget is a hard safety guard, not a routing
+            # hint. Re-raise so _run_worker marks the job FAILED rather than
+            # silently falling through to a lower-priority dispatch path.
+            raise
+        except SkillResolutionError as exc:
+            # task_type IS mapped → the skill MUST resolve or the job FAILS.
+            # Never silently degrade to a lower-priority backend when the caller
+            # explicitly requested a skill-routed task_type.
+            raise RuntimeError(
+                f"Skill routing failed for task_type={task_type!r} "
+                f"(skill_id={skill_id!r}): {exc}"
+            ) from exc
+        # Do NOT catch generic Exception here — unmapped bugs should propagate
+        # and be caught by _run_worker, not swallowed inside the skill gate.
+
+    @staticmethod
+    async def _get_reachable_windows_coder() -> "str | None":
+        """Return the first reachable Windows coder URL from WIN_CODER_ENDPOINTS, or None.
+
+        Uses an async httpx probe so slow/offline endpoints never block the event
+        loop.  Each endpoint is tried in order with a short timeout (2.5 s).
+        Returns None silently when the pool is empty or all endpoints are offline.
+        """
+        import os
+        import httpx
+
+        raw = os.environ.get("WIN_CODER_ENDPOINTS", "")
+        pool = [url.strip().rstrip("/") for url in raw.split(",") if url.strip()]
+        if not pool:
+            return None
+
+        log = __import__("logging").getLogger(__name__)
+        async with httpx.AsyncClient(timeout=2.5) as client:
+            for url in pool:
+                try:
+                    r = await client.get(f"{url}/v1/models")
+                    if r.status_code < 400:
+                        log.info("windows_coder_pool: %s is reachable", url)
+                        return url
+                except Exception as exc:  # noqa: BLE001
+                    log.warning("windows_coder_pool: probe failed for %s — %s", url, exc)
+        log.warning("windows_coder_pool: no reachable Windows coder in pool %s", pool)
+        return None
 
     def _append_event(self, job_id: str, event: dict) -> None:
         _append_event(self._jobs_file, job_id, event)

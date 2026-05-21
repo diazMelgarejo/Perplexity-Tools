@@ -240,3 +240,328 @@ async def test_list_jobs_no_filter(tmp_path):
     ids = {j["job_id"] for j in all_jobs}
     assert s1.job_id in ids
     assert s2.job_id in ids
+
+
+# ── Windows coder pool dispatch ───────────────────────────────────────────────
+# _get_reachable_windows_coder is now async (uses httpx.AsyncClient).
+# Tests mock the method directly instead of patching the sync connectivity helper.
+
+@pytest.mark.asyncio
+async def test_dispatch_prefers_windows_coder_when_reachable(tmp_path, monkeypatch):
+    """When a Windows coder endpoint is reachable, _dispatch routes to it before Mac-local."""
+    from unittest.mock import AsyncMock
+    import orchestrator.worker_registry as reg_mod
+
+    async def fake_win_worker(spec):
+        # Verify the dispatcher injects the pre-probed endpoint into metadata.
+        assert spec.metadata.get("_win_endpoint") == "http://192.168.254.103:1234"
+        return {"backend": "lmstudio-win", "output": "fake win result"}
+
+    monkeypatch.setattr(
+        OrchestrationSupervisor,
+        "_get_reachable_windows_coder",
+        AsyncMock(return_value="http://192.168.254.103:1234"),
+    )
+    monkeypatch.setitem(reg_mod.WORKER_REGISTRY, "lmstudio-win", fake_win_worker)
+
+    sup = _make_sup(tmp_path)
+    spec = JobSpec(
+        job_id=_new_id(),
+        intent="code review",
+        prompt="review this file",
+        backend_hint="lmstudio-mac",
+    )
+    result = await sup._dispatch(spec)
+    assert result.get("routed_to_windows") is True, (
+        f"Expected Windows coder routing but got: {result}"
+    )
+    assert result.get("windows_endpoint") == "http://192.168.254.103:1234"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_injects_win_endpoint_for_explicit_lmstudio_win(tmp_path, monkeypatch):
+    """Explicit lmstudio-win routes (via role map / backend_hint) get _win_endpoint
+    injected from WIN_CODER_ENDPOINTS, not just Mac-local preemption routes.
+
+    This guards against the regression where environments that only set
+    WIN_CODER_ENDPOINTS (not LM_STUDIO_WIN_ENDPOINTS) would fail on explicit
+    Windows routes because _get_reachable_windows_coder() was never called.
+    """
+    from unittest.mock import AsyncMock
+    import orchestrator.worker_registry as reg_mod
+
+    endpoint_injected = {}
+
+    async def fake_win_worker(spec):
+        endpoint_injected["value"] = spec.metadata.get("_win_endpoint")
+        return {"backend": "lmstudio-win", "output": "explicit win result"}
+
+    monkeypatch.setattr(
+        OrchestrationSupervisor,
+        "_get_reachable_windows_coder",
+        AsyncMock(return_value="http://192.168.254.101:1234"),
+    )
+    monkeypatch.setitem(reg_mod.WORKER_REGISTRY, "lmstudio-win", fake_win_worker)
+
+    sup = _make_sup(tmp_path)
+    spec = JobSpec(
+        job_id=_new_id(),
+        intent="code review",
+        prompt="review this file",
+        backend_hint="lmstudio-win",  # explicit Windows route — NOT Mac-local
+    )
+    result = await sup._dispatch(spec)
+
+    # Explicit lmstudio-win does NOT set routed_to_windows (no preemption occurred)
+    assert result.get("routed_to_windows") is not True, (
+        "Explicit lmstudio-win should not set routed_to_windows flag"
+    )
+    # But _win_endpoint MUST be injected so the worker skips LM_STUDIO_WIN_ENDPOINTS
+    assert endpoint_injected.get("value") == "http://192.168.254.101:1234", (
+        f"_win_endpoint was not injected; got: {endpoint_injected}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_skips_windows_coder_when_unreachable(tmp_path, monkeypatch):
+    """When Windows coder is unreachable, _dispatch falls through to normal routing."""
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(
+        OrchestrationSupervisor,
+        "_get_reachable_windows_coder",
+        AsyncMock(return_value=None),
+    )
+
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("fallthrough test")
+    result = await sup._dispatch(spec)
+    assert result.get("routed_to_windows") is not True
+    assert "echo" in str(result).lower() or result.get("status") == "ok"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_skips_windows_coder_when_pool_empty(tmp_path, monkeypatch):
+    """When WIN_CODER_ENDPOINTS is empty, _get_reachable_windows_coder returns None."""
+    monkeypatch.setenv("WIN_CODER_ENDPOINTS", "")
+
+    sup = _make_sup(tmp_path)
+    # Call the method directly to confirm it returns None for empty pool.
+    result = await OrchestrationSupervisor._get_reachable_windows_coder()
+    assert result is None
+
+    # Also confirm _dispatch falls through to normal routing.
+    spec = _echo_spec("empty pool test")
+    dispatch_result = await sup._dispatch(spec)
+    assert dispatch_result.get("routed_to_windows") is not True
+
+
+# ── _try_skill_envelope dispatch gate ─────────────────────────────────────────
+
+def test_try_skill_envelope_raises_for_missing_skill_tree():
+    """Mapped task_type with missing openclaw-skills tree raises RuntimeError (fail-closed).
+
+    _DEFAULT_OPENCLAW_SKILLS_ROOT is computed at module import time, so patching
+    ORAMA_SYSTEM_ROOT after import has no effect.  Instead we patch
+    _find_skills_root directly to raise SkillResolutionError as it would on a
+    fresh machine where the submodule is not yet checked out.
+    """
+    from unittest.mock import patch
+    from orchestrator.openclaw_skill_resolver import SkillResolutionError
+    spec = JobSpec(
+        job_id=_new_id(),
+        intent="add channel",
+        prompt="add webhook",
+        backend_hint="echo",
+        task_type="add_channel",
+    )
+
+    def _raise_resolution_error():
+        raise SkillResolutionError(
+            "openclaw-skills folder not found (injected for test)"
+        )
+
+    with patch(
+        "orchestrator.openclaw_skill_resolver._find_skills_root",
+        side_effect=_raise_resolution_error,
+    ):
+        with pytest.raises(RuntimeError, match="Skill routing failed"):
+            OrchestrationSupervisor._try_skill_envelope(spec)
+
+
+def test_get_constraint_safe_with_list_constraints():
+    """_get_constraint must not raise AttributeError when constraints is a list of tags."""
+    from orchestrator.worker_registry import _get_constraint
+
+    class _FakeSpec:
+        constraints = ["gpu-required", "no-streaming"]
+
+    assert _get_constraint(_FakeSpec(), "max_seconds", 300) == 300
+    assert _get_constraint(_FakeSpec(), "max_tokens", 4096) == 4096
+    assert _get_constraint(_FakeSpec(), "any_key", "default_val") == "default_val"
+
+
+def test_get_constraint_reads_dict_constraints():
+    """_get_constraint returns the keyed value when constraints is a dict."""
+    from orchestrator.worker_registry import _get_constraint
+
+    class _FakeSpec:
+        constraints = {"max_seconds": 600, "max_tokens": 8192}
+
+    assert _get_constraint(_FakeSpec(), "max_seconds", 300) == 600
+    assert _get_constraint(_FakeSpec(), "max_tokens", 4096) == 8192
+    assert _get_constraint(_FakeSpec(), "missing_key", "fallback") == "fallback"
+
+
+def test_try_skill_envelope_returns_none_for_unknown_task_type():
+    """_try_skill_envelope returns None for task_types not in the skill map."""
+    spec = JobSpec(
+        job_id=_new_id(),
+        intent="general coding",
+        prompt="write a function",
+        backend_hint="echo",
+        task_type="general",
+    )
+    result = OrchestrationSupervisor._try_skill_envelope(spec)
+    assert result is None
+
+
+def test_try_skill_envelope_returns_none_when_no_task_type():
+    """_try_skill_envelope returns None gracefully when task_type is empty."""
+    spec = JobSpec(
+        job_id=_new_id(),
+        intent="echo",
+        prompt="hello",
+        backend_hint="echo",
+    )
+    result = OrchestrationSupervisor._try_skill_envelope(spec)
+    assert result is None
+
+
+# ── replay() preserves task_type ─────────────────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_replay_preserves_task_type(tmp_path):
+    """replay() must carry task_type forward so retried skill-mapped jobs route correctly."""
+    sup = _make_sup(tmp_path)
+    spec = JobSpec(
+        job_id=_new_id(),
+        intent="add channel",
+        prompt="add a webhook channel",
+        backend_hint="echo",
+        task_type="add_channel",
+    )
+    original_id = spec.job_id
+
+    # Inject a FAILED event so replay() has something to replay.
+    _append_event(
+        tmp_path / "jobs.jsonl",
+        original_id,
+        {
+            "status": JobStatus.FAILED.value,
+            "spec": spec.model_dump(),
+            "error": "injected failure",
+        },
+    )
+
+    new_id = await sup.replay(original_id)
+    assert new_id != original_id
+
+    # Load the replayed job's spec from the event log and assert task_type survived.
+    events = _load_events(tmp_path / "jobs.jsonl")
+    states = _latest_status_per_job(events)
+    replayed_state = states.get(new_id) or {}
+    replayed_spec = replayed_state.get("spec", {})
+    assert replayed_spec.get("task_type") == "add_channel", (
+        f"task_type was lost during replay; got: {replayed_spec.get('task_type')!r}"
+    )
+
+
+# ── SkillEnvelope.to_dict() ───────────────────────────────────────────────────
+
+def test_skill_envelope_to_dict_is_json_serialisable():
+    """SkillEnvelope.to_dict() must return plain JSON-serialisable types (no Path objects)."""
+    import json
+    import os
+    from pathlib import Path as P
+    from orchestrator.openclaw_skill_resolver import SkillEnvelope
+
+    envelope = SkillEnvelope(
+        skill_id="openclaw-status",
+        skill_path=P("/some/path/SKILL.md"),
+        args={"key": "value"},
+        agent_id="test-agent",
+        openclaw_home=P("/home/openclaw"),
+        parent_chain=["openclaw-new-agent"],
+    )
+    d = envelope.to_dict()
+    # Must not raise — all values must be JSON-serialisable.
+    serialised = json.dumps(d)
+    parsed = json.loads(serialised)
+    assert parsed["skill_id"] == "openclaw-status"
+    assert parsed["skill_path"] == os.path.normpath("/some/path/SKILL.md")
+    assert parsed["openclaw_home"] == os.path.normpath("/home/openclaw")
+    assert parsed["depth"] == 1
+
+
+# ── Hardware affinity re-check after Windows preemption ───────────────────────
+
+@pytest.mark.asyncio
+async def test_dispatch_raises_affinity_error_when_windows_preemption_blocked(
+    tmp_path, monkeypatch
+):
+    """check_affinity("win") is called before dispatching to the Windows coder.
+
+    When a Mac-local job is preempted by the Windows pool, the dispatcher must
+    re-run the hardware-affinity gate for platform="win".  If affinity blocks
+    the Windows platform, the job must fail with HardwareAffinityError rather
+    than silently proceeding with a platform-constrained model on the wrong host.
+    """
+    from unittest.mock import AsyncMock, patch
+    from utils.hardware_policy import HardwareAffinityError
+    import orchestrator.worker_registry as reg_mod
+
+    monkeypatch.setattr(
+        OrchestrationSupervisor,
+        "_get_reachable_windows_coder",
+        AsyncMock(return_value="http://192.168.254.103:1234"),
+    )
+    monkeypatch.setitem(reg_mod.WORKER_REGISTRY, "lmstudio-win", AsyncMock(
+        return_value={"backend": "lmstudio-win", "output": "should not reach here"}
+    ))
+
+    sup = _make_sup(tmp_path)
+    spec = JobSpec(
+        job_id=_new_id(),
+        intent="mac-only-task",
+        prompt="test",
+        backend_hint="lmstudio-mac",
+        metadata={"model": "mac-only-model"}
+    )
+
+    with patch(
+        "orchestrator.supervisor.check_affinity",
+        side_effect=HardwareAffinityError("mac-only-model is not allowed on win"),
+    ) as mock_check:
+        with pytest.raises(HardwareAffinityError, match="mac-only-model"):
+            await sup._dispatch(spec)
+
+    # check_affinity must have been called with the Windows platform
+    calls = [(c.args[1] if c.args else c.kwargs.get("platform")) for c in mock_check.call_args_list]
+    assert "win" in calls, f"check_affinity was not called with 'win'; calls: {calls}"
+    # check_affinity must have been called with the model
+    model_calls = [(c.args[0] if c.args else c.kwargs.get("model_id")) for c in mock_check.call_args_list]
+    assert "mac-only-model" in model_calls, f"check_affinity was not called with 'mac-only-model'; calls: {model_calls}"
+
+
+# ── task_type forwarded through the HTTP submission model ─────────────────────
+
+def test_job_submit_request_has_task_type_field():
+    """_JobSubmitRequest must expose task_type so skill routing works via the API."""
+    from orchestrator.fastapi_app import _JobSubmitRequest
+
+    req = _JobSubmitRequest(prompt="hello")
+    assert req.task_type == "", "default task_type must be empty string"
+
+    req2 = _JobSubmitRequest(prompt="spawn agent", task_type="new_agent")
+    assert req2.task_type == "new_agent"

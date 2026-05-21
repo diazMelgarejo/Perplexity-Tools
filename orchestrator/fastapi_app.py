@@ -613,6 +613,10 @@ class _JobSubmitRequest(BaseModel):
     backend_hint: Optional[str] = None
     constraints:  Dict[str, Any] = {}
     metadata:     Dict[str, Any] = {}
+    # Skill routing: maps to openclaw-skills SKILL_MAP when non-empty.
+    # Without this field the skill gate in _dispatch() is never triggered
+    # for API-submitted jobs.
+    task_type:    str = ""
 
 
 @app.post("/v1/jobs", tags=["supervisor"])
@@ -625,6 +629,7 @@ async def supervisor_submit_job(req: _JobSubmitRequest):
         backend_hint=req.backend_hint,
         constraints=req.constraints,
         metadata=req.metadata,
+        task_type=req.task_type,
     )
     try:
         job_id = await _get_supervisor().submit_job(spec)
