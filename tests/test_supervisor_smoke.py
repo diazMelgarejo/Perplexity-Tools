@@ -501,3 +501,62 @@ def test_skill_envelope_to_dict_is_json_serialisable():
     assert parsed["skill_path"] == "/some/path/SKILL.md"
     assert parsed["openclaw_home"] == "/home/openclaw"
     assert parsed["depth"] == 1
+
+
+# ── Hardware affinity re-check after Windows preemption ───────────────────────
+
+@pytest.mark.asyncio
+async def test_dispatch_raises_affinity_error_when_windows_preemption_blocked(
+    tmp_path, monkeypatch
+):
+    """check_affinity("win") is called before dispatching to the Windows coder.
+
+    When a Mac-local job is preempted by the Windows pool, the dispatcher must
+    re-run the hardware-affinity gate for platform="win".  If affinity blocks
+    the Windows platform, the job must fail with HardwareAffinityError rather
+    than silently proceeding with a platform-constrained model on the wrong host.
+    """
+    from unittest.mock import AsyncMock, patch
+    from utils.hardware_policy import HardwareAffinityError
+    import orchestrator.worker_registry as reg_mod
+
+    monkeypatch.setattr(
+        OrchestrationSupervisor,
+        "_get_reachable_windows_coder",
+        AsyncMock(return_value="http://192.168.254.103:1234"),
+    )
+    monkeypatch.setitem(reg_mod.WORKER_REGISTRY, "lmstudio-win", AsyncMock(
+        return_value={"backend": "lmstudio-win", "output": "should not reach here"}
+    ))
+
+    sup = _make_sup(tmp_path)
+    spec = JobSpec(
+        job_id=_new_id(),
+        intent="mac-only-task",
+        prompt="test",
+        backend_hint="lmstudio-mac",
+    )
+
+    with patch(
+        "orchestrator.supervisor.check_affinity",
+        side_effect=HardwareAffinityError("mac-only-task is not allowed on win"),
+    ) as mock_check:
+        with pytest.raises(HardwareAffinityError, match="mac-only-task"):
+            await sup._dispatch(spec)
+
+    # check_affinity must have been called with the Windows platform
+    calls = [(c.args[1] if c.args else c.kwargs.get("platform")) for c in mock_check.call_args_list]
+    assert "win" in calls, f"check_affinity was not called with 'win'; calls: {calls}"
+
+
+# ── task_type forwarded through the HTTP submission model ─────────────────────
+
+def test_job_submit_request_has_task_type_field():
+    """_JobSubmitRequest must expose task_type so skill routing works via the API."""
+    from orchestrator.fastapi_app import _JobSubmitRequest
+
+    req = _JobSubmitRequest(prompt="hello")
+    assert req.task_type == "", "default task_type must be empty string"
+
+    req2 = _JobSubmitRequest(prompt="spawn agent", task_type="new_agent")
+    assert req2.task_type == "new_agent"
