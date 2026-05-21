@@ -373,6 +373,11 @@ class OrchestrationSupervisor:
                 _log.info(
                     "windows_coder_pool: dispatching job %s to %s", spec.job_id, win_url
                 )
+                # Re-validate affinity for the Windows platform before preempting.
+                # submit_job validated against the original backend_hint; when a
+                # Mac-local job is preempted the effective platform changes to "win"
+                # so we must re-run the hardware-affinity gate (fail-closed).
+                check_affinity(spec.intent, "win")
                 worker_fn = WORKER_REGISTRY.get("lmstudio-win", WORKER_REGISTRY["echo"])
                 # Pass the already-probed endpoint so the worker skips its own health
                 # check and always hits the same host the dispatcher selected.
