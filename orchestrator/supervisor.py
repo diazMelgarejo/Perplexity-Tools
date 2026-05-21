@@ -204,7 +204,9 @@ class OrchestrationSupervisor:
         if spec.backend_hint and spec.backend_hint not in {"auto", "cloud", "freeform", "echo", None, ""}:
             platform = self._backend_to_platform(spec.backend_hint)
             # check_affinity raises HardwareAffinityError — fail-closed, no silent reroute
-            check_affinity(spec.intent, platform)
+            model_id = spec.metadata.get("model", "")
+            if model_id:
+                check_affinity(model_id, platform)
 
         self._append_event(spec.job_id, {"status": JobStatus.QUEUED, "spec": spec.to_dict()})
         task = asyncio.create_task(
@@ -377,7 +379,9 @@ class OrchestrationSupervisor:
                 # submit_job validated against the original backend_hint; when a
                 # Mac-local job is preempted the effective platform changes to "win"
                 # so we must re-run the hardware-affinity gate (fail-closed).
-                check_affinity(spec.intent, "win")
+                model_id = spec.metadata.get("model", "")
+                if model_id:
+                    check_affinity(model_id, "win")
                 worker_fn = WORKER_REGISTRY.get("lmstudio-win", WORKER_REGISTRY["echo"])
                 # Pass the already-probed endpoint so the worker skips its own health
                 # check and always hits the same host the dispatcher selected.

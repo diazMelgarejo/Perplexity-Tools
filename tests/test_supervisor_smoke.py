@@ -482,6 +482,7 @@ async def test_replay_preserves_task_type(tmp_path):
 def test_skill_envelope_to_dict_is_json_serialisable():
     """SkillEnvelope.to_dict() must return plain JSON-serialisable types (no Path objects)."""
     import json
+    import os
     from pathlib import Path as P
     from orchestrator.openclaw_skill_resolver import SkillEnvelope
 
@@ -498,8 +499,8 @@ def test_skill_envelope_to_dict_is_json_serialisable():
     serialised = json.dumps(d)
     parsed = json.loads(serialised)
     assert parsed["skill_id"] == "openclaw-status"
-    assert parsed["skill_path"] == "/some/path/SKILL.md"
-    assert parsed["openclaw_home"] == "/home/openclaw"
+    assert parsed["skill_path"] == os.path.normpath("/some/path/SKILL.md")
+    assert parsed["openclaw_home"] == os.path.normpath("/home/openclaw")
     assert parsed["depth"] == 1
 
 
@@ -535,18 +536,22 @@ async def test_dispatch_raises_affinity_error_when_windows_preemption_blocked(
         intent="mac-only-task",
         prompt="test",
         backend_hint="lmstudio-mac",
+        metadata={"model": "mac-only-model"}
     )
 
     with patch(
         "orchestrator.supervisor.check_affinity",
-        side_effect=HardwareAffinityError("mac-only-task is not allowed on win"),
+        side_effect=HardwareAffinityError("mac-only-model is not allowed on win"),
     ) as mock_check:
-        with pytest.raises(HardwareAffinityError, match="mac-only-task"):
+        with pytest.raises(HardwareAffinityError, match="mac-only-model"):
             await sup._dispatch(spec)
 
     # check_affinity must have been called with the Windows platform
     calls = [(c.args[1] if c.args else c.kwargs.get("platform")) for c in mock_check.call_args_list]
     assert "win" in calls, f"check_affinity was not called with 'win'; calls: {calls}"
+    # check_affinity must have been called with the model
+    model_calls = [(c.args[0] if c.args else c.kwargs.get("model_id")) for c in mock_check.call_args_list]
+    assert "mac-only-model" in model_calls, f"check_affinity was not called with 'mac-only-model'; calls: {model_calls}"
 
 
 # ── task_type forwarded through the HTTP submission model ─────────────────────
