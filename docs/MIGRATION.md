@@ -125,8 +125,8 @@ Current state: `lib/mcp/alphaclaw-mcp.js`, `lib/agents/local-agent-client.js`, `
 - [x] `packages/alphaclaw-adapter/scripts/smoke-test.js` — covers all adapter methods with colored PASS/FAIL output. Run: `SETUP_PASSWORD=<pass> node packages/alphaclaw-adapter/scripts/smoke-test.js`
 - [x] `packages/alphaclaw-adapter/package.json` — removed `"type": "module"` (CJS conflict fixed)
 - [x] PT can start/stop/query AlphaClaw via HTTP+CLI (no internal imports)
-- [ ] MCP server registered: `claude mcp add --transport stdio alphaclaw -- node packages/alphaclaw-adapter/src/mcp/server.js`
-- [ ] All 11 MCP tools smoke-tested against live AlphaClaw (run `smoke-test.js` when AC live)
+- [x] MCP server (legacy JS, 11 tools) — absorbed into Gate 2 TypeScript canonical; `packages/alphaclaw-adapter/src/mcp/server.js` **deleted** (2026-05-22)
+- [ ] All 14 MCP tools smoke-tested against live AlphaClaw (run `smoke-test.js` when AC live; then verify `packages/alphaclaw-mcp/build/index.js`)
 - [ ] `packages/local-agents/tests/client.test.js` passes (Vitest, fully offline)
 - [ ] `lib/mcp/` and `lib/agents/` in AlphaClaw tagged for removal (but NOT deleted yet)
 - [x] orama `start.sh` thinned to PT delegator — delegates via `python -m orchestrator.alphaclaw_manager --resolve --env-only`
@@ -134,13 +134,20 @@ Current state: `lib/mcp/alphaclaw-mcp.js`, `lib/agents/local-agent-client.js`, `
 
 ### Gate 2 — MCP Toolpack + Local Agents Fully Operational
 
-- [ ] `packages/local-agents/`: Ollama (127.0.0.1:11435, GLM-5.1:cloud → qwen3.5-local:latest) + LM Studio (Win GPU LAN IP — dynamic, read from `~/.openclaw/openclaw.json`, currently `.105:1234`) integration tests pass on Mac
+- [x] `packages/alphaclaw-mcp/src/index.ts` — **canonical MCP server v0.9.16.9, 14 tools** — Gate 0 JS (11 tools) fully absorbed + deleted; 2 P2 bugs fixed (array redaction, tailLogs bounds). Build: `cd packages/alphaclaw-mcp && npm run build`. Register: `claude mcp add --transport stdio alphaclaw -- node packages/alphaclaw-mcp/build/index.js`
+  - Gate 0 JS tools ported (all 11): `alphaclaw_status`, `alphaclaw_read_config`, `alphaclaw_list_providers`, `alphaclaw_tail_logs`, `alphaclaw_check_env`, `alphaclaw_build_ui`, `alphaclaw_run_tests`, `local_agent_health`, `local_agent_list_models`, `local_agent_ask_about_code`, `local_agent_propose_edit`
+  - TS-only additions (3): `alphaclaw_health`, `alphaclaw_login`, `alphaclaw_watchdog_logs`
+  - Full MCP annotations (`readOnlyHint`, `destructiveHint`, `idempotentHint`) on all tools
+  - `structuredContent` alongside `content[]` in all responses (MCP 2024-11-05)
+  - Branch: `2026-05-22-001-alphaclaw-mcp-gate2-14tools` → PR → target: `feat/openclaw-skills-spawn-helper`
+- [ ] Gate 2 TypeScript MCP smoke-tested against live AlphaClaw (verify all 14 tools respond)
+- [ ] `packages/local-agents/`: Ollama (127.0.0.1:11435, qwen3.5-local:latest) + LM Studio (Win GPU LAN IP, read from `~/.openclaw/openclaw.json`) integration tests pass on Mac
 - [ ] `packages/mcpb-agents/`: `ollama-agent.mcpb`, `lmstudio-agent.mcpb` scaffolded
 - [ ] PT's `orchestrator.py` wired as idempotent lifecycle entrypoint (old contract requirement)
 - [ ] LM Studio multi-model + AlphaClaw role-routing config workflow implemented
 - [ ] `orchestrator/autoresearch_bridge.py` gets staged progress hooks
 - [ ] Xcode integration scripts (`fix-xcode-claude.sh`) moved from AlphaClaw to PT — verified working
-- [ ] `lib/mcp/` and `lib/agents/` removed from AlphaClaw `feature/MacOS-post-install` (after Gate 2 green)
+- [ ] `lib/mcp/` and `lib/agents/` removed from AlphaClaw `feature/MacOS-post-install` (after Gate 2 green — separate AlphaClaw branch)
 
 ### Gate 3 — orama First Flow
 
