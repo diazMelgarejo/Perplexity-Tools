@@ -39,6 +39,12 @@ _GLM_ORCHESTRATOR_MODEL = "glm-5.1:cloud"
 _AUTORESEARCH_TASK_TYPES = {"autoresearch", "autoresearch-coder", "ml-experiment"}
 _LOCAL_RUNTIME_BACKENDS = {"ollama", "lm-studio", "mlx"}
 
+# GC guard for fire-and-forget startup tasks (D_GCG-1 from RAG backport 2026-05-22).
+# asyncio.create_task() only holds a *weak* reference; without a strong reference
+# in this set the task can be collected before it completes.  Each task discards
+# itself via done-callback so the set stays bounded.
+_bg_startup_tasks: set[asyncio.Task] = set()
+
 
 def _run_ecc_sync_bg() -> None:
     """Blocking ECC sync run in a worker thread so startup stays responsive."""
@@ -72,7 +78,10 @@ async def _resolve_routing_bg() -> None:
 async def _lifespan(app: FastAPI):
     # Both background tasks fire at t=0; neither blocks port binding.
     asyncio.get_event_loop().run_in_executor(None, _run_ecc_sync_bg)
-    asyncio.create_task(_resolve_routing_bg(), name="routing-bg")
+    # Hold a strong reference so GC cannot collect the task before it runs (D_GCG-1).
+    _routing_task = asyncio.create_task(_resolve_routing_bg(), name="routing-bg")
+    _bg_startup_tasks.add(_routing_task)
+    _routing_task.add_done_callback(_bg_startup_tasks.discard)
     yield
 
 
