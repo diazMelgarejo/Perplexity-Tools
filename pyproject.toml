@@ -42,6 +42,7 @@ dependencies = [
     "asyncio>=3.4.3",
     "httpx>=0.26.0",
     # Database and caching
+    "aiosqlite>=0.19",        # GossipBus async SQLite + FTS5 (RAG backport 2026-05-22)
     "redis>=5.0.1",
     "python-multipart>=0.0.9",
     "sqlalchemy>=2.0.25",
@@ -63,6 +64,13 @@ mlx = [
     # "mlx-lm>=0.9.0",
     "transformers>=4.37.0",
     "huggingface-hub>=0.20.0",
+]
+rag = [
+    # Optional vector store for GossipBus semantic search (RAG backport 2026-05-22).
+    # Install with: pip install perpetua-tools[rag]
+    # System falls back to FTS5-only keyword recall if not installed.
+    "lancedb>=0.6",
+    "pyarrow>=14.0",
 ]
 dev = [
     "pytest>=7.4",
