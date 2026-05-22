@@ -6,6 +6,33 @@
 
 ---
 
+## 2026-05-22 — RAG Memory Pipeline v1 Backport
+
+**Context:**
+Backported 4 RAG modules from the v2 design plan (`orama-system feat/rag-gstack-optional-v1`)
+into `diazMelgarejo/Perpetua-Tools` on branch `feat/rag-backport-v1`.
+
+**What shipped:**
+- `orchestrator/gossip_bus.py` — aiosqlite event log with FTS5 BM25 keyword search + `_pending_embeds` GC guard + `embed_status` column
+- `orchestrator/memory_embed.py` — httpx Ollama bge-m3 embed helper + `probe_embed_dim()` (Gap 1 fix)
+- `orchestrator/memory_store.py` — LanceDB `EmbeddingStore(dim=...)` + `get_lance_store()` singleton (Gap 1 fix)
+- `orchestrator/memory_rrf.py` — Pure Reciprocal Rank Fusion k=60 (zero deps)
+- 27 new tests across 3 test files; 345/345 passing, 0 regressions
+
+**Three gap fixes from external review (Antigravity Gemini 3.5):**
+1. Gap 1 (dim hardcode → schema mismatch): `probe_embed_dim()` + `EmbeddingStore(dim=...)` + env var override
+2. Gap 2 (FTS5 silent failure on special chars): `_sanitize_fts_query()` strips operators before MATCH
+3. Gap 3 (GC test was a tautology): real `asyncio.sleep` behavioral test verifies `_pending_embeds` lifecycle
+
+**Key invariant learned:**
+GossipBus in v1 (Perpetua-Tools) is a NEW capability — PT had no SQLite/event log before.
+The v2 design targets `oramasys/perpetua-core`; v1 backport adapts module paths to `orchestrator/`.
+NEVER write code to `oramasys/*` — plans only via `/docs/v2/` in v1 repos.
+
+**Release notes:** `docs/2026-05-22-rag-backport-v1-release-notes.md`
+
+---
+
 ## 2026-04-26 — Hardware Model Affinity Incident
 
 **Context:**
