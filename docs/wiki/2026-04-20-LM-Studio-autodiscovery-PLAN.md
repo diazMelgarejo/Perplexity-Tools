@@ -238,7 +238,7 @@ def test_no_write_when_hash_unchanged(tmp_path, monkeypatch):
 
 ```bash
 mkdir -p ~/.openclaw/scripts/tests
-cp "/Users/lawrencecyremelgarejo/Documents/Terminal xCode/claude/OpenClaw/docs/superpowers/plans/" ~/.openclaw/scripts/tests/  # copy test file after creation
+cp "<workspace>/docs/superpowers/plans/" ~/.openclaw/scripts/tests/  # copy test file after creation
 cd ~/.openclaw/scripts && python3 -m pytest tests/test_discover.py -v 2>&1 | head -20
 ```
 Expected: `ModuleNotFoundError: No module named 'discover'`
@@ -2006,18 +2006,18 @@ Win: ✅ 192.168.254.101:1234 — 5 models
 - [ ] **Step 15.3: Verify .env.lmstudio was written to local repos**
 
 ```bash
-cat "/Users/lawrencecyremelgarejo/Documents/Terminal xCode/claude/OpenClaw/perplexity-api/Perpetua-Tools/.env.lmstudio" 2>/dev/null || echo "Not found (expected if repo not cloned locally)"
+cat "<workspace>/Perpetua-Tools/.env.lmstudio" 2>/dev/null || echo "Not found (expected if repo not cloned locally)"
 ```
 
 - [ ] **Step 15.4: Test shell gate idempotency**
 
 ```bash
 # First call: may trigger Python discover
-bash "/Users/lawrencecyremelgarejo/Documents/Terminal xCode/claude/OpenClaw/perplexity-api/Perpetua-Tools/scripts/discover-lm-studio.sh" 2>&1
+bash "<workspace>/Perpetua-Tools/scripts/discover-lm-studio.sh" 2>&1
 
 # Wait 1 second, call again: should exit silently (gossip still fresh)
 sleep 1
-bash "/Users/lawrencecyremelgarejo/Documents/Terminal xCode/claude/OpenClaw/perplexity-api/Perpetua-Tools/scripts/discover-lm-studio.sh" 2>&1
+bash "<workspace>/Perpetua-Tools/scripts/discover-lm-studio.sh" 2>&1
 echo "Second call exit code: $?"
 ```
 
