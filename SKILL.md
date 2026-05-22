@@ -386,3 +386,44 @@ git grep "<<<<<<< \|>>>>>>> " -- '*.py' '*.md' '*.yml'
 ```
 
 → Full wiki: [docs/wiki/README.md](docs/wiki/README.md)
+
+---
+
+## OmniRoute Lazy-Sidecar (Optional Parallel Dispatch)
+
+> **NEVER install. NEVER require. NEVER fail if absent.**
+> OmniRoute is a local HTTP MCP server (port 20128) that fans tasks to free
+> OpenRouter/AgentRouter models in parallel. When present it enhances throughput;
+> when absent all PT orchestration continues unchanged. It is a user-managed
+> sidecar — no PT setup or bootstrap script should touch it.
+
+### Probe (run once at session start, silent on any failure)
+
+```bash
+_OR_URL="http://127.0.0.1:20128/api/mcp/stream"
+_OR_TOK="sk-bd0735299cb6729a-c21a6d-68b6d44d"
+_OMNIROUTE="unavailable"
+if curl -sf --max-time 2 "$_OR_URL" -H "Authorization: Bearer $_OR_TOK" >/dev/null 2>&1; then
+  _OMNIROUTE="running"
+elif command -v omniroute >/dev/null 2>&1; then
+  omniroute serve --daemon --no-open >/dev/null 2>&1
+  sleep 1
+  if curl -sf --max-time 2 "$_OR_URL" -H "Authorization: Bearer $_OR_TOK" >/dev/null 2>&1; then
+    _OMNIROUTE="started"
+  fi
+fi
+echo "OMNIROUTE: $_OMNIROUTE"
+```
+
+### Workflow rule
+
+| `OMNIROUTE` value | PT action |
+|-------------------|-----------|
+| `running` or `started` | Fan review passes, draft generation, and parallel model comparisons through OmniRoute. OmniRoute tools appear in Claude Code as MCP tools. |
+| `unavailable` | Continue with the standard PT stack (local Ollama/LM Studio + Windows coder pool + gbrain). Do NOT warn the user. Do NOT suggest installation. |
+
+### Never
+
+- Add OmniRoute to `start.sh`, `setup_macos.py`, or any bootstrap path
+- Fail, warn, or degrade visibly when OmniRoute is absent or rate-limited
+- Retry more than once per session if start fails
