@@ -1,13 +1,12 @@
 {
   "name": "@diazmelgarejo/alphaclaw-adapter",
   "version": "0.9.9.9",
-  "description": "AlphaClaw HTTP+CLI adapter and MCP server for Perpetua-Tools",
+  "description": "AlphaClaw HTTP+CLI adapter for Perpetua-Tools (MCP server → packages/alphaclaw-mcp)",
   "main": "src/index.js",
   "scripts": {
-    "test": "node --experimental-vm-modules ../../node_modules/.bin/vitest run",
-    "mcp": "node src/mcp/server.js"
+    "test": "node --experimental-vm-modules ../../node_modules/.bin/vitest run"
   },
-  "keywords": ["alphaclaw", "mcp", "adapter"],
+  "keywords": ["alphaclaw", "adapter"],
   "license": "MIT",
   "engines": { "node": ">=22.14.0" }
 }
