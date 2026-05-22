@@ -96,15 +96,13 @@ AlphaClaw (L1 — infra, CLI+HTTP only) → Perpetua-Tools (L2 — THIS REPO) �
 **PT drives AlphaClaw via:** REST endpoints documented in [`docs/adapter-interface-contract.md`](docs/adapter-interface-contract.md).
 **orama drives PT via:** `orchestrator/orama_bridge.py`.
 
-MCP server registration (Gate 2 — TypeScript, 14 tools, v0.9.16.9):
+MCP server registration (canonical — TypeScript, 14 tools, v0.9.16.9):
 ```bash
 cd packages/alphaclaw-mcp && npm run build && cd ../..
 claude mcp add --transport stdio alphaclaw -- node packages/alphaclaw-mcp/build/index.js
 ```
-Legacy JS fallback (Gate 1, 11 tools — until Gate 2 smoke-tested against live AlphaClaw):
-```bash
-claude mcp add --transport stdio alphaclaw -- node packages/alphaclaw-adapter/src/mcp/server.js
-```
+> Gate 0 JS server (`packages/alphaclaw-adapter/src/mcp/server.js`) has been absorbed and deleted.
+> `packages/alphaclaw-mcp` is now the single entry point for ALL AlphaClaw MCP functions.
 
 Full architecture: [`../orama-system/docs/2026-05-14--UNIFIED-ABSORPTION-PLAN.md`](../orama-system/docs/2026-05-14--UNIFIED-ABSORPTION-PLAN.md)
 As-built: [`../orama-system/docs/v2/`](../orama-system/docs/v2/)
