@@ -17,36 +17,55 @@ import orchestrator from "../../local-agents/src/orchestrator.js";
 
 /**
  * ὅραμα-system (orama-system) / Perpetua-Tools
- * AlphaClaw MCP Server — Gate 2 (v0.9.16.9)
+ * AlphaClaw MCP Server — canonical adapter + controller primitive (v0.9.16.9)
+ *
+ * This is the SINGLE authoritative MCP entry point for ALL AlphaClaw functions.
+ * It absorbs and supersedes:
+ *   - Gate 0: packages/alphaclaw-adapter/src/mcp/server.js  (11-tool JS copy, now deleted)
+ *   - Gate 2: previous 6-tool TS scaffold                   (expanded to 14 tools)
  *
  * All 14 tools are custom additions from diazMelgarejo/AlphaClaw
  * feature/MacOS-post-install (v0.9.16.9). None exist in upstream
- * chrysb/alphaclaw:main (v0.9.16).
+ * chrysb/alphaclaw:main (v0.9.16). This package drives AlphaClaw via its
+ * CLI/HTTP surface only — NEVER require()s AlphaClaw internals.
  *
- * Register:
+ * Register (Claude Code):
  *   claude mcp add --transport stdio alphaclaw \
  *     -- node packages/alphaclaw-mcp/build/index.js
  *
+ * Env:
+ *   ALPHACLAW_ROOT  — path to AlphaClaw project dir (default: ../AlphaClaw sibling)
+ *
  * Tools (14):
- *   alphaclaw_health             — ping gateway health (no auth)
- *   alphaclaw_login              — establish authenticated session
- *   alphaclaw_status             — running state + port
- *   alphaclaw_read_config        — openclaw.json redacted read
- *   alphaclaw_list_providers     — configured AI providers
+ *
+ *   HTTP/adapter tools (require running AlphaClaw gateway):
+ *   alphaclaw_health             — ping gateway health endpoint (no auth)
+ *   alphaclaw_login              — establish authenticated session via SETUP_PASSWORD
+ *   alphaclaw_status             — gateway running state + port (HTTP)
+ *   alphaclaw_watchdog_logs      — watchdog observability log pull (authenticated)
+ *
+ *   File-based tools (work without running gateway):
+ *   alphaclaw_read_config        — openclaw.json read, secrets redacted
+ *   alphaclaw_list_providers     — configured AI providers + model arrays
  *   alphaclaw_tail_logs          — last N lines of hourly-sync.log
- *   alphaclaw_check_env          — .env / SETUP_PASSWORD presence
- *   alphaclaw_build_ui           — npm run build:ui output
- *   alphaclaw_run_tests          — vitest suite (full|watchdog|coverage)
- *   alphaclaw_watchdog_logs      — watchdog observability log pull
+ *   alphaclaw_check_env          — .env / SETUP_PASSWORD presence check
+ *
+ *   Process-spawning tools (run in AlphaClaw project):
+ *   alphaclaw_build_ui           — npm run build:ui (esbuild ARM64 verification)
+ *   alphaclaw_run_tests          — vitest suite: full | watchdog | coverage
+ *
+ *   Local agent tools (Ollama / LM Studio delegation):
  *   local_agent_health           — Ollama + LM Studio reachability
  *   local_agent_list_models      — all models across local backends
- *   local_agent_ask_about_code   — delegate code question to local agent
- *   local_agent_propose_edit     — propose code patch (Claude reviews, NOT auto-applied)
+ *   local_agent_ask_about_code   — delegate code question to local agent (Claude reviews)
+ *   local_agent_propose_edit     — propose unified-diff patch (NOT auto-applied)
  *
- * References:
- *   Source JS:  packages/alphaclaw-adapter/src/mcp/server.js (Gate 0 copy, 11 tools)
- *   Upstream:   chrysb/alphaclaw:main — no MCP server exists there
- *   MIGRATION:  docs/MIGRATION.md Gate 2
+ * Cross-references:
+ *   Adapter HTTP client:  packages/alphaclaw-adapter/src/index.js
+ *   Local agent client:   packages/local-agents/src/orchestrator.js
+ *   Migration log:        docs/MIGRATION.md Gate 2
+ *   API surface:          docs/adapter-interface-contract.md
+ *   OpenClaw plan:        docs/plans/2026-05-22-alphaclaw-wiring-migration-v2-satellites.md
  */
 
 const __filename = fileURLToPath(import.meta.url);
@@ -60,16 +79,18 @@ const OPENCLAW_DIR = path.join(PROJECT_ROOT, ".openclaw");
 const CONFIG_PATH = path.join(OPENCLAW_DIR, "openclaw.json");
 const ENV_PATH = path.join(PROJECT_ROOT, ".env");
 
-// ─── Secret redactor (mirrors server.js) ─────────────────────────────────────
+// ─── Secret redactor ─────────────────────────────────────────────────────────
+// Preserves arrays (P2 fix: Object.fromEntries on an array produces numeric-keyed object)
 
 const REDACT_KEYS = /token|secret|password|key|auth|credential/i;
 
 function redact(obj: unknown): unknown {
+  if (Array.isArray(obj)) return obj.map(redact);
   if (!obj || typeof obj !== "object") return obj;
   return Object.fromEntries(
     Object.entries(obj as Record<string, unknown>).map(([k, v]) => [
       k,
-      REDACT_KEYS.test(k) ? "[REDACTED]" : typeof v === "object" ? redact(v) : v,
+      REDACT_KEYS.test(k) ? "[REDACTED]" : redact(v),
     ])
   );
 }
@@ -105,7 +126,9 @@ function listProviders(): unknown {
 }
 
 function tailLogs(lines = 50): unknown {
-  const cap = Math.min(lines, 200);
+  // P2 fix: guard against negative, NaN, or Infinity inputs
+  const raw = Number(lines);
+  const cap = Number.isFinite(raw) && raw > 0 ? Math.min(Math.floor(raw), 200) : 50;
   const logPath = path.join(OPENCLAW_DIR, "hourly-sync.log");
   if (!fs.existsSync(logPath)) {
     return { found: false, message: `Log not found at ${logPath}` };
@@ -138,6 +161,8 @@ function checkEnv(): unknown {
       : ".env exists but SETUP_PASSWORD is missing or empty",
   };
 }
+
+// ─── Process-spawning tool implementations ────────────────────────────────────
 
 function buildUi(): unknown {
   try {
@@ -190,6 +215,17 @@ function runTests(suite: "full" | "watchdog" | "coverage"): unknown {
   }
 }
 
+// ─── Helper: wrap any result with structuredContent ───────────────────────────
+// MCP 2024-11-05: content[] is required; structuredContent is optional but useful
+// for rich tool consumers. Mirrors Gate 0 JS pattern.
+
+function toolResult(result: unknown) {
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }],
+    structuredContent: result,
+  };
+}
+
 // ─── MCP server ───────────────────────────────────────────────────────────────
 
 const server = new Server(
@@ -199,40 +235,60 @@ const server = new Server(
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: [
+    // ── HTTP/adapter tools ──────────────────────────────────────────────────
     {
       name: "alphaclaw_health",
-      description: "Ping the AlphaClaw gateway health endpoint to check liveness. (No-Auth)",
+      description: "Ping the AlphaClaw gateway health endpoint to check liveness. Does not require authentication.",
       inputSchema: { type: "object", properties: {}, required: [] },
+      annotations: { readOnlyHint: true, destructiveHint: false },
     },
     {
       name: "alphaclaw_login",
-      description: "Login to the AlphaClaw gateway using SETUP_PASSWORD to establish an active session.",
+      description: "Login to the AlphaClaw gateway using SETUP_PASSWORD to establish an active session. Required before calling authenticated endpoints.",
       inputSchema: {
         type: "object",
         properties: {
-          password: { type: "string", description: "AlphaClaw Setup Password" },
+          password: { type: "string", description: "AlphaClaw SETUP_PASSWORD value" },
         },
         required: ["password"],
       },
+      annotations: { readOnlyHint: false, destructiveHint: false },
     },
     {
       name: "alphaclaw_status",
-      description: "Check whether the AlphaClaw server is running and on which port. Returns process info and port.",
+      description: "Fetch detailed metrics and stats about the running AlphaClaw gateway via HTTP. Requires gateway to be running.",
       inputSchema: { type: "object", properties: {}, required: [] },
+      annotations: { readOnlyHint: true, destructiveHint: false },
     },
     {
+      name: "alphaclaw_watchdog_logs",
+      description: "Pull recent watchdog observability logs from the AlphaClaw gateway. Requires authentication (call alphaclaw_login first).",
+      inputSchema: {
+        type: "object",
+        properties: {
+          lines: { type: "number", description: "Number of recent log rows to return (default 50, max 200)" },
+        },
+        required: [],
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false },
+    },
+
+    // ── File-based tools ────────────────────────────────────────────────────
+    {
       name: "alphaclaw_read_config",
-      description: "Read the current openclaw.json configuration. Secrets (tokens, passwords) are redacted. Returns provider list, channel config, and gateway settings.",
+      description: "Read the current openclaw.json configuration from disk. Secrets (tokens, passwords, keys) are redacted. Returns provider list, channel config, and gateway settings.",
       inputSchema: { type: "object", properties: {}, required: [] },
+      annotations: { readOnlyHint: true, destructiveHint: false },
     },
     {
       name: "alphaclaw_list_providers",
-      description: "List all AI model providers configured in openclaw.json with their model arrays and enabled state.",
+      description: "List all AI model providers configured in openclaw.json with their model arrays and enabled state. Works without a running gateway.",
       inputSchema: { type: "object", properties: {}, required: [] },
+      annotations: { readOnlyHint: true, destructiveHint: false },
     },
     {
       name: "alphaclaw_tail_logs",
-      description: "Return the last N lines from the AlphaClaw hourly-sync log or npm start output.",
+      description: "Return the last N lines from the AlphaClaw hourly-sync log. Works without a running gateway.",
       inputSchema: {
         type: "object",
         properties: {
@@ -240,20 +296,25 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         },
         required: [],
       },
+      annotations: { readOnlyHint: true, destructiveHint: false },
     },
     {
       name: "alphaclaw_check_env",
-      description: "Verify .env file exists and SETUP_PASSWORD is set. Returns status without revealing the password value.",
+      description: "Verify the .env file exists in the AlphaClaw project root and that SETUP_PASSWORD is set. Returns status without revealing the password value.",
       inputSchema: { type: "object", properties: {}, required: [] },
+      annotations: { readOnlyHint: true, destructiveHint: false },
     },
+
+    // ── Process-spawning tools ──────────────────────────────────────────────
     {
       name: "alphaclaw_build_ui",
-      description: "Run `npm run build:ui` in the AlphaClaw project and return stdout/stderr. Use to verify esbuild ARM64 compatibility.",
+      description: "Run `npm run build:ui` in the AlphaClaw project and return stdout/stderr. Use to verify esbuild ARM64 compatibility on macOS.",
       inputSchema: { type: "object", properties: {}, required: [] },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
     },
     {
       name: "alphaclaw_run_tests",
-      description: "Run AlphaClaw test suite. suite can be 'full' (all tests), 'watchdog' (14 tests), or 'coverage'. Returns pass/fail summary.",
+      description: "Run the AlphaClaw Vitest test suite and return pass/fail summary. suite: 'full' (all tests), 'watchdog' (14 watchdog tests), 'coverage' (with lcov).",
       inputSchema: {
         type: "object",
         properties: {
@@ -265,41 +326,35 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         },
         required: ["suite"],
       },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
     },
-    {
-      name: "alphaclaw_watchdog_logs",
-      description: "Pull recent watchdog observability logs from AlphaClaw. (Requires Auth)",
-      inputSchema: {
-        type: "object",
-        properties: {
-          lines: { type: "number", description: "Number of rows of recent logs." },
-        },
-        required: [],
-      },
-    },
+
+    // ── Local agent tools ───────────────────────────────────────────────────
     {
       name: "local_agent_health",
-      description: "Check which local AI agents (Ollama at 127.0.0.1:11435, LM Studio at 192.168.254.101:1234) are reachable and which models are loaded. Use before delegating tasks.",
+      description: "Check which local AI agents are reachable: Ollama at 127.0.0.1:11435 and LM Studio at the LAN Windows GPU host. Call before delegating tasks to verify availability.",
       inputSchema: { type: "object", properties: {}, required: [] },
+      annotations: { readOnlyHint: true, destructiveHint: false },
     },
     {
       name: "local_agent_list_models",
-      description: "List all AI models available across Ollama and LM Studio. Returns model names per backend.",
+      description: "List all AI models available across Ollama and LM Studio backends. Returns model names grouped by backend.",
       inputSchema: { type: "object", properties: {}, required: [] },
+      annotations: { readOnlyHint: true, destructiveHint: false },
     },
     {
       name: "local_agent_ask_about_code",
-      description: "Delegate a code question to a local AI agent (Ollama/LM Studio). Claude acts as planner/reviewer; the local agent does the reading. Good for: understanding a file, finding a bug location, summarizing logic.",
+      description: "Delegate a code question to a local AI agent (Ollama or LM Studio). The agent reads the specified file and answers. Claude acts as planner/reviewer; local agent does the heavy lifting. Good for: understanding a file, finding a bug location, summarizing logic.",
       inputSchema: {
         type: "object",
         properties: {
           filePath: {
             type: "string",
-            description: "Path to the file to analyze (relative to project root or absolute)",
+            description: "Path to the file to analyze (relative to AlphaClaw project root or absolute)",
           },
           question: {
             type: "string",
-            description: "What to ask about this file (e.g. 'Where is the SETUP_PASSWORD check?')",
+            description: "What to ask about the file (e.g. 'Where is the SETUP_PASSWORD check?')",
           },
           backend: {
             type: "string",
@@ -309,16 +364,17 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         },
         required: ["filePath", "question"],
       },
+      annotations: { readOnlyHint: true, destructiveHint: false },
     },
     {
       name: "local_agent_propose_edit",
-      description: "Ask a local AI agent to propose a code edit as a unified diff. The patch is returned for Claude to review — it is NOT applied automatically. Claude must validate before any changes are written.",
+      description: "Ask a local AI agent to propose a code edit as a unified diff. The patch is returned for Claude to review — it is NOT applied automatically. Claude must validate and approve before any write. Good for: targeted bug fixes, variable renames, adding error handling.",
       inputSchema: {
         type: "object",
         properties: {
           filePath: {
             type: "string",
-            description: "Path to the file to edit (relative to project root or absolute)",
+            description: "Path to the file to edit (relative to AlphaClaw project root or absolute)",
           },
           instruction: {
             type: "string",
@@ -332,6 +388,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         },
         required: ["filePath", "instruction"],
       },
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
     },
   ],
 }));
@@ -339,73 +396,57 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     switch (request.params.name) {
-      case "alphaclaw_health": {
-        const result = await adapter.health();
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
+      // ── HTTP/adapter tools ────────────────────────────────────────────────
+      case "alphaclaw_health":
+        return toolResult(await adapter.health());
 
       case "alphaclaw_login": {
         const password = String(request.params.arguments?.password ?? "");
         if (!password) throw new McpError(ErrorCode.InvalidParams, "Password required.");
-        const result = await adapter.login(password);
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        return toolResult(await adapter.login(password));
       }
 
-      case "alphaclaw_status": {
-        const result = await adapter.status();
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+      case "alphaclaw_status":
+        return toolResult(await adapter.status());
+
+      case "alphaclaw_watchdog_logs": {
+        const lines = request.params.arguments?.lines ? Number(request.params.arguments.lines) : 50;
+        return toolResult(await adapter.watchdogLogs(lines));
       }
 
-      case "alphaclaw_read_config": {
-        const result = readConfig();
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
+      // ── File-based tools ──────────────────────────────────────────────────
+      case "alphaclaw_read_config":
+        return toolResult(readConfig());
 
-      case "alphaclaw_list_providers": {
-        const result = listProviders();
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
+      case "alphaclaw_list_providers":
+        return toolResult(listProviders());
 
       case "alphaclaw_tail_logs": {
         const lines = request.params.arguments?.lines ? Number(request.params.arguments.lines) : 50;
-        const result = tailLogs(lines);
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        return toolResult(tailLogs(lines));
       }
 
-      case "alphaclaw_check_env": {
-        const result = checkEnv();
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
+      case "alphaclaw_check_env":
+        return toolResult(checkEnv());
 
-      case "alphaclaw_build_ui": {
-        const result = buildUi();
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
+      // ── Process-spawning tools ────────────────────────────────────────────
+      case "alphaclaw_build_ui":
+        return toolResult(buildUi());
 
       case "alphaclaw_run_tests": {
         const suite = String(request.params.arguments?.suite ?? "full") as
           | "full"
           | "watchdog"
           | "coverage";
-        const result = runTests(suite);
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        return toolResult(runTests(suite));
       }
 
-      case "alphaclaw_watchdog_logs": {
-        const lines = request.params.arguments?.lines ? Number(request.params.arguments.lines) : 50;
-        const result = await adapter.watchdogLogs(lines);
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
+      // ── Local agent tools ─────────────────────────────────────────────────
+      case "local_agent_health":
+        return toolResult(await orchestrator.checkAgentHealth());
 
-      case "local_agent_health": {
-        const result = await orchestrator.checkAgentHealth();
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
-
-      case "local_agent_list_models": {
-        const result = await orchestrator.listLocalModels();
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
-      }
+      case "local_agent_list_models":
+        return toolResult(await orchestrator.listLocalModels());
 
       case "local_agent_ask_about_code": {
         const filePath = String(request.params.arguments?.filePath ?? "");
@@ -413,8 +454,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const backend = request.params.arguments?.backend
           ? String(request.params.arguments.backend)
           : undefined;
-        const result = await orchestrator.delegateCodeQuestion({ filePath, question, backend });
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        return toolResult(await orchestrator.delegateCodeQuestion({ filePath, question, backend }));
       }
 
       case "local_agent_propose_edit": {
@@ -423,8 +463,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const backend = request.params.arguments?.backend
           ? String(request.params.arguments.backend)
           : undefined;
-        const result = await orchestrator.delegateCodeEdit({ filePath, instruction, backend });
-        return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+        return toolResult(await orchestrator.delegateCodeEdit({ filePath, instruction, backend }));
       }
 
       default:
@@ -432,7 +471,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
   } catch (err: any) {
     return {
-      content: [{ type: "text", text: `Error calling tool: ${err.message}` }],
+      content: [{ type: "text" as const, text: `Error: ${err.message}` }],
       isError: true,
     };
   }
@@ -441,7 +480,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function run() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("AlphaClaw MCP Server v0.9.16.9 started on stdio (14 tools)");
+  console.error("AlphaClaw MCP Server v0.9.16.9 started on stdio (14 tools — canonical)");
 }
 
 run().catch((error) => {
