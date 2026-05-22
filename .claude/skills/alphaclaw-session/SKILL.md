@@ -36,7 +36,7 @@ Encodes durable knowledge about the AlphaClaw/OpenClaw environment so you never 
 | Win model ID | `qwen3.5-27b-claude-4.6-opus-reasoning-distilled-v2` | **all lowercase** |
 | OpenClaw gateway | `http://localhost:18789` | loopback only |
 | Bearer token | `d3aea7fea7ba51a1dff69b84662ae97d53dd3c2bcb182781` | from openclaw.json |
-| openclaw CLI Node | `/Users/lawrencecyremelgarejo/.nvm/versions/node/v24.14.1/bin/openclaw` | Node v14 is too old |
+| openclaw CLI Node | `~/.nvm/versions/node/v24.14.1/bin/openclaw` | Node v14 is too old |
 | Agent timeout | 300s (300000ms) | reasoning models need long budget |
 | Mac thinking | `thinkingDefault: "off"` in openclaw.json agents | correct field (NOT `thinkingLevel`/`modelParameters` — schema rejects those) |
 | Win thinking | leave as-is | Win 27B returns `reasoning_content`; `text` often empty — check both |
@@ -52,8 +52,8 @@ python3 ~/.openclaw/scripts/discover.py --cached # skip if gossip is < 5 min old
 python3 ~/.openclaw/scripts/discover.py --status # read state without probing
 
 # 2. Run an agent turn (use full openclaw path — Node v24 required)
-/Users/lawrencecyremelgarejo/.nvm/versions/node/v24.14.1/bin/node \
-  /Users/lawrencecyremelgarejo/.nvm/versions/node/v24.14.1/bin/openclaw \
+~/.nvm/versions/node/v24.14.1/bin/node \
+  ~/.nvm/versions/node/v24.14.1/bin/openclaw \
   agent --agent main --session-id test-$(date +%s) \
   --message "status check" --thinking off --json --timeout 300
 
@@ -254,8 +254,8 @@ Use `--thinking off` to request no thinking (not always honored by embedding run
 ### Dispatching agents
 
 ```bash
-NODE24=/Users/lawrencecyremelgarejo/.nvm/versions/node/v24.14.1/bin/node
-OC=/Users/lawrencecyremelgarejo/.nvm/versions/node/v24.14.1/bin/openclaw
+NODE24=~/.nvm/versions/node/v24.14.1/bin/node
+OC=~/.nvm/versions/node/v24.14.1/bin/openclaw
 
 # Single agent turn (fresh session, thinking off, 300s budget)
 $NODE24 $OC agent \
