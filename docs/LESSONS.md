@@ -513,7 +513,7 @@ spec.loader.exec_module(mod)       # otherwise dataclass field annotations fail
 
 - **openclaw CLI requires Node.js ≥ v22**. System default (v14.21.3) fails instantly.
   Fix: `export PATH=$HOME/.nvm/versions/node/v24.14.1/bin:$PATH` or use full path.
-  Installed at: `/Users/lawrencecyremelgarejo/.nvm/versions/node/v24.14.1/bin/openclaw`
+  Installed at: `~/.nvm/versions/node/v24.14.1/bin/openclaw`
 
 - **Both LM Studio nodes load the same models** (MLX 9B and GGUF 27B):
   - Mac `localhost:1234`: `qwen3.5-9b-mlx` (ctx=56384, MLX), `qwen3.5-27b-...` (ctx=131072, GGUF)
