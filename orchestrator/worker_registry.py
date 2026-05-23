@@ -52,6 +52,9 @@ def _get_constraint(spec: Any, key: str, default: Any = None) -> Any:
 #
 # Mac fallback chain: "ollama" → "lmstudio-mac" (only when Ollama port 11434 unreachable).
 # All candidates pass through policy.validate_or_raise() — fail-closed on affinity.
+#
+# ANTI-MIRROR (lmstudio-mac): never POST model="". LM Studio would use whatever is
+# loaded locally (often a windows_only LAN proxy). Use utils.dispatch_models.
 
 ROLE_BACKEND_MAP: Dict[Tuple[str, Optional[str]], Tuple[str, str]] = {
     # (role, specialization)                   → (backend,        model)
@@ -146,8 +149,16 @@ async def _ollama_mac_worker(spec: Any) -> dict:
     """
     import httpx
 
+    from utils.dispatch_models import resolve_dispatch_model
+
     endpoint = "http://localhost:11434/api/chat"
-    model = getattr(spec, "metadata", {}).get("model", "qwen3:8b")
+    metadata = getattr(spec, "metadata", {}) or {}
+    model = resolve_dispatch_model(
+        "ollama-mac",
+        metadata,
+        role=getattr(spec, "role", None),
+        specialization=getattr(spec, "specialization", None),
+    )
     prompt = getattr(spec, "prompt", "")
     timeout = float(_get_constraint(spec, "max_seconds", 120))
 
@@ -174,12 +185,23 @@ async def _lmstudio_mac_worker(spec: Any) -> dict:
 
     Default endpoint: http://localhost:1234/v1/chat/completions
     Use this for Mac-tier local models (e.g., qwen3.5-9b-mlx).
+
+    Anti-mirror: always sends an explicit ``model`` id (never ``""``). See
+    ``utils.dispatch_models`` and ``config/model_hardware_policy.yml``.
     This is a thinking model — set max_tokens ≥ 500 in constraints.
     """
     import httpx
 
+    from utils.dispatch_models import resolve_dispatch_model
+
     endpoint = "http://localhost:1234/v1/chat/completions"
-    model = getattr(spec, "metadata", {}).get("model", "")
+    metadata = getattr(spec, "metadata", {}) or {}
+    model = resolve_dispatch_model(
+        "lmstudio-mac",
+        metadata,
+        role=getattr(spec, "role", None),
+        specialization=getattr(spec, "specialization", None),
+    )
     prompt = getattr(spec, "prompt", "")
     timeout = float(_get_constraint(spec, "max_seconds", 120))
     max_tokens = int(_get_constraint(spec, "max_tokens", 2048))
@@ -342,8 +364,16 @@ async def _lmstudio_win_worker(spec: Any) -> dict:
 
     _log = logging.getLogger(__name__)
 
+    from utils.dispatch_models import resolve_dispatch_model
+
     metadata: dict = getattr(spec, "metadata", {}) or {}
-    model = metadata.get("model", "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2")
+    model = resolve_dispatch_model(
+        "lmstudio-win",
+        metadata,
+        role=getattr(spec, "role", None),
+        specialization=getattr(spec, "specialization", None),
+        target_platform="win",
+    )
     prompt = getattr(spec, "prompt", "")
     timeout = float(_get_constraint(spec, "max_seconds", 300))
     max_tokens = int(_get_constraint(spec, "max_tokens", 4096))
