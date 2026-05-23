@@ -24,6 +24,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from utils.dispatch_models import backend_requires_dispatch_model
 from utils.hardware_policy import HardwareAffinityError, check_affinity
 
 
@@ -200,13 +201,13 @@ class OrchestrationSupervisor:
             raise RuntimeError(
                 f"Thread ceiling {self.MAX_THREADS} reached; cannot accept new job."
             )
-        # Hardware affinity check BEFORE any LLM call (Anthropic Pattern 4)
-        if spec.backend_hint and spec.backend_hint not in {"auto", "cloud", "freeform", "echo", None, ""}:
-            platform = self._backend_to_platform(spec.backend_hint)
-            # check_affinity raises HardwareAffinityError — fail-closed, no silent reroute
-            model_id = spec.metadata.get("model", "")
-            if model_id:
-                check_affinity(model_id, platform)
+        # Hardware affinity + explicit model ids BEFORE any LLM call (Anthropic Pattern 4).
+        # Uses resolved backend (not only backend_hint) so role/intent paths cannot skip policy.
+        from orchestrator.worker_registry import resolve_backend
+
+        backend = resolve_backend(spec)
+        if backend_requires_dispatch_model(backend):
+            spec = self._prepare_spec_for_inference(spec, backend)
 
         self._append_event(spec.job_id, {"status": JobStatus.QUEUED, "spec": spec.to_dict()})
         task = asyncio.create_task(
@@ -375,18 +376,18 @@ class OrchestrationSupervisor:
                 _log.info(
                     "windows_coder_pool: dispatching job %s to %s", spec.job_id, win_url
                 )
-                # Re-validate affinity for the Windows platform before preempting.
-                # submit_job validated against the original backend_hint; when a
-                # Mac-local job is preempted the effective platform changes to "win"
-                # so we must re-run the hardware-affinity gate (fail-closed).
-                model_id = spec.metadata.get("model", "")
-                if model_id:
-                    check_affinity(model_id, "win")
+                # Re-validate affinity for Windows + inject explicit model id (never "").
+                spec_for_win = self._prepare_spec_for_inference(
+                    spec, backend, affinity_platform="win"
+                )
                 worker_fn = WORKER_REGISTRY.get("lmstudio-win", WORKER_REGISTRY["echo"])
-                # Pass the already-probed endpoint so the worker skips its own health
-                # check and always hits the same host the dispatcher selected.
-                spec_for_win = spec.model_copy(
-                    update={"metadata": {**(spec.metadata or {}), "_win_endpoint": win_url}}
+                spec_for_win = spec_for_win.model_copy(
+                    update={
+                        "metadata": {
+                            **(spec_for_win.metadata or {}),
+                            "_win_endpoint": win_url,
+                        }
+                    }
                 )
                 result = await worker_fn(spec_for_win)
                 if backend in _MAC_LOCAL_BACKENDS:
@@ -399,13 +400,8 @@ class OrchestrationSupervisor:
 
         # 4. Normal backend routing (resolve_backend already called above)
         worker_fn = WORKER_REGISTRY.get(backend, WORKER_REGISTRY["echo"])
-        # Affinity gate for the effective backend (Mac fallthrough when Win pool is
-        # down, explicit lmstudio-win without a pre-probed endpoint, etc.).
-        # submit_job only validates explicit backend_hint; this path must enforce
-        # policy for resolved backends too so windows_only models never hit Mac Ollama.
-        model_id = (spec.metadata or {}).get("model", "")
-        if model_id:
-            check_affinity(model_id, self._backend_to_platform(backend))
+        if backend_requires_dispatch_model(backend):
+            spec = self._prepare_spec_for_inference(spec, backend)
         return await worker_fn(spec)
 
     @staticmethod
@@ -488,6 +484,43 @@ class OrchestrationSupervisor:
 
     def _append_event(self, job_id: str, event: dict) -> None:
         _append_event(self._jobs_file, job_id, event)
+
+    @staticmethod
+    def _prepare_spec_for_inference(
+        spec: JobSpec,
+        backend: str,
+        *,
+        affinity_platform: str | None = None,
+    ) -> JobSpec:
+        """Resolve explicit model id, run affinity gate, inject metadata.model when missing.
+
+        lmstudio-mac must never rely on LM Studio's "loaded model" fallback (anti-mirror).
+        """
+        if not backend_requires_dispatch_model(backend):
+            return spec
+
+        from utils.dispatch_models import ensure_metadata_model, resolve_dispatch_model
+
+        plat = affinity_platform or OrchestrationSupervisor._backend_to_platform(backend)
+        win_target = plat if plat == "win" else None
+        meta = ensure_metadata_model(
+            backend,
+            spec.metadata or {},
+            role=spec.role,
+            specialization=spec.specialization,
+            target_platform=win_target,
+        )
+        model_id = resolve_dispatch_model(
+            backend,
+            meta,
+            role=spec.role,
+            specialization=spec.specialization,
+            target_platform=win_target,
+        )
+        check_affinity(model_id, plat)
+        if meta != (spec.metadata or {}):
+            return spec.model_copy(update={"metadata": meta})
+        return spec
 
     @staticmethod
     def _backend_to_platform(backend_hint: str) -> str:
