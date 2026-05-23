@@ -507,6 +507,48 @@ def test_skill_envelope_to_dict_is_json_serialisable():
 # ── Hardware affinity re-check after Windows preemption ───────────────────────
 
 @pytest.mark.asyncio
+async def test_dispatch_raises_affinity_error_on_mac_fallthrough_with_windows_only_model(
+    tmp_path, monkeypatch,
+):
+    """When the Windows pool is down, Mac-local routing must still fail-closed.
+
+    A freeform job with a windows_only model in metadata must not reach the Mac
+    Ollama worker when WIN_CODER_ENDPOINTS is unreachable — that path caused GPU
+    OOM / double-barrel risk (policy: config/model_hardware_policy.yml).
+    """
+    from unittest.mock import AsyncMock
+
+    import orchestrator.worker_registry as reg_mod
+    from utils.hardware_policy import HardwareAffinityError
+
+    monkeypatch.setattr(
+        OrchestrationSupervisor,
+        "_get_reachable_windows_coder",
+        AsyncMock(return_value=None),
+    )
+    ollama_called: dict[str, bool] = {"value": False}
+
+    async def _ollama_should_not_run(_spec):
+        ollama_called["value"] = True
+        return {"backend": "ollama-mac", "output": "must not run"}
+
+    monkeypatch.setitem(reg_mod.WORKER_REGISTRY, "ollama", _ollama_should_not_run)
+
+    sup = _make_sup(tmp_path)
+    spec = JobSpec(
+        job_id=_new_id(),
+        intent="freeform",
+        prompt="run heavy model",
+        metadata={"model": "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2"},
+    )
+
+    with pytest.raises(HardwareAffinityError, match="NEVER_MAC"):
+        await sup._dispatch(spec)
+
+    assert ollama_called["value"] is False
+
+
+@pytest.mark.asyncio
 async def test_dispatch_raises_affinity_error_when_windows_preemption_blocked(
     tmp_path, monkeypatch
 ):
