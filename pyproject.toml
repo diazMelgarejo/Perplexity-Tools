@@ -44,7 +44,7 @@ dependencies = [
     # Database and caching
     "aiosqlite>=0.19",        # GossipBus async SQLite + FTS5 (RAG backport 2026-05-22)
     "redis>=5.0.1",
-    "python-multipart>=0.0.9",
+    "python-multipart>=0.0.27",
     "sqlalchemy>=2.0.25",
     # Data validation
     "pydantic>=2.6.0",
