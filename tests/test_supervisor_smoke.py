@@ -279,6 +279,51 @@ async def test_dispatch_prefers_windows_coder_when_reachable(tmp_path, monkeypat
 
 
 @pytest.mark.asyncio
+async def test_submit_then_win_preempt_uses_windows_model_not_mac_default(
+    tmp_path, monkeypatch,
+):
+    """submit_job affinity must not pin Mac metadata before Windows preemption.
+
+    Injecting metadata.model at QUEUED time left the Windows coder pool posting
+    Qwen3.5-9B-MLX-4bit instead of the Windows coder default.
+    """
+    from unittest.mock import AsyncMock
+
+    import orchestrator.worker_registry as reg_mod
+    from utils.dispatch_models import lmstudio_win_default_model, mac_lmstudio_default_model
+
+    monkeypatch.setattr(
+        OrchestrationSupervisor,
+        "_get_reachable_windows_coder",
+        AsyncMock(return_value="http://192.168.254.103:1234"),
+    )
+    captured: dict[str, str] = {}
+
+    async def fake_win_worker(spec):
+        captured["model"] = (spec.metadata or {}).get("model", "")
+        return {"backend": "lmstudio-win", "output": "ok"}
+
+    monkeypatch.setitem(reg_mod.WORKER_REGISTRY, "lmstudio-win", fake_win_worker)
+
+    sup = _make_sup(tmp_path)
+    spec = JobSpec(
+        job_id=_new_id(),
+        intent="code review",
+        prompt="review",
+        backend_hint="lmstudio-mac",
+        metadata={},
+    )
+    await sup.submit_job(spec)
+    assert (spec.metadata or {}).get("model") in (None, ""), (
+        "submit_job must not inject Mac model before dispatch"
+    )
+
+    await sup._active[spec.job_id]
+    assert captured["model"] == lmstudio_win_default_model()
+    assert captured["model"] != mac_lmstudio_default_model()
+
+
+@pytest.mark.asyncio
 async def test_dispatch_injects_win_endpoint_for_explicit_lmstudio_win(tmp_path, monkeypatch):
     """Explicit lmstudio-win routes (via role map / backend_hint) get _win_endpoint
     injected from WIN_CODER_ENDPOINTS, not just Mac-local preemption routes.
