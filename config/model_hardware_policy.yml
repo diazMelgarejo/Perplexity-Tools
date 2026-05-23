@@ -24,6 +24,13 @@
 # The policy below uses PROVIDER NAME (lmstudio-mac / lmstudio-win) as the
 # routing key, enforced by selector.py's _TIER_HOSTS + _MIRROR_BACKENDS.
 #
+# ── Anti-mirror dispatch rule (2026-05-23) ───────────────────────────────────
+# NEVER POST model="" to lmstudio-mac (or any inference worker). An empty model
+# lets LM Studio use whatever is *loaded* locally — often a windows_only LAN proxy.
+# All dispatch paths MUST set an explicit model id via utils.dispatch_models
+# (default for lmstudio-mac: Qwen3.5-9B-MLX-4bit / MAC_LMS_MODEL). Enforcement:
+# orchestrator/supervisor.py, orchestrator/worker_registry.py, agent_launcher.py.
+#
 # ── v1.2+ note ───────────────────────────────────────────────────────────────
 # When RTX 5080 arrives: add affinity "win-rtx5080" alongside "win-rtx3080"
 # in agent_registry.json. Update this file if that machine gets exclusive models.

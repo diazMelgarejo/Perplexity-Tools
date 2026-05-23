@@ -504,6 +504,76 @@ def test_skill_envelope_to_dict_is_json_serialisable():
     assert parsed["depth"] == 1
 
 
+# ── Anti-mirror: lmstudio-mac must use explicit default model ─────────────────
+
+@pytest.mark.asyncio
+async def test_dispatch_lmstudio_mac_empty_metadata_uses_explicit_default_not_loaded_model(
+    tmp_path, monkeypatch,
+):
+    """lmstudio-mac with empty metadata must inject MAC_LMS default before the worker runs."""
+    from unittest.mock import AsyncMock
+
+    import orchestrator.worker_registry as reg_mod
+    from utils.dispatch_models import mac_lmstudio_default_model
+
+    monkeypatch.setattr(
+        OrchestrationSupervisor,
+        "_get_reachable_windows_coder",
+        AsyncMock(return_value=None),
+    )
+    captured: dict[str, str] = {}
+
+    async def _capture_mac_worker(spec):
+        captured["model"] = (spec.metadata or {}).get("model", "")
+        return {"backend": "lmstudio-mac", "output": "ok"}
+
+    monkeypatch.setitem(reg_mod.WORKER_REGISTRY, "lmstudio-mac", _capture_mac_worker)
+
+    sup = _make_sup(tmp_path)
+    spec = JobSpec(
+        job_id=_new_id(),
+        intent="freeform",
+        prompt="mac mlx task",
+        backend_hint="lmstudio-mac",
+        metadata={},
+    )
+    await sup._dispatch(spec)
+    assert captured["model"] == mac_lmstudio_default_model()
+    assert captured["model"].strip() != ""
+
+
+@pytest.mark.asyncio
+async def test_dispatch_lmstudio_mac_rejects_windows_only_model_in_metadata(
+    tmp_path, monkeypatch,
+):
+    from unittest.mock import AsyncMock
+
+    import orchestrator.worker_registry as reg_mod
+    from utils.hardware_policy import HardwareAffinityError
+
+    monkeypatch.setattr(
+        OrchestrationSupervisor,
+        "_get_reachable_windows_coder",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setitem(
+        reg_mod.WORKER_REGISTRY,
+        "lmstudio-mac",
+        AsyncMock(return_value={"backend": "lmstudio-mac", "output": "must not run"}),
+    )
+
+    sup = _make_sup(tmp_path)
+    spec = JobSpec(
+        job_id=_new_id(),
+        intent="freeform",
+        prompt="illegal on mac mirror",
+        backend_hint="lmstudio-mac",
+        metadata={"model": "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2"},
+    )
+    with pytest.raises(HardwareAffinityError, match="NEVER_MAC"):
+        await sup._dispatch(spec)
+
+
 # ── Hardware affinity re-check after Windows preemption ───────────────────────
 
 @pytest.mark.asyncio
