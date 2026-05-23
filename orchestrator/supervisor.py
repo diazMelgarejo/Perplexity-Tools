@@ -399,6 +399,13 @@ class OrchestrationSupervisor:
 
         # 4. Normal backend routing (resolve_backend already called above)
         worker_fn = WORKER_REGISTRY.get(backend, WORKER_REGISTRY["echo"])
+        # Affinity gate for the effective backend (Mac fallthrough when Win pool is
+        # down, explicit lmstudio-win without a pre-probed endpoint, etc.).
+        # submit_job only validates explicit backend_hint; this path must enforce
+        # policy for resolved backends too so windows_only models never hit Mac Ollama.
+        model_id = (spec.metadata or {}).get("model", "")
+        if model_id:
+            check_affinity(model_id, self._backend_to_platform(backend))
         return await worker_fn(spec)
 
     @staticmethod
