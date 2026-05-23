@@ -75,6 +75,7 @@ All other docs cite this file — do not duplicate policy in markdown.
 |-------|-----------|--------|
 | L1 | `discover.py` | Filters model lists before writing `openclaw.json` |
 | L2 | `agent_launcher.py`, `alphaclaw_manager.py` | Raises `HardwareAffinityError` before spawn |
+| L2b | `orchestrator/supervisor.py`, `worker_registry.py`, `utils/dispatch_models.py` | Injects explicit model + affinity before inference |
 | L3 | `api_server.py` | Returns HTTP 400 `HARDWARE_MISMATCH` |
 
 ## Rules for AI Agents
@@ -83,6 +84,7 @@ All other docs cite this file — do not duplicate policy in markdown.
 2. **Do not use hallucinated model IDs**: `qwen3-coder-14b` and `gemma4:e4b` do NOT exist in this system.
 3. **Case-insensitive matching**: policy enforcement is case-insensitive.
 4. **Three-layer enforcement**: if one layer fails silently, the next catches it.
+5. **Anti-mirror — explicit model ids only**: Never dispatch to `lmstudio-mac` with `metadata.model` empty or `model: ""` in the HTTP payload. LM Studio treats an empty model as “use whatever is loaded,” which may be a `windows_only` GGUF proxied from Win. Always call `utils.dispatch_models.resolve_dispatch_model()` (supervisor and workers already do). Default Mac LM Studio model: `Qwen3.5-9B-MLX-4bit` (`MAC_LMS_MODEL` env).
 
 ## Adding a New Model
 
