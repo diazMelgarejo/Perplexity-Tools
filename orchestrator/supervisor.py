@@ -207,7 +207,19 @@ class OrchestrationSupervisor:
 
         backend = resolve_backend(spec)
         if backend_requires_dispatch_model(backend):
-            spec = self._prepare_spec_for_inference(spec, backend)
+            # Affinity gate only — do not inject metadata.model here. Injection at
+            # QUEUED time pins Mac defaults so Windows pool preemption would POST the
+            # wrong model id to lmstudio-win (see test_submit_then_win_preempt_*).
+            from utils.dispatch_models import resolve_dispatch_model
+
+            plat = OrchestrationSupervisor._backend_to_platform(backend)
+            model_id = resolve_dispatch_model(
+                backend,
+                spec.metadata or {},
+                role=spec.role,
+                specialization=spec.specialization,
+            )
+            check_affinity(model_id, plat)
 
         self._append_event(spec.job_id, {"status": JobStatus.QUEUED, "spec": spec.to_dict()})
         task = asyncio.create_task(
@@ -378,7 +390,7 @@ class OrchestrationSupervisor:
                 )
                 # Re-validate affinity for Windows + inject explicit model id (never "").
                 spec_for_win = self._prepare_spec_for_inference(
-                    spec, backend, affinity_platform="win"
+                    spec, "lmstudio-win", affinity_platform="win"
                 )
                 worker_fn = WORKER_REGISTRY.get("lmstudio-win", WORKER_REGISTRY["echo"])
                 spec_for_win = spec_for_win.model_copy(
