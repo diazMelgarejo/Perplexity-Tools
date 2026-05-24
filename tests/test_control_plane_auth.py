@@ -12,6 +12,27 @@ from orchestrator.control_plane_auth import (
 from orchestrator.fastapi_app import app
 
 
+def test_user_input_next_requires_token_when_enforced(monkeypatch):
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "0")
+    monkeypatch.setenv("ORAMA_CONTROL_PLANE_TOKEN", "pt-test-token")
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        client.post(
+            "/user-input",
+            json={"message": "steal-me"},
+            headers={"Authorization": "Bearer pt-test-token"},
+        )
+        denied = client.get("/user-input/next")
+        allowed = client.get(
+            "/user-input/next",
+            headers={"Authorization": "Bearer pt-test-token"},
+        )
+
+    assert denied.status_code == 401
+    assert allowed.status_code == 200
+    assert allowed.json().get("message", {}).get("message") == "steal-me"
+
+
 def test_user_input_requires_token_when_enforced(monkeypatch):
     monkeypatch.setenv("ORAMA_INSECURE_DEV", "0")
     monkeypatch.setenv("ORAMA_CONTROL_PLANE_TOKEN", "pt-test-token")
