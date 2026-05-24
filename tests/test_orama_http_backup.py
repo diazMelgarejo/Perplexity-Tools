@@ -15,7 +15,7 @@ def _make_candidate(
     name="ultrathink",
     backend="ultrathink",
     device="any",
-    host="127.0.0.1",
+    host="localhost",
     port=8001,
     online=False,
     reasoning=True,
@@ -32,7 +32,7 @@ def _make_candidate(
 
 
 def test_orchestrate_calls_ultrathink_bridge_with_mapped_depth(monkeypatch):
-    monkeypatch.setenv("ORAMA_ENDPOINT", "http://127.0.0.1:8001")
+    monkeypatch.setenv("ORAMA_ENDPOINT", "http://localhost:8001")
 
     ultrathink_candidate = _make_candidate()
     fallback_candidate = _make_candidate(

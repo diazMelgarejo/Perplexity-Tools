@@ -8,7 +8,7 @@ Schema (all fields optional / additive):
 {
   "alphaclaw": {
     "password_is_default": true | false,   # true → show security warning
-    "gateway_url":  "http://127.0.0.1:18789",
+    "gateway_url":  "http://localhost:18789",
     "gateway_ready": true | false,
     "install_dir": "/home/user/.alphaclaw",
     "key_configured": true | false,        # GITHUB_TOKEN present

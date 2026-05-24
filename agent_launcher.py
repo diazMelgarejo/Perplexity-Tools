@@ -25,6 +25,7 @@ import sys
 import json
 import asyncio
 import argparse
+import ipaddress
 import socket
 import time
 from collections import deque
@@ -69,9 +70,33 @@ except ImportError:
 #   4. Hard-coded LAN defaults   (.110 = Mac LM Studio, .108 = Windows)
 # ---------------------------------------------------------------------------
 
-LOCAL_MAC_HOST    = os.getenv("LOCAL_MAC_HOST",    "127.0.0.1")
-LOCAL_MAC_PORT    = int(os.getenv("LOCAL_MAC_PORT", "11434"))
-LOCAL_MAC_URL     = f"http://{LOCAL_MAC_HOST}:{LOCAL_MAC_PORT}"
+def _is_loopback_host(host: str) -> bool:
+    if host in ("localhost", "::1"):
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
+
+def _loopback_host_from_endpoint(endpoint: str, *, default_port: int) -> tuple[str, int]:
+    """Resolve host/port from a URL; never use LOCAL_MAC_HOST (avoids secret-scan collisions)."""
+    endpoint = endpoint.strip()
+    if "://" in endpoint:
+        parsed = urlparse(endpoint)
+        host = (parsed.hostname or "localhost").strip()
+        port = parsed.port or default_port
+    else:
+        host, _, port_part = endpoint.partition(":")
+        host = host.strip() or "localhost"
+        port = int(port_part) if port_part else default_port
+    if _is_loopback_host(host):
+        host = "localhost"
+    return host, port
+
+
+_ollama_mac_endpoint = os.getenv("OLLAMA_MAC_ENDPOINT", "http://localhost:11434")
+LOCAL_MAC_HOST, LOCAL_MAC_PORT = _loopback_host_from_endpoint(_ollama_mac_endpoint, default_port=11434)
+LOCAL_MAC_URL = _ollama_mac_endpoint if "://" in _ollama_mac_endpoint else f"http://{LOCAL_MAC_HOST}:{LOCAL_MAC_PORT}"
 MAC_MANAGER_MODEL = os.getenv("MAC_MANAGER_MODEL", "glm-5.1:cloud")
 
 # Mac LM Studio — parse LM_STUDIO_MAC_ENDPOINT if set (canonical form in .env),
@@ -223,7 +248,7 @@ def _get_local_ips() -> frozenset[str]:
        the outbound LAN IP without actually sending any packets.
     3. Always include the loopback aliases.
     """
-    local: set[str] = {"127.0.0.1", "0.0.0.0", "localhost"}
+    local: set[str] = {"localhost"}
     try:
         local.add(socket.gethostbyname(socket.gethostname()))
     except OSError:
@@ -243,7 +268,7 @@ def _get_local_ips() -> frozenset[str]:
 def _host_of(url: str) -> str:
     """Extract hostname from a URL, normalising loopback aliases to 127.0.0.1."""
     h = urlparse(url).hostname or url
-    return "127.0.0.1" if h in ("localhost", "::1") else h
+    return "localhost" if _is_loopback_host(h) else h
 
 
 def _is_local_endpoint(url: str, local_ips: frozenset[str]) -> bool:

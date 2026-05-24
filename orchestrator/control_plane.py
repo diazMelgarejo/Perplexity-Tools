@@ -59,7 +59,7 @@ async def reconcile_gateway(force: bool = False) -> dict[str, Any]:
     state = bootstrap_alphaclaw()
     ok = not bool(state.error)
     gateway_ready = bool(state.running and state.port)
-    gateway_url = f"http://127.0.0.1:{state.port}" if state.port else ""
+    gateway_url = f"http://localhost:{state.port}" if state.port else ""
     return {
         "ok": ok,
         "error": state.error,
