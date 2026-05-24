@@ -8,6 +8,8 @@ from .probe import health_probe
 # Seed list for autodetect. Pure data — extend without code changes elsewhere.
 # HARDWARE POLICY: Mac inference ALWAYS goes through ollama-local (localhost:11434).
 # lmstudio-mac (localhost:1234) is a MIRROR ONLY — it proxies Win models but the Mac
+# hardware cannot run them. Dispatch must use explicit model ids (utils.dispatch_models);
+# never POST model="" (see config/model_hardware_policy.yml anti-mirror rule).
 # hardware CANNOT run them (qwen3.5-27b is RTX 3080-only). Dispatching inference to
 # lmstudio-mac while lmstudio-win is also handling the same model = "double barrel" =
 # GPU contention / hardware risk. selector.py enforces mirror exclusion at routing time.
