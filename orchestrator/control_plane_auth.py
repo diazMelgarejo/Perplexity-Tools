@@ -36,8 +36,10 @@ _PROTECTED_GET_PREFIXES = (
     "/models",
     "/v1/jobs",
     "/user-input/status",
+    "/user-input/next",
     "/budget",
     "/ecc/status",
+    "/autoresearch/",
 )
 
 _PROTECTED_POST_PREFIXES = (
@@ -52,6 +54,23 @@ _PROTECTED_POST_PREFIXES = (
 
 def control_plane_token() -> str:
     return os.getenv(ENV_TOKEN, "").strip()
+
+
+def _resolved_control_plane_token() -> str:
+    token = control_plane_token()
+    if token:
+        return token
+    if DEFAULT_TOKEN_PATH.is_file():
+        return DEFAULT_TOKEN_PATH.read_text(encoding="utf-8").strip()
+    return ""
+
+
+def auth_headers() -> dict[str, str]:
+    """Bearer headers for outbound PT HTTP clients (researchers, scripts)."""
+    token = _resolved_control_plane_token()
+    if token:
+        return {"Authorization": f"Bearer {token}"}
+    return {}
 
 
 def auth_enforced() -> bool:
@@ -102,7 +121,7 @@ def pt_path_requires_auth(path: str, method: str) -> bool:
         return False
     upper = method.upper()
     if upper in ("POST", "PUT", "PATCH", "DELETE"):
-        return not path.startswith("/user-input/next")
+        return True
     if upper in ("GET", "HEAD"):
         return any(path.startswith(prefix) for prefix in _PROTECTED_GET_PREFIXES)
     return False
