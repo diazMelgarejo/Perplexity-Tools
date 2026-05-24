@@ -3,7 +3,7 @@ from __future__ import annotations
 from orchestrator import fastapi_app
 
 
-def test_health_uses_plain_string_defaults(monkeypatch):
+def test_health_forwards_explicit_hosts_to_backend_map(monkeypatch):
     captured = {}
 
     def fake_backend_health_map(*, ollama_host, lm_studio_host, mlx_host):
@@ -22,7 +22,11 @@ def test_health_uses_plain_string_defaults(monkeypatch):
         },
     )
 
-    response = fastapi_app.health()
+    response = fastapi_app.health(
+        ollama_host="http://test-ollama:11434",
+        lm_studio_host="http://test-lms:1234",
+        mlx_host="http://test-mlx:8081",
+    )
 
     assert response["status"] == "ok"
     assert response["runtime"] == {
@@ -31,7 +35,7 @@ def test_health_uses_plain_string_defaults(monkeypatch):
         "distributed": True,
     }
     assert captured == {
-        "ollama_host": "http://127.0.0.1:11434",
-        "lm_studio_host": "http://127.0.0.1:1234",
-        "mlx_host": "http://127.0.0.1:8081",
+        "ollama_host": "http://test-ollama:11434",
+        "lm_studio_host": "http://test-lms:1234",
+        "mlx_host": "http://test-mlx:8081",
     }

@@ -705,4 +705,4 @@ async def supervisor_replay_job(job_id: str):
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("orchestrator.fastapi_app:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("orchestrator.fastapi_app:app", host="localhost", port=8000, reload=True)
