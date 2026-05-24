@@ -11,7 +11,8 @@ from fastapi.responses import JSONResponse
 
 ENV_TOKEN = "ORAMA_CONTROL_PLANE_TOKEN"
 ENV_INSECURE = "ORAMA_INSECURE_DEV"
-DEFAULT_TOKEN_PATH = Path(".state/control_plane_token")
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_TOKEN_PATH = _REPO_ROOT / ".state" / "control_plane_token"
 
 _SAFE_ROUTING_KEYS = (
     "distributed",
@@ -56,13 +57,18 @@ def control_plane_token() -> str:
     return os.getenv(ENV_TOKEN, "").strip()
 
 
+def _read_persisted_token(path: Path | None = None) -> str:
+    token_path = path or DEFAULT_TOKEN_PATH
+    if token_path.is_file():
+        return token_path.read_text(encoding="utf-8").strip()
+    return ""
+
+
 def _resolved_control_plane_token() -> str:
     token = control_plane_token()
     if token:
         return token
-    if DEFAULT_TOKEN_PATH.is_file():
-        return DEFAULT_TOKEN_PATH.read_text(encoding="utf-8").strip()
-    return ""
+    return _read_persisted_token()
 
 
 def auth_headers() -> dict[str, str]:
@@ -95,7 +101,7 @@ def auth_enforced() -> bool:
 def verify_control_plane_auth(request: Request) -> None:
     if not auth_enforced():
         return
-    expected = control_plane_token()
+    expected = _resolved_control_plane_token()
     if not expected:
         raise HTTPException(status_code=503, detail="Control plane token not configured")
     auth_header = request.headers.get("authorization", "")
@@ -139,6 +145,10 @@ def ensure_control_plane_token() -> str:
     existing = control_plane_token()
     if existing:
         return existing
+    persisted = _read_persisted_token()
+    if persisted:
+        os.environ[ENV_TOKEN] = persisted
+        return persisted
     if not auth_enforced():
         return ""
     generated = secrets.token_urlsafe(32)
