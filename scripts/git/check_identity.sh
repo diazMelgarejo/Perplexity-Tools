@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Keep in sync with scripts/review/repo_hygiene.py APPROVED_IDENTITIES.
 ALLOWED_IDENTITIES=(
   "cyre|Lawrence@cyre.me"
   "cyre|diazMelgarejo@gmail.com"

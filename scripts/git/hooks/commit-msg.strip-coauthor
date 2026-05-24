@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Strip Cursor-injected commit attribution trailers (commit-msg hook).
+set -euo pipefail
+
+msg_file="${1:?commit message file required}"
+[[ -f "$msg_file" ]] || exit 0
+
+sed -i \
+  -e '/^Co-authored-by:.*cursoragent@cursor\.com/Id' \
+  -e '/^Co-authored-by:.*@bettermind\.ph/Id' \
+  -e '/^Co-authored-by:.*[Cc]ursor[[:space:]]*</d' \
+  -e '/^Made-with:.*[Cc]ursor/Id' \
+  "$msg_file"
+
+# Trim trailing blank lines.
+sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$msg_file"
+exit 0
