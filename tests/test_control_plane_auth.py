@@ -73,6 +73,43 @@ def test_default_stack_without_auth_env_allows_operator_routes(monkeypatch):
     assert queued.status_code == 200
 
 
+def test_persisted_token_reused_on_restart_without_env(monkeypatch, tmp_path):
+    token_path = tmp_path / "control_plane_token"
+    token_path.write_text("persisted-token", encoding="utf-8")
+    monkeypatch.setattr(
+        "orchestrator.control_plane_auth.DEFAULT_TOKEN_PATH",
+        token_path,
+    )
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "0")
+    monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
+
+    from orchestrator.control_plane_auth import ensure_control_plane_token
+
+    token = ensure_control_plane_token()
+
+    assert token == "persisted-token"
+    assert token_path.read_text(encoding="utf-8") == "persisted-token"
+
+
+def test_bearer_from_persisted_file_accepted_when_enforced(monkeypatch, tmp_path):
+    token_path = tmp_path / "control_plane_token"
+    token_path.write_text("file-only-token", encoding="utf-8")
+    monkeypatch.setattr(
+        "orchestrator.control_plane_auth.DEFAULT_TOKEN_PATH",
+        token_path,
+    )
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "0")
+    monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        allowed = client.get(
+            "/agents",
+            headers={"Authorization": "Bearer file-only-token"},
+        )
+
+    assert allowed.status_code == 200
+
+
 def test_production_mode_without_token_auto_generates_and_requires_bearer(monkeypatch, tmp_path):
     token_path = tmp_path / "control_plane_token"
     monkeypatch.setattr(
