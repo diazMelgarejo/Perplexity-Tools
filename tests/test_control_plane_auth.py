@@ -34,3 +34,25 @@ def test_control_plane_auth_failure_helper(monkeypatch):
     denied = control_plane_auth_failure(_Req())
     assert denied is not None
     assert denied.status_code == 401
+
+
+def test_default_stack_without_auth_env_allows_operator_routes(monkeypatch):
+    monkeypatch.delenv("ORAMA_INSECURE_DEV", raising=False)
+    monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        agents = client.get("/agents")
+        queued = client.post("/user-input", json={"message": "hello"})
+
+    assert agents.status_code == 200
+    assert queued.status_code == 200
+
+
+def test_production_mode_without_token_returns_service_unavailable(monkeypatch):
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "0")
+    monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        denied = client.get("/agents")
+
+    assert denied.status_code == 503
