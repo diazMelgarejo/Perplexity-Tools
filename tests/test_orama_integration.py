@@ -32,7 +32,7 @@ sys.path.insert(0, str(REPO_ROOT))
 # ---------------------------------------------------------------------------
 
 def _make_candidate(name="ultrathink", backend="ultrathink", device="any",
-                    host="127.0.0.1", port=8001, online=False,
+                    host="localhost", port=8001, online=False,
                     reasoning=True):
     """Return a MagicMock shaped like a ModelCandidate."""
     c = MagicMock()
@@ -58,7 +58,7 @@ def client():
         name="ultrathink",
         backend="ultrathink",
         device="any",
-        host="127.0.0.1",
+        host="localhost",
         port=8001,
         online=False,
         reasoning=True,
@@ -67,7 +67,7 @@ def client():
         name="local_qwen30b",
         backend="ollama",
         device="win-rtx3080",
-        host="127.0.0.1",
+        host="localhost",
         port=11434,
         online=False,
         reasoning=False,
@@ -148,7 +148,7 @@ class TestUltrathinkRouting:
 
     def test_deep_reasoning_response_has_ultrathink_host(self, client: TestClient):
         """The selected_model host must reference the ultrathink endpoint
-        (127.0.0.1:8001) matching PERPLEXITY_BRIDGE.md ORAMA_ENDPOINT default."""
+        (localhost:8001) matching PERPLEXITY_BRIDGE.md ORAMA_ENDPOINT default."""
         resp = client.post("/orchestrate", json={
             "task": "Ultra-deep multi-step reasoning task for privacy-critical data.",
             "task_type": "deep_reasoning",

@@ -38,7 +38,7 @@ def test_bootstrap_runtime_writes_resolved_payload(monkeypatch, tmp_path):
     async def fake_resolve_routing_state():
         return {
             "manager_backend": "mac-lmstudio",
-            "manager_endpoint": "http://127.0.0.1:1234",
+            "manager_endpoint": "http://localhost:1234",
             "manager_model": "Qwen3.5-9B-MLX-4bit",
             "coder_backend": "windows-lmstudio",
             "coder_endpoint": "http://192.168.0.10:1234",
@@ -50,7 +50,7 @@ def test_bootstrap_runtime_writes_resolved_payload(monkeypatch, tmp_path):
         return {
             "ok": True,
             "gateway_ready": True,
-            "gateway_url": "http://127.0.0.1:18789",
+            "gateway_url": "http://localhost:18789",
             "role_routing": {
                 "topology": "manager-local_researcher-remote",
             },
@@ -94,7 +94,7 @@ def test_bootstrap_runtime_writes_resolved_payload(monkeypatch, tmp_path):
     assert runtime_path.exists()
     saved = json.loads(runtime_path.read_text(encoding="utf-8"))
     assert payload["paths"]["runtime_state"] == str(runtime_path.resolve())
-    assert saved["gateway"]["gateway_url"] == "http://127.0.0.1:18789"
+    assert saved["gateway"]["gateway_url"] == "http://localhost:18789"
     assert saved["routing"]["distributed"] is True
     assert [stage["name"] for stage in saved["stages"]] == [
         "perplexity_credentials",

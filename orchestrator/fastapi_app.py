@@ -111,8 +111,8 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000", "http://127.0.0.1:3000",
-        "http://localhost:8002", "http://127.0.0.1:8002",  # portal
+        "http://localhost:3000", "http://localhost:3000",
+        "http://localhost:8002", "http://localhost:8002",  # portal
     ],
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
@@ -365,9 +365,9 @@ def get_user_input_status() -> Dict[str, Any]:
 
 @app.get("/health", tags=["system"])
 def health(
-    ollama_host: str = os.getenv("OLLAMA_MAC_ENDPOINT", "http://127.0.0.1:11434"),
-    lm_studio_host: str = os.getenv("LM_STUDIO_MAC_ENDPOINT", "http://127.0.0.1:1234"),
-    mlx_host: str = "http://127.0.0.1:8081",
+    ollama_host: str = os.getenv("OLLAMA_MAC_ENDPOINT", "http://localhost:11434"),
+    lm_studio_host: str = os.getenv("LM_STUDIO_MAC_ENDPOINT", "http://localhost:1234"),
+    mlx_host: str = "http://localhost:8081",
 ) -> Dict[str, Any]:
     return {
         "status": "ok",
