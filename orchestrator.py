@@ -459,7 +459,7 @@ def main(argv: list[str] | None = None) -> int:
         "serve",
         help="Run the legacy FastAPI app.",
     )
-    serve_parser.add_argument("--host", default="0.0.0.0")
+    serve_parser.add_argument("--host", default="localhost")
     serve_parser.add_argument("--port", type=int, default=8000)
 
     args = parser.parse_args(argv)
@@ -496,7 +496,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     import uvicorn
-    host = getattr(args, "host", "0.0.0.0")
+    host = getattr(args, "host", "localhost")
     port = getattr(args, "port", 8000)
     uvicorn.run(app, host=host, port=port)
     return 0
