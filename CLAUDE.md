@@ -157,3 +157,21 @@ Grep is still right for known exact strings, regex, multiline patterns, and
 file globs. Run `/sync-gbrain` after meaningful code changes.
 
 <!-- gstack-gbrain-search-guidance:end -->
+
+---
+
+## § 8 — Parallel Agents & Git Worktrees
+
+**When to create a worktree:** task requires parallel file writes by multiple agents.
+**When to stay on canonical:** read-only, sequential, or single-agent work.
+
+Bootstrapping, port offsets, GPU coordination, and CRG policy are defined in the canonical doc:
+→ `orama-system/docs/v2/19-worktree-parallel-agents.md`
+→ Real-time skill: `~/.claude/skills/using-git-worktrees/SKILL.md`
+
+**Quick start:**
+```bash
+orama-system/scripts/worktree-bootstrap.sh <repo-path> <branch> <slug> [gbrain-source]
+```
+
+**Hardware (2026-05-24):** 1 Win RTX3080 + Mac Ollama. PT is the inference chokepoint.
