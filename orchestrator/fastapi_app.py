@@ -20,6 +20,7 @@ from pydantic import BaseModel, Field
 
 from orchestrator.control_plane_auth import (
     control_plane_auth_failure,
+    ensure_control_plane_token,
     pt_path_requires_auth,
     redact_runtime_payload,
 )
@@ -82,6 +83,11 @@ async def _resolve_routing_bg() -> None:
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
+    token = ensure_control_plane_token()
+    if token:
+        _startup_log.info(
+            "Control-plane bearer auth active; token persisted to .state/control_plane_token"
+        )
     # Both background tasks fire at t=0; neither blocks port binding.
     asyncio.get_event_loop().run_in_executor(None, _run_ecc_sync_bg)
     # Hold a strong reference so GC cannot collect the task before it runs (D_GCG-1).

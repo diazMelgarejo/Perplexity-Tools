@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import secrets
+from pathlib import Path
 from typing import Any, Mapping
 
 from fastapi import HTTPException, Request
@@ -10,6 +11,21 @@ from fastapi.responses import JSONResponse
 
 ENV_TOKEN = "ORAMA_CONTROL_PLANE_TOKEN"
 ENV_INSECURE = "ORAMA_INSECURE_DEV"
+DEFAULT_TOKEN_PATH = Path(".state/control_plane_token")
+
+_SAFE_ROUTING_KEYS = (
+    "distributed",
+    "manager_endpoint",
+    "manager_model",
+    "manager_backend",
+    "coder_endpoint",
+    "coder_model",
+    "coder_backend",
+    "mac_reachable",
+    "lmstudio_detected",
+    "synced_at",
+    "manager_affinity_alert",
+)
 
 _PUBLIC_PATHS = frozenset({"/health", "/docs", "/openapi.json", "/redoc"})
 
@@ -87,9 +103,17 @@ def pt_path_requires_auth(path: str, method: str) -> bool:
     upper = method.upper()
     if upper in ("POST", "PUT", "PATCH", "DELETE"):
         return not path.startswith("/user-input/next")
-    if upper == "GET":
+    if upper in ("GET", "HEAD"):
         return any(path.startswith(prefix) for prefix in _PROTECTED_GET_PREFIXES)
     return False
+
+
+def persist_control_plane_token(token: str, path: Path | None = None) -> Path:
+    token_path = path or DEFAULT_TOKEN_PATH
+    token_path.parent.mkdir(parents=True, exist_ok=True)
+    token_path.write_text(token, encoding="utf-8")
+    token_path.chmod(0o600)
+    return token_path
 
 
 def ensure_control_plane_token() -> str:
@@ -100,6 +124,7 @@ def ensure_control_plane_token() -> str:
         return ""
     generated = secrets.token_urlsafe(32)
     os.environ[ENV_TOKEN] = generated
+    persist_control_plane_token(generated)
     return generated
 
 
@@ -108,8 +133,18 @@ def redact_runtime_payload(payload: Mapping[str, Any] | None) -> dict[str, Any]:
         return {"available": False, "gateway_ready": False, "distributed": False}
     gateway = payload.get("gateway") if isinstance(payload.get("gateway"), dict) else {}
     routing = payload.get("routing") if isinstance(payload.get("routing"), dict) else {}
-    return {
+    redacted: dict[str, Any] = {
         "available": True,
         "gateway_ready": bool(gateway.get("gateway_ready") or gateway.get("ready")),
         "distributed": bool(routing.get("distributed")),
+        "gateway": {
+            "gateway_ready": bool(gateway.get("gateway_ready") or gateway.get("ready")),
+            "running": bool(gateway.get("running")),
+            "port": int(gateway.get("port") or 0),
+        },
+        "routing": {key: routing[key] for key in _SAFE_ROUTING_KEYS if key in routing},
     }
+    for key in _SAFE_ROUTING_KEYS:
+        if key in routing:
+            redacted[key] = routing[key]
+    return redacted
