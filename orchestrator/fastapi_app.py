@@ -14,9 +14,15 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from orchestrator.control_plane_auth import (
+    control_plane_auth_failure,
+    pt_path_requires_auth,
+    redact_runtime_payload,
+)
 
 from orchestrator import autoresearch_bridge
 from orchestrator.agent_tracker import AgentTracker
@@ -103,9 +109,19 @@ app.add_middleware(
         "http://localhost:8002", "http://127.0.0.1:8002",  # portal
     ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
+
+
+@app.middleware("http")
+async def _control_plane_auth_middleware(request: Request, call_next):
+    if pt_path_requires_auth(request.url.path, request.method):
+        failure = control_plane_auth_failure(request)
+        if failure is not None:
+            return failure
+    return await call_next(request)
+
 
 tracker = AgentTracker()
 registry = ModelRegistry()
@@ -309,14 +325,17 @@ def ecc_sync(force: bool = Query(False)) -> Dict[str, Any]:
 
 
 class UserInputRequest(BaseModel):
-    message: str
+    message: str = Field(..., min_length=1, max_length=4000)
     source: str = "portal"  # "portal" | "cli"
 
 
 @app.post("/user-input", tags=["user-input"])
 def post_user_input(req: UserInputRequest) -> Dict[str, Any]:
     """Queue a task message from the portal or CLI for researchers to pick up."""
-    entry = {"message": req.message, "source": req.source, "ts": time.time()}
+    message = req.message.strip()
+    if not message:
+        raise HTTPException(status_code=422, detail="message is required")
+    entry = {"message": message, "source": req.source, "ts": time.time()}
     _USER_INPUT_QUEUE.appendleft(entry)
     return {"status": "queued", "queue_depth": len(_USER_INPUT_QUEUE), "entry": entry}
 
@@ -366,7 +385,7 @@ def runtime_state() -> Dict[str, Any]:
     payload = load_runtime_payload()
     if payload is None:
         return {"available": False, "runtime": None}
-    return {"available": True, "runtime": payload}
+    return {"available": True, "runtime": redact_runtime_payload(payload)}
 
 
 @app.post("/runtime/bootstrap", tags=["runtime"])
