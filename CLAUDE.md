@@ -28,7 +28,7 @@ Full cross-repo instructions → [`../../CLAUDE-instru.md`](../../CLAUDE-instru.
 | Verifier gate (crystallization blocked without approved VerificationResult) | [Unified Plan § 2](../orama-system/docs/2026-05-14--UNIFIED-ABSORPTION-PLAN.md) |
 | V1 scope (MAESTRO/HITL deferred) | [Unified Plan § 2](../orama-system/docs/2026-05-14--UNIFIED-ABSORPTION-PLAN.md) |
 | AlphaClaw adapter surface | [`docs/adapter-interface-contract.md`](docs/adapter-interface-contract.md) |
-| HITL accountability | [`../orama-system/docs/HUMAN-IN-LOOP-ACCOUNTABILITY.md`](../orama-system/docs/HUMAN-IN-LOOP-ACCOUNTABILITY.md) |
+| HITL accountability | [`docs/HUMAN-IN-LOOP-ACCOUNTABILITY.md`](docs/HUMAN-IN-LOOP-ACCOUNTABILITY.md) |
 | Search frugality rule (gbrain → CRG → Brave → Perplexity → Grok) | [`../orama-system/bin/orama-system/skills/openclaw-skills/references/universal-skill-protocol.md`](../orama-system/bin/orama-system/skills/openclaw-skills/references/universal-skill-protocol.md) § Search Frugality Rule |
 | Win coder pool (`$WIN_CODER_ENDPOINTS`, always-utilized before Mac-local) | [`../orama-system/bin/orama-system/skills/openclaw-skills/references/universal-skill-protocol.md`](../orama-system/bin/orama-system/skills/openclaw-skills/references/universal-skill-protocol.md) § Windows Coder Policy |
 
