@@ -38,6 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import httpx  # noqa: E402
 
 from orchestrator.agent_tracker import AgentTracker  # noqa: E402
+from orchestrator.control_plane_auth import auth_headers  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -195,7 +196,7 @@ async def _resolve_lmstudio_model(endpoint: str, preferred: str) -> str | None:
 async def _poll_user_input() -> str | None:
     """Poll PT for a queued user task. Returns message string or None."""
     try:
-        async with httpx.AsyncClient(timeout=3.0) as client:
+        async with httpx.AsyncClient(timeout=3.0, headers=auth_headers()) as client:
             r = await client.get(f"{PT_ENDPOINT}/user-input/next")
             r.raise_for_status()
             return r.json().get("message") or None
