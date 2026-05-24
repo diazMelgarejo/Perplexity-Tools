@@ -279,6 +279,51 @@ async def test_dispatch_prefers_windows_coder_when_reachable(tmp_path, monkeypat
 
 
 @pytest.mark.asyncio
+async def test_submit_then_win_preempt_uses_windows_model_not_mac_default(
+    tmp_path, monkeypatch,
+):
+    """submit_job affinity must not pin Mac metadata before Windows preemption.
+
+    Injecting metadata.model at QUEUED time left the Windows coder pool posting
+    Qwen3.5-9B-MLX-4bit instead of the Windows coder default.
+    """
+    from unittest.mock import AsyncMock
+
+    import orchestrator.worker_registry as reg_mod
+    from utils.dispatch_models import lmstudio_win_default_model, mac_lmstudio_default_model
+
+    monkeypatch.setattr(
+        OrchestrationSupervisor,
+        "_get_reachable_windows_coder",
+        AsyncMock(return_value="http://192.168.254.103:1234"),
+    )
+    captured: dict[str, str] = {}
+
+    async def fake_win_worker(spec):
+        captured["model"] = (spec.metadata or {}).get("model", "")
+        return {"backend": "lmstudio-win", "output": "ok"}
+
+    monkeypatch.setitem(reg_mod.WORKER_REGISTRY, "lmstudio-win", fake_win_worker)
+
+    sup = _make_sup(tmp_path)
+    spec = JobSpec(
+        job_id=_new_id(),
+        intent="code review",
+        prompt="review",
+        backend_hint="lmstudio-mac",
+        metadata={},
+    )
+    await sup.submit_job(spec)
+    assert (spec.metadata or {}).get("model") in (None, ""), (
+        "submit_job must not inject Mac model before dispatch"
+    )
+
+    await sup._active[spec.job_id]
+    assert captured["model"] == lmstudio_win_default_model()
+    assert captured["model"] != mac_lmstudio_default_model()
+
+
+@pytest.mark.asyncio
 async def test_dispatch_injects_win_endpoint_for_explicit_lmstudio_win(tmp_path, monkeypatch):
     """Explicit lmstudio-win routes (via role map / backend_hint) get _win_endpoint
     injected from WIN_CODER_ENDPOINTS, not just Mac-local preemption routes.
@@ -504,7 +549,119 @@ def test_skill_envelope_to_dict_is_json_serialisable():
     assert parsed["depth"] == 1
 
 
+# ── Anti-mirror: lmstudio-mac must use explicit default model ─────────────────
+
+@pytest.mark.asyncio
+async def test_dispatch_lmstudio_mac_empty_metadata_uses_explicit_default_not_loaded_model(
+    tmp_path, monkeypatch,
+):
+    """lmstudio-mac with empty metadata must inject MAC_LMS default before the worker runs."""
+    from unittest.mock import AsyncMock
+
+    import orchestrator.worker_registry as reg_mod
+    from utils.dispatch_models import mac_lmstudio_default_model
+
+    monkeypatch.setattr(
+        OrchestrationSupervisor,
+        "_get_reachable_windows_coder",
+        AsyncMock(return_value=None),
+    )
+    captured: dict[str, str] = {}
+
+    async def _capture_mac_worker(spec):
+        captured["model"] = (spec.metadata or {}).get("model", "")
+        return {"backend": "lmstudio-mac", "output": "ok"}
+
+    monkeypatch.setitem(reg_mod.WORKER_REGISTRY, "lmstudio-mac", _capture_mac_worker)
+
+    sup = _make_sup(tmp_path)
+    spec = JobSpec(
+        job_id=_new_id(),
+        intent="freeform",
+        prompt="mac mlx task",
+        backend_hint="lmstudio-mac",
+        metadata={},
+    )
+    await sup._dispatch(spec)
+    assert captured["model"] == mac_lmstudio_default_model()
+    assert captured["model"].strip() != ""
+
+
+@pytest.mark.asyncio
+async def test_dispatch_lmstudio_mac_rejects_windows_only_model_in_metadata(
+    tmp_path, monkeypatch,
+):
+    from unittest.mock import AsyncMock
+
+    import orchestrator.worker_registry as reg_mod
+    from utils.hardware_policy import HardwareAffinityError
+
+    monkeypatch.setattr(
+        OrchestrationSupervisor,
+        "_get_reachable_windows_coder",
+        AsyncMock(return_value=None),
+    )
+    monkeypatch.setitem(
+        reg_mod.WORKER_REGISTRY,
+        "lmstudio-mac",
+        AsyncMock(return_value={"backend": "lmstudio-mac", "output": "must not run"}),
+    )
+
+    sup = _make_sup(tmp_path)
+    spec = JobSpec(
+        job_id=_new_id(),
+        intent="freeform",
+        prompt="illegal on mac mirror",
+        backend_hint="lmstudio-mac",
+        metadata={"model": "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2"},
+    )
+    with pytest.raises(HardwareAffinityError, match="NEVER_MAC"):
+        await sup._dispatch(spec)
+
+
 # ── Hardware affinity re-check after Windows preemption ───────────────────────
+
+@pytest.mark.asyncio
+async def test_dispatch_raises_affinity_error_on_mac_fallthrough_with_windows_only_model(
+    tmp_path, monkeypatch,
+):
+    """When the Windows pool is down, Mac-local routing must still fail-closed.
+
+    A freeform job with a windows_only model in metadata must not reach the Mac
+    Ollama worker when WIN_CODER_ENDPOINTS is unreachable — that path caused GPU
+    OOM / double-barrel risk (policy: config/model_hardware_policy.yml).
+    """
+    from unittest.mock import AsyncMock
+
+    import orchestrator.worker_registry as reg_mod
+    from utils.hardware_policy import HardwareAffinityError
+
+    monkeypatch.setattr(
+        OrchestrationSupervisor,
+        "_get_reachable_windows_coder",
+        AsyncMock(return_value=None),
+    )
+    ollama_called: dict[str, bool] = {"value": False}
+
+    async def _ollama_should_not_run(_spec):
+        ollama_called["value"] = True
+        return {"backend": "ollama-mac", "output": "must not run"}
+
+    monkeypatch.setitem(reg_mod.WORKER_REGISTRY, "ollama", _ollama_should_not_run)
+
+    sup = _make_sup(tmp_path)
+    spec = JobSpec(
+        job_id=_new_id(),
+        intent="freeform",
+        prompt="run heavy model",
+        metadata={"model": "Qwen3.5-27B-Claude-4.6-Opus-Reasoning-Distilled-v2"},
+    )
+
+    with pytest.raises(HardwareAffinityError, match="NEVER_MAC"):
+        await sup._dispatch(spec)
+
+    assert ollama_called["value"] is False
+
 
 @pytest.mark.asyncio
 async def test_dispatch_raises_affinity_error_when_windows_preemption_blocked(
