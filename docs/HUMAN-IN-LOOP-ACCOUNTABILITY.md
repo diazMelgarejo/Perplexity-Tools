@@ -573,7 +573,7 @@ It does not deprecate.
 
 ---
 
-*Document version: 1.0 | Created: 2026-05-06 | Owner: cyre (orama-system governing doc)*
+*Document version: 1.0 | Created: 2026-05-06*
 *Repo: `diazMelgarejo/orama-system` → `/docs/HUMAN-IN-LOOP-ACCOUNTABILITY.md`*
 *Also sync to: `diazMelgarejo/Perpetua-Tools` → `/docs/HUMAN-IN-LOOP-ACCOUNTABILITY.md`*
 *Classification: Governing Principle — Forward-Looking Statement*
