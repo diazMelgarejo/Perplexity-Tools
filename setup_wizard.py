@@ -206,7 +206,7 @@ def _probe_gateway_sync(port: int = 18789) -> bool:
         for path in ("/health", "/v1/models"):
             try:
                 urllib.request.urlopen(
-                    f"http://127.0.0.1:{p}{path}", timeout=1
+                    f"http://localhost:{p}{path}", timeout=1
                 )
                 return True
             except Exception:

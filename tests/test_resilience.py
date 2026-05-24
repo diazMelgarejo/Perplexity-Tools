@@ -34,7 +34,7 @@ def test_agent_tracker_falls_back_to_memory(monkeypatch, tmp_path):
         role="orchestrator",
         model="test-model",
         backend="local",
-        host="127.0.0.1",
+        host="localhost",
         port=8000,
     )
 

@@ -15,7 +15,7 @@ from unittest.mock import patch
 
 # Ensure repo root is on PYTHONPATH
 REPO_ROOT = Path(__file__).parent.parent
-os.environ["OLLAMA_HOST"] = "http://127.0.0.1"
+os.environ["OLLAMA_HOST"] = "http://localhost"
 
 from orchestrator.model_registry import ModelRegistry
 from orchestrator.fastapi_app import app

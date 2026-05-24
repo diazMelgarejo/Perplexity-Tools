@@ -13,17 +13,17 @@ def _probe(url: str, timeout: float = 2.5) -> Dict[str, Any]:
         return {"ok": False, "status_code": None, "url": url, "error": str(exc)}
 
 
-def check_ollama(host: str = "http://127.0.0.1:11434") -> Dict[str, Any]:
+def check_ollama(host: str = "http://localhost:11434") -> Dict[str, Any]:
     """Works for shared Ollama on Mac or Windows."""
     return _probe(f"{host.rstrip('/')}/api/tags")
 
 
-def check_lm_studio(host: str = "http://127.0.0.1:1234") -> Dict[str, Any]:
+def check_lm_studio(host: str = "http://localhost:1234") -> Dict[str, Any]:
     """LM Studio OpenAI-compatible endpoint on Mac or Windows."""
     return _probe(f"{host.rstrip('/')}/v1/models")
 
 
-def check_mlx(host: str = "http://127.0.0.1:8081") -> Dict[str, Any]:
+def check_mlx(host: str = "http://localhost:8081") -> Dict[str, Any]:
     """MLX server on Mac (mlx-lm serve)."""
     return _probe(f"{host.rstrip('/')}/v1/models")
 
@@ -41,9 +41,9 @@ def check_anthropic() -> Dict[str, Any]:
 
 
 def backend_health_map(
-    ollama_host: str = "http://127.0.0.1:11434",
-    lm_studio_host: str = "http://127.0.0.1:1234",
-    mlx_host: str = "http://127.0.0.1:8081",
+    ollama_host: str = "http://localhost:11434",
+    lm_studio_host: str = "http://localhost:1234",
+    mlx_host: str = "http://localhost:8081",
 ) -> Dict[str, Dict[str, Any]]:
     """One-shot health snapshot for all configured backends."""
     return {

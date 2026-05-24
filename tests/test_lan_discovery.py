@@ -24,7 +24,7 @@ def _assert_timezone_aware_utc(timestamp: str) -> None:
 
 def test_ai_endpoint_defaults_last_seen_to_timezone_aware_utc():
     endpoint = lan_discovery.AIEndpoint(
-        host="127.0.0.1",
+        host="localhost",
         port=11434,
         server_type="ollama",
         models=["qwen3:8b"],
@@ -40,7 +40,7 @@ def test_save_discovery_state_writes_timezone_aware_timestamp(tmp_path, monkeypa
     discovery = lan_discovery.LANDiscovery(subnet="127.0.0.0/30", ports=[11434])
     discovery.discovered = [
         lan_discovery.AIEndpoint(
-            host="127.0.0.1",
+            host="localhost",
             port=11434,
             server_type="ollama",
             models=["qwen3:8b"],
@@ -58,7 +58,7 @@ def test_probe_endpoint_requires_httpx(monkeypatch):
     discovery = lan_discovery.LANDiscovery(subnet="127.0.0.0/30", ports=[11434])
 
     with pytest.raises(RuntimeError, match="httpx not installed"):
-        asyncio.run(discovery._probe_endpoint("127.0.0.1", 11434))
+        asyncio.run(discovery._probe_endpoint("localhost", 11434))
 
 
 def test_detect_local_subnet_logs_warning_on_fallback(monkeypatch, caplog):
