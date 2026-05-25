@@ -190,6 +190,11 @@ class OrchestrationSupervisor:
 
     async def submit_job(self, spec: JobSpec) -> str:
         """Validate → persist QUEUED → fire async worker task → return job_id."""
+        # Only the dispatcher may set _win_endpoint (injected after pool probe).
+        if spec.metadata and "_win_endpoint" in spec.metadata:
+            meta = {k: v for k, v in spec.metadata.items() if k != "_win_endpoint"}
+            spec = spec.model_copy(update={"metadata": meta})
+
         # Depth guard — workers cannot spawn sub-workers
         if spec.depth > self.MAX_DEPTH:
             raise ValueError(
