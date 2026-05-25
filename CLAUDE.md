@@ -111,7 +111,8 @@ As-built: [`../orama-system/docs/v2/`](../orama-system/docs/v2/)
 
 ## § 6 — Git Hygiene
 
-- Commit identity: `cyre <Lawrence@cyre.me>` or `Codex <codex@openai.com>`
+- Commit identity: `cyre <Lawrence@cyre.me>`, `cyre <diazMelgarejo@gmail.com>`, or `Codex <codex@openai.com>` — `bash scripts/git/check_identity.sh`
+- Official stack policy (co-author allowlist + hooks): [`../orama-system/docs/wiki/08-git-hygiene-and-branching.md`](../orama-system/docs/wiki/08-git-hygiene-and-branching.md#official-commit-identity-policy-2026-05-25); install: `bash scripts/git/install-local-hooks.sh`
 - Dated branches: `yyyy-mm-dd-NNN-brief-summary`
 - Lockstep commits: changes to shared schema fields, exception classes, or policy keys commit to **both repos in the same session**
 - Never commit `.env`, `.env.local`
