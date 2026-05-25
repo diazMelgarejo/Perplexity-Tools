@@ -4,12 +4,11 @@ set -euo pipefail
 msg_file="${1:?commit message file required}"
 [[ -f "$msg_file" ]] || { echo "ERROR: missing commit message file: $msg_file" >&2; exit 1; }
 
+# Forbidden in Co-authored-by trailers only (not primary Author identity).
 FORBIDDEN_COAUTHOR_SUBSTRINGS=(
   cursor
   anthropic
   claude
-  openai
-  codex
   bettermind
   cursoragent
 )

@@ -31,8 +31,14 @@ if [[ "$actual_email_lc" == "lawrence@cyre.me" && "$actual_name" == *Lawrence* ]
   exit 0
 fi
 
+if [[ "$actual_name" == "Codex" && "$actual_email_lc" == "codex@openai.com" ]]; then
+  echo "OK: approved git identity"
+  exit 0
+fi
+
 echo "ERROR: git identity must be one of:" >&2
 echo "  - cyre <diazMelgarejo@gmail.com>" >&2
 echo "  - cyre <Lawrence@cyre.me>" >&2
 echo "  - Lawrence Cyre <Lawrence@cyre.me> (or similar name with Lawrence@cyre.me)" >&2
+echo "  - Codex <codex@openai.com>" >&2
 exit 1
