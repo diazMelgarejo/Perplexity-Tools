@@ -25,7 +25,8 @@ const {
   LocalAgentClient,
   askLocalAgentAboutCode,
   proposeCodeEdit,
-} = require("./local-agent-client");
+} = require("./client.js");
+const { getApprovedRoots, resolveAllowedPath, redactLogText } = require("./path-boundary.cjs");
 
 // ─── Singleton client (lazy-init, reused across MCP tool calls) ───────────────
 let _client = null;
@@ -34,16 +35,40 @@ function getClient() {
   return _client;
 }
 
-// ─── Safe file reader (caps size, returns error if missing) ───────────────────
-function readFileSafe(filePath, maxBytes = 64 * 1024) {
-  const abs = path.isAbsolute(filePath) ? filePath : path.resolve(process.cwd(), filePath);
-  if (!fs.existsSync(abs)) return { ok: false, error: `File not found: ${abs}`, abs };
+// ─── Safe file reader (caps size, path allowlist, redacted content) ───────────
+function readFileSafe(filePath, maxBytes = 64 * 1024, opts = {}) {
+  const roots = opts.roots || getApprovedRoots(opts.extraRoots || []);
+  const baseForRelative =
+    opts.baseForRelative ||
+    process.env.ALPHACLAW_ROOT ||
+    roots[0] ||
+    process.cwd();
+  const allowed = resolveAllowedPath(filePath, {
+    roots,
+    baseForRelative,
+    mustExist: true,
+  });
+  if (!allowed.ok) {
+    return { ok: false, error: allowed.error, abs: allowed.candidate || filePath };
+  }
+  const abs = allowed.abs;
   const stat = fs.statSync(abs);
   if (stat.size > maxBytes) {
-    const content = fs.readFileSync(abs, "utf8").slice(0, maxBytes);
-    return { ok: true, abs, content, truncated: true, originalSize: stat.size };
+    const raw = fs.readFileSync(abs, "utf8").slice(0, maxBytes);
+    return {
+      ok: true,
+      abs,
+      content: redactLogText(raw),
+      truncated: true,
+      originalSize: stat.size,
+    };
   }
-  return { ok: true, abs, content: fs.readFileSync(abs, "utf8"), truncated: false };
+  return {
+    ok: true,
+    abs,
+    content: redactLogText(fs.readFileSync(abs, "utf8")),
+    truncated: false,
+  };
 }
 
 // ─── Orchestrator tasks ────────────────────────────────────────────────────────
@@ -143,8 +168,14 @@ async function delegateCodeEdit({ filePath, instruction, backend }) {
  * @param {number} [opts.maxFiles]  - Cap on files to include (default 20)
  */
 async function delegateCodeReview({ dirPath, objective, maxFiles = 20 }) {
-  const abs = path.isAbsolute(dirPath) ? dirPath : path.resolve(process.cwd(), dirPath);
-  if (!fs.existsSync(abs)) return { ok: false, error: `Directory not found: ${abs}` };
+  const roots = getApprovedRoots();
+  const baseForRelative = process.env.ALPHACLAW_ROOT || roots[0] || process.cwd();
+  const allowed = resolveAllowedPath(dirPath, { roots, baseForRelative, mustExist: true });
+  if (!allowed.ok) return { ok: false, error: allowed.error };
+  const abs = allowed.abs;
+  if (!fs.statSync(abs).isDirectory()) {
+    return { ok: false, error: `Not a directory: ${abs}` };
+  }
 
   // Build a compact file listing
   let files = [];
@@ -160,7 +191,10 @@ async function delegateCodeReview({ dirPath, objective, maxFiles = 20 }) {
   // Build a summary of first few lines of each file
   const snippets = files.map(f => {
     try {
-      const lines = fs.readFileSync(f, "utf8").split("\n").slice(0, 8).join("\n");
+      const lines = redactLogText(fs.readFileSync(f, "utf8"))
+        .split("\n")
+        .slice(0, 8)
+        .join("\n");
       return `=== ${path.relative(abs, f)} ===\n${lines}`;
     } catch { return `=== ${path.relative(abs, f)} === [unreadable]`; }
   });
@@ -194,4 +228,8 @@ module.exports = {
   delegateCodeEdit,
   delegateCodeReview,
   getClient,
+  readFileSafe,
+  getApprovedRoots,
+  resolveAllowedPath,
+  redactLogText,
 };
