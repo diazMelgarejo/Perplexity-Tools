@@ -14,6 +14,8 @@
 
 **Selection order:** Top-level model routing follows **this `SKILL.md` → `orchestrator/model_registry.py` + `config/models.yml` / `routing.yml`** first. Subagents use **ECC-tools** defaults unless overridden. **orama-system** remains the methodology layer for reasoning execution, not a hard dependency of the YAML registry.
 
+**Optional (code review only):** For graph-first review workflows (not dispatch), see orama-system [`bin/orama-system/skills/code-review/SKILL.md`](../orama-system/bin/orama-system/skills/code-review/SKILL.md) (CRG → gbrain → Read).
+
 ---
 
 ## State Ownership & Redis Strategy
