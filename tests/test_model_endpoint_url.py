@@ -43,6 +43,10 @@ class TestLoopbackAndPrivate:
 
 
 class TestPublicBlocked:
+    def test_link_local_metadata_blocked(self):
+        with pytest.raises(ModelEndpointPolicyError, match="RFC1918"):
+            validate_model_endpoint_url("http://169.254.169.254")
+
     def test_public_ip_blocked(self):
         with pytest.raises(ModelEndpointPolicyError, match="RFC1918"):
             validate_model_endpoint_url("http://8.8.8.8:1234")

@@ -42,6 +42,30 @@ def _make_sup(tmp_path: Path) -> OrchestrationSupervisor:
 
 # ── Basic lifecycle ───────────────────────────────────────────────────────────
 
+def test_submit_job_strips_client_win_endpoint(tmp_path):
+    """Clients must not inject _win_endpoint; only the dispatcher sets it after probe."""
+    sup = _make_sup(tmp_path)
+
+    async def _run() -> str:
+        spec = JobSpec(
+            job_id=_new_id(),
+            intent="echo",
+            prompt="probe bypass",
+            backend_hint="echo",
+            metadata={"_win_endpoint": "http://10.0.0.99:1234"},
+        )
+        job_id = await sup.submit_job(spec)
+        await sup.cancel(job_id)
+        return job_id
+
+    job_id = asyncio.run(_run())
+    events = _load_events(sup._jobs_file)
+    queued = next(
+        e for e in events if e.get("job_id") == job_id and e.get("status") == JobStatus.QUEUED
+    )
+    assert "_win_endpoint" not in (queued.get("spec", {}).get("metadata") or {})
+
+
 @pytest.mark.asyncio
 async def test_submit_echo_job_succeeds(tmp_path):
     """submit_job() fires worker; job reaches SUCCEEDED."""
