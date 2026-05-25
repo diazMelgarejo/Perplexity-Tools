@@ -38,3 +38,30 @@ def test_cursor_hooks_id_matches_workspace():
     ).strip()
     expected = base64.b64encode(repo_abs.encode()).decode().rstrip("=")
     assert out == expected
+
+
+def test_check_commit_message_allows_well_known_coauthors(tmp_path):
+    script = ROOT / "scripts/git/check_commit_message.sh"
+    for body, label in (
+        ("feat: x\n\nCo-authored-by: Codex <codex@openai.com>\n", "codex"),
+        ("feat: x\n\nCo-authored-by: Cursor <cursoragent@cursor.com>\n", "cursor"),
+    ):
+        msg = tmp_path / f"msg-{label}"
+        msg.write_text(body, encoding="utf-8")
+        subprocess.run(["bash", str(script), str(msg)], check=True, cwd=ROOT)
+
+
+def test_check_commit_message_rejects_unknown_gmail(tmp_path):
+    script = ROOT / "scripts/git/check_commit_message.sh"
+    msg = tmp_path / "msg-bad"
+    msg.write_text(
+        "feat: x\n\nCo-authored-by: Random <randomperson@gmail.com>\n",
+        encoding="utf-8",
+    )
+    proc = subprocess.run(
+        ["bash", str(script), str(msg)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode != 0

@@ -18,6 +18,7 @@ from pathlib import Path
 APPROVED_IDENTITIES = {
     ("cyre", "Lawrence@cyre.me"),
     ("cyre", "diazMelgarejo@gmail.com"),
+    ("Codex", "codex@openai.com"),
 }
 # Keep in sync with scripts/git/check_identity.sh (local hooks + pre-commit).
 FORBIDDEN_TOKENS = (
