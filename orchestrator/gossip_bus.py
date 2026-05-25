@@ -159,11 +159,14 @@ class GossipBus:
 
         Never blocks on LanceDB / Ollama.  FTS5 is always synchronously written.
         """
+        from orchestrator.memory_governance import classify_and_redact
+
+        safe_payload, _memory_class = classify_and_redact(payload, event_type=event_type)
         async with aiosqlite.connect(self._db_path) as db:
             cursor = await db.execute(
                 "INSERT INTO gossip (ts, event_type, payload_json, embed_status) "
                 "VALUES (?, ?, ?, 'pending')",
-                (time.time(), event_type, json.dumps(payload)),
+                (time.time(), event_type, json.dumps(safe_payload)),
             )
             row_id = cursor.lastrowid
             await db.commit()
@@ -171,7 +174,7 @@ class GossipBus:
         # _pending_embeds holds a strong reference so GC cannot collect the task (D_GCG-1).
         if len(_pending_embeds) < _MAX_PENDING:
             task = asyncio.create_task(
-                self._embed_and_store(row_id, payload),
+                self._embed_and_store(row_id, safe_payload),
                 name=f"embed-{row_id}",
             )
             _pending_embeds.add(task)
