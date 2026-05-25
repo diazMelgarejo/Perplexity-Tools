@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "alphaclaw": {
+      "command": "node",
+      "args": ["packages/alphaclaw-mcp/build/index.js"],
+      "env": {
+        "ALPHACLAW_MCP_PROFILE": "readonly",
+        "ALPHACLAW_ROOT": "/absolute/path/to/AlphaClaw"
+      }
+    }
+  }
+}

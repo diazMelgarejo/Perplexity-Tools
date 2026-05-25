@@ -14,6 +14,11 @@ import { fileURLToPath } from "url";
 import adapter from "@diazmelgarejo/alphaclaw-adapter";
 // @ts-ignore
 import orchestrator from "../../local-agents/src/orchestrator.js";
+import {
+  isToolAllowed,
+  profileStartupSummary,
+  toolDisabledMessage,
+} from "./mcp-profiles.js";
 
 /**
  * ὅραμα-system (orama-system) / Perpetua-Tools
@@ -35,6 +40,9 @@ import orchestrator from "../../local-agents/src/orchestrator.js";
  *
  * Env:
  *   ALPHACLAW_ROOT  — path to AlphaClaw project dir (default: ../AlphaClaw sibling)
+ *   ALPHACLAW_MCP_PROFILE — readonly (default) | elevated
+ *   ALPHACLAW_MCP_ENABLE_PROCESS_TOOLS — opt-in build_ui/run_tests when profile=readonly
+ *   ALPHACLAW_MCP_ENABLE_MUTATING_TOOLS — opt-in login/propose_edit when profile=readonly
  *
  * Tools (14):
  *
@@ -233,8 +241,7 @@ const server = new Server(
   { capabilities: { tools: {} } }
 );
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [
+const ALL_TOOL_DEFINITIONS = [
     // ── HTTP/adapter tools ──────────────────────────────────────────────────
     {
       name: "alphaclaw_health",
@@ -390,12 +397,19 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
       },
       annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
     },
-  ],
+];
+
+server.setRequestHandler(ListToolsRequestSchema, async () => ({
+  tools: ALL_TOOL_DEFINITIONS.filter((t) => isToolAllowed(t.name)),
 }));
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  const toolName = request.params.name;
+  if (!isToolAllowed(toolName)) {
+    throw new McpError(ErrorCode.InvalidRequest, toolDisabledMessage(toolName));
+  }
   try {
-    switch (request.params.name) {
+    switch (toolName) {
       // ── HTTP/adapter tools ────────────────────────────────────────────────
       case "alphaclaw_health":
         return toolResult(await adapter.health());
@@ -480,7 +494,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function run() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("AlphaClaw MCP Server v0.9.16.9 started on stdio (14 tools — canonical)");
+  const visible = ALL_TOOL_DEFINITIONS.filter((t) => isToolAllowed(t.name)).length;
+  console.error(
+    `AlphaClaw MCP Server v0.9.16.9 started on stdio (${visible}/${ALL_TOOL_DEFINITIONS.length} tools — ${profileStartupSummary()})`
+  );
 }
 
 run().catch((error) => {

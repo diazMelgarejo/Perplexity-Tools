@@ -232,6 +232,9 @@ async def _codex_worker(spec: Any) -> dict:
       - stdin=DEVNULL so the subprocess cannot hang on input.
       - Pass prompt directly — file results saved by codex to cwd, not echoed.
     """
+    from orchestrator.dangerous_workers import assert_dangerous_cli_worker_allowed
+
+    assert_dangerous_cli_worker_allowed("codex")
     prompt = getattr(spec, "prompt", "")
     timeout = float(_get_constraint(spec, "max_seconds", 300))
 
@@ -274,6 +277,9 @@ async def _gemini_worker(spec: Any) -> dict:
         its result to disk; the MCP response is a status + file path, not content.
       - stdin=DEVNULL prevents interactive hangs.
     """
+    from orchestrator.dangerous_workers import assert_dangerous_cli_worker_allowed
+
+    assert_dangerous_cli_worker_allowed("gemini")
     prompt = getattr(spec, "prompt", "")
     timeout = float(_get_constraint(spec, "max_seconds", 300))
 
@@ -307,6 +313,9 @@ async def _agy_worker(spec: Any) -> dict:
     stdin=DEVNULL prevents interactive hangs.  Mirrors _gemini_worker patterns;
     use this when Gemini CLI is offline or unavailable.
     """
+    from orchestrator.dangerous_workers import assert_dangerous_cli_worker_allowed
+
+    assert_dangerous_cli_worker_allowed("agy")
     prompt = getattr(spec, "prompt", "")
     timeout = float(_get_constraint(spec, "max_seconds", 300))
 

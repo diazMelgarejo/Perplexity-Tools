@@ -9,6 +9,7 @@ import { fileURLToPath } from "url";
 import adapter from "@diazmelgarejo/alphaclaw-adapter";
 // @ts-ignore
 import orchestrator from "../../local-agents/src/orchestrator.js";
+import { isToolAllowed, profileStartupSummary, toolDisabledMessage, } from "./mcp-profiles.js";
 /**
  * ὅραμα-system (orama-system) / Perpetua-Tools
  * AlphaClaw MCP Server — canonical adapter + controller primitive (v0.9.16.9)
@@ -29,6 +30,9 @@ import orchestrator from "../../local-agents/src/orchestrator.js";
  *
  * Env:
  *   ALPHACLAW_ROOT  — path to AlphaClaw project dir (default: ../AlphaClaw sibling)
+ *   ALPHACLAW_MCP_PROFILE — readonly (default) | elevated
+ *   ALPHACLAW_MCP_ENABLE_PROCESS_TOOLS — opt-in build_ui/run_tests when profile=readonly
+ *   ALPHACLAW_MCP_ENABLE_MUTATING_TOOLS — opt-in login/propose_edit when profile=readonly
  *
  * Tools (14):
  *
@@ -210,165 +214,170 @@ function toolResult(result) {
 }
 // ─── MCP server ───────────────────────────────────────────────────────────────
 const server = new Server({ name: "alphaclaw-mcp", version: "0.9.16.9" }, { capabilities: { tools: {} } });
+const ALL_TOOL_DEFINITIONS = [
+    // ── HTTP/adapter tools ──────────────────────────────────────────────────
+    {
+        name: "alphaclaw_health",
+        description: "Ping the AlphaClaw gateway health endpoint to check liveness. Does not require authentication.",
+        inputSchema: { type: "object", properties: {}, required: [] },
+        annotations: { readOnlyHint: true, destructiveHint: false },
+    },
+    {
+        name: "alphaclaw_login",
+        description: "Login to the AlphaClaw gateway using SETUP_PASSWORD to establish an active session. Required before calling authenticated endpoints.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                password: { type: "string", description: "AlphaClaw SETUP_PASSWORD value" },
+            },
+            required: ["password"],
+        },
+        annotations: { readOnlyHint: false, destructiveHint: false },
+    },
+    {
+        name: "alphaclaw_status",
+        description: "Fetch detailed metrics and stats about the running AlphaClaw gateway via HTTP. Requires gateway to be running.",
+        inputSchema: { type: "object", properties: {}, required: [] },
+        annotations: { readOnlyHint: true, destructiveHint: false },
+    },
+    {
+        name: "alphaclaw_watchdog_logs",
+        description: "Pull recent watchdog observability logs from the AlphaClaw gateway. Requires authentication (call alphaclaw_login first).",
+        inputSchema: {
+            type: "object",
+            properties: {
+                lines: { type: "number", description: "Number of recent log rows to return (default 50, max 200)" },
+            },
+            required: [],
+        },
+        annotations: { readOnlyHint: true, destructiveHint: false },
+    },
+    // ── File-based tools ────────────────────────────────────────────────────
+    {
+        name: "alphaclaw_read_config",
+        description: "Read the current openclaw.json configuration from disk. Secrets (tokens, passwords, keys) are redacted. Returns provider list, channel config, and gateway settings.",
+        inputSchema: { type: "object", properties: {}, required: [] },
+        annotations: { readOnlyHint: true, destructiveHint: false },
+    },
+    {
+        name: "alphaclaw_list_providers",
+        description: "List all AI model providers configured in openclaw.json with their model arrays and enabled state. Works without a running gateway.",
+        inputSchema: { type: "object", properties: {}, required: [] },
+        annotations: { readOnlyHint: true, destructiveHint: false },
+    },
+    {
+        name: "alphaclaw_tail_logs",
+        description: "Return the last N lines from the AlphaClaw hourly-sync log. Works without a running gateway.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                lines: { type: "number", description: "Number of log lines to return (default 50, max 200)" },
+            },
+            required: [],
+        },
+        annotations: { readOnlyHint: true, destructiveHint: false },
+    },
+    {
+        name: "alphaclaw_check_env",
+        description: "Verify the .env file exists in the AlphaClaw project root and that SETUP_PASSWORD is set. Returns status without revealing the password value.",
+        inputSchema: { type: "object", properties: {}, required: [] },
+        annotations: { readOnlyHint: true, destructiveHint: false },
+    },
+    // ── Process-spawning tools ──────────────────────────────────────────────
+    {
+        name: "alphaclaw_build_ui",
+        description: "Run `npm run build:ui` in the AlphaClaw project and return stdout/stderr. Use to verify esbuild ARM64 compatibility on macOS.",
+        inputSchema: { type: "object", properties: {}, required: [] },
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+    },
+    {
+        name: "alphaclaw_run_tests",
+        description: "Run the AlphaClaw Vitest test suite and return pass/fail summary. suite: 'full' (all tests), 'watchdog' (14 watchdog tests), 'coverage' (with lcov).",
+        inputSchema: {
+            type: "object",
+            properties: {
+                suite: {
+                    type: "string",
+                    enum: ["full", "watchdog", "coverage"],
+                    description: "Which test suite to run",
+                },
+            },
+            required: ["suite"],
+        },
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+    },
+    // ── Local agent tools ───────────────────────────────────────────────────
+    {
+        name: "local_agent_health",
+        description: "Check which local AI agents are reachable: Ollama at 127.0.0.1:11435 and LM Studio at the LAN Windows GPU host. Call before delegating tasks to verify availability.",
+        inputSchema: { type: "object", properties: {}, required: [] },
+        annotations: { readOnlyHint: true, destructiveHint: false },
+    },
+    {
+        name: "local_agent_list_models",
+        description: "List all AI models available across Ollama and LM Studio backends. Returns model names grouped by backend.",
+        inputSchema: { type: "object", properties: {}, required: [] },
+        annotations: { readOnlyHint: true, destructiveHint: false },
+    },
+    {
+        name: "local_agent_ask_about_code",
+        description: "Delegate a code question to a local AI agent (Ollama or LM Studio). The agent reads the specified file and answers. Claude acts as planner/reviewer; local agent does the heavy lifting. Good for: understanding a file, finding a bug location, summarizing logic.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                filePath: {
+                    type: "string",
+                    description: "Path to the file to analyze (relative to AlphaClaw project root or absolute)",
+                },
+                question: {
+                    type: "string",
+                    description: "What to ask about the file (e.g. 'Where is the SETUP_PASSWORD check?')",
+                },
+                backend: {
+                    type: "string",
+                    enum: ["ollama", "lmstudio"],
+                    description: "Force a specific backend (optional — auto-selects best available)",
+                },
+            },
+            required: ["filePath", "question"],
+        },
+        annotations: { readOnlyHint: true, destructiveHint: false },
+    },
+    {
+        name: "local_agent_propose_edit",
+        description: "Ask a local AI agent to propose a code edit as a unified diff. The patch is returned for Claude to review — it is NOT applied automatically. Claude must validate and approve before any write. Good for: targeted bug fixes, variable renames, adding error handling.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                filePath: {
+                    type: "string",
+                    description: "Path to the file to edit (relative to AlphaClaw project root or absolute)",
+                },
+                instruction: {
+                    type: "string",
+                    description: "What change to make (e.g. 'Add null check before accessing config.gateway.providers')",
+                },
+                backend: {
+                    type: "string",
+                    enum: ["ollama", "lmstudio"],
+                    description: "Force a specific backend (optional)",
+                },
+            },
+            required: ["filePath", "instruction"],
+        },
+        annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
+    },
+];
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: [
-        // ── HTTP/adapter tools ──────────────────────────────────────────────────
-        {
-            name: "alphaclaw_health",
-            description: "Ping the AlphaClaw gateway health endpoint to check liveness. Does not require authentication.",
-            inputSchema: { type: "object", properties: {}, required: [] },
-            annotations: { readOnlyHint: true, destructiveHint: false },
-        },
-        {
-            name: "alphaclaw_login",
-            description: "Login to the AlphaClaw gateway using SETUP_PASSWORD to establish an active session. Required before calling authenticated endpoints.",
-            inputSchema: {
-                type: "object",
-                properties: {
-                    password: { type: "string", description: "AlphaClaw SETUP_PASSWORD value" },
-                },
-                required: ["password"],
-            },
-            annotations: { readOnlyHint: false, destructiveHint: false },
-        },
-        {
-            name: "alphaclaw_status",
-            description: "Fetch detailed metrics and stats about the running AlphaClaw gateway via HTTP. Requires gateway to be running.",
-            inputSchema: { type: "object", properties: {}, required: [] },
-            annotations: { readOnlyHint: true, destructiveHint: false },
-        },
-        {
-            name: "alphaclaw_watchdog_logs",
-            description: "Pull recent watchdog observability logs from the AlphaClaw gateway. Requires authentication (call alphaclaw_login first).",
-            inputSchema: {
-                type: "object",
-                properties: {
-                    lines: { type: "number", description: "Number of recent log rows to return (default 50, max 200)" },
-                },
-                required: [],
-            },
-            annotations: { readOnlyHint: true, destructiveHint: false },
-        },
-        // ── File-based tools ────────────────────────────────────────────────────
-        {
-            name: "alphaclaw_read_config",
-            description: "Read the current openclaw.json configuration from disk. Secrets (tokens, passwords, keys) are redacted. Returns provider list, channel config, and gateway settings.",
-            inputSchema: { type: "object", properties: {}, required: [] },
-            annotations: { readOnlyHint: true, destructiveHint: false },
-        },
-        {
-            name: "alphaclaw_list_providers",
-            description: "List all AI model providers configured in openclaw.json with their model arrays and enabled state. Works without a running gateway.",
-            inputSchema: { type: "object", properties: {}, required: [] },
-            annotations: { readOnlyHint: true, destructiveHint: false },
-        },
-        {
-            name: "alphaclaw_tail_logs",
-            description: "Return the last N lines from the AlphaClaw hourly-sync log. Works without a running gateway.",
-            inputSchema: {
-                type: "object",
-                properties: {
-                    lines: { type: "number", description: "Number of log lines to return (default 50, max 200)" },
-                },
-                required: [],
-            },
-            annotations: { readOnlyHint: true, destructiveHint: false },
-        },
-        {
-            name: "alphaclaw_check_env",
-            description: "Verify the .env file exists in the AlphaClaw project root and that SETUP_PASSWORD is set. Returns status without revealing the password value.",
-            inputSchema: { type: "object", properties: {}, required: [] },
-            annotations: { readOnlyHint: true, destructiveHint: false },
-        },
-        // ── Process-spawning tools ──────────────────────────────────────────────
-        {
-            name: "alphaclaw_build_ui",
-            description: "Run `npm run build:ui` in the AlphaClaw project and return stdout/stderr. Use to verify esbuild ARM64 compatibility on macOS.",
-            inputSchema: { type: "object", properties: {}, required: [] },
-            annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
-        },
-        {
-            name: "alphaclaw_run_tests",
-            description: "Run the AlphaClaw Vitest test suite and return pass/fail summary. suite: 'full' (all tests), 'watchdog' (14 watchdog tests), 'coverage' (with lcov).",
-            inputSchema: {
-                type: "object",
-                properties: {
-                    suite: {
-                        type: "string",
-                        enum: ["full", "watchdog", "coverage"],
-                        description: "Which test suite to run",
-                    },
-                },
-                required: ["suite"],
-            },
-            annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
-        },
-        // ── Local agent tools ───────────────────────────────────────────────────
-        {
-            name: "local_agent_health",
-            description: "Check which local AI agents are reachable: Ollama at 127.0.0.1:11435 and LM Studio at the LAN Windows GPU host. Call before delegating tasks to verify availability.",
-            inputSchema: { type: "object", properties: {}, required: [] },
-            annotations: { readOnlyHint: true, destructiveHint: false },
-        },
-        {
-            name: "local_agent_list_models",
-            description: "List all AI models available across Ollama and LM Studio backends. Returns model names grouped by backend.",
-            inputSchema: { type: "object", properties: {}, required: [] },
-            annotations: { readOnlyHint: true, destructiveHint: false },
-        },
-        {
-            name: "local_agent_ask_about_code",
-            description: "Delegate a code question to a local AI agent (Ollama or LM Studio). The agent reads the specified file and answers. Claude acts as planner/reviewer; local agent does the heavy lifting. Good for: understanding a file, finding a bug location, summarizing logic.",
-            inputSchema: {
-                type: "object",
-                properties: {
-                    filePath: {
-                        type: "string",
-                        description: "Path to the file to analyze (relative to AlphaClaw project root or absolute)",
-                    },
-                    question: {
-                        type: "string",
-                        description: "What to ask about the file (e.g. 'Where is the SETUP_PASSWORD check?')",
-                    },
-                    backend: {
-                        type: "string",
-                        enum: ["ollama", "lmstudio"],
-                        description: "Force a specific backend (optional — auto-selects best available)",
-                    },
-                },
-                required: ["filePath", "question"],
-            },
-            annotations: { readOnlyHint: true, destructiveHint: false },
-        },
-        {
-            name: "local_agent_propose_edit",
-            description: "Ask a local AI agent to propose a code edit as a unified diff. The patch is returned for Claude to review — it is NOT applied automatically. Claude must validate and approve before any write. Good for: targeted bug fixes, variable renames, adding error handling.",
-            inputSchema: {
-                type: "object",
-                properties: {
-                    filePath: {
-                        type: "string",
-                        description: "Path to the file to edit (relative to AlphaClaw project root or absolute)",
-                    },
-                    instruction: {
-                        type: "string",
-                        description: "What change to make (e.g. 'Add null check before accessing config.gateway.providers')",
-                    },
-                    backend: {
-                        type: "string",
-                        enum: ["ollama", "lmstudio"],
-                        description: "Force a specific backend (optional)",
-                    },
-                },
-                required: ["filePath", "instruction"],
-            },
-            annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
-        },
-    ],
+    tools: ALL_TOOL_DEFINITIONS.filter((t) => isToolAllowed(t.name)),
 }));
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const toolName = request.params.name;
+    if (!isToolAllowed(toolName)) {
+        throw new McpError(ErrorCode.InvalidRequest, toolDisabledMessage(toolName));
+    }
     try {
-        switch (request.params.name) {
+        switch (toolName) {
             // ── HTTP/adapter tools ────────────────────────────────────────────────
             case "alphaclaw_health":
                 return toolResult(await adapter.health());
@@ -437,7 +446,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function run() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    console.error("AlphaClaw MCP Server v0.9.16.9 started on stdio (14 tools — canonical)");
+    const visible = ALL_TOOL_DEFINITIONS.filter((t) => isToolAllowed(t.name)).length;
+    console.error(`AlphaClaw MCP Server v0.9.16.9 started on stdio (${visible}/${ALL_TOOL_DEFINITIONS.length} tools — ${profileStartupSummary()})`);
 }
 run().catch((error) => {
     console.error("Fatal error:", error);
