@@ -6,6 +6,11 @@ set -euo pipefail
 msg_file="${1:?commit message file required}"
 [[ -f "$msg_file" ]] || { echo "ERROR: missing commit message file: $msg_file" >&2; exit 1; }
 
+# Explicit allowlist entries (lowercase match) — always permitted in Co-authored-by.
+ALLOWED_EXACT_COAUTHOR_EMAILS=(
+  cursoragent@cursor.com
+)
+
 # Only these @gmail.com addresses may appear in Co-authored-by (lowercase match).
 ALLOWED_GMAIL_COAUTHORS=(
   diazmelgarejo@gmail.com
@@ -70,6 +75,12 @@ coauthor_line_ok() {
   fi
 
   if [[ -n "$email_lc" ]]; then
+    local exact
+    for exact in "${ALLOWED_EXACT_COAUTHOR_EMAILS[@]}"; do
+      if [[ "$email_lc" == "$exact" ]]; then
+        return 0
+      fi
+    done
     if [[ "$email_lc" == *@gmail.com || "$email_lc" == *@googlemail.com ]]; then
       gmail_allowed "$email_lc"
       return $?
@@ -96,7 +107,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
       if ! coauthor_line_ok "$line_lc"; then
         echo "ERROR: Co-authored-by not on approved co-author policy:" >&2
         echo "  $line" >&2
-        echo "Allowed: well-known public AI/vendor domains (openai.com, anthropic.com, cursor.com, …) or allowlisted gmail (diazMelgarejo@gmail.com, Lawrence@cyre.me)." >&2
+        echo "Allowed: explicit allowlist (cursoragent@cursor.com), well-known public AI/vendor domains (openai.com, anthropic.com, cursor.com, …), or allowlisted gmail (diazMelgarejo@gmail.com, Lawrence@cyre.me)." >&2
         exit 1
       fi
       ;;
