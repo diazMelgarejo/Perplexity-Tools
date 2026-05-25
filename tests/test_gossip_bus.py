@@ -69,21 +69,23 @@ async def test_search_empty_query_returns_empty(bus):
 
 @pytest.mark.asyncio
 async def test_search_finds_exact_payload_keyword(bus):
-    await bus.emit("dispatch", {"prompt": "find the blue widget"})
+    # Use non-sensitive keys — prompts are redacted before durable FTS store.
+    await bus.emit("dispatch", {"intent": "find the blue widget"})
     await bus.emit("route", {"intent": "unrelated thing"})
     hits = await bus.search("blue widget")
     assert len(hits) == 1
     assert hits[0]["event_type"] == "dispatch"
-    assert "blue widget" in hits[0]["payload"]["prompt"]
+    assert "blue widget" in hits[0]["payload"]["intent"]
 
 
 @pytest.mark.asyncio
 async def test_search_filters_by_event_type(bus):
-    await bus.emit("dispatch", {"prompt": "run the calculation"})
-    await bus.emit("error", {"prompt": "run the calculation", "error": "timeout"})
+    await bus.emit("dispatch", {"intent": "run the calculation"})
+    await bus.emit("error", {"detail": "run the calculation", "error": "timeout"})
     hits = await bus.search("run the calculation", event_type="error")
     assert len(hits) == 1
     assert hits[0]["event_type"] == "error"
+    assert "run the calculation" in hits[0]["payload"]["detail"]
 
 
 @pytest.mark.asyncio
