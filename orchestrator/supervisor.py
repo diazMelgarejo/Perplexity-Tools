@@ -385,8 +385,12 @@ class OrchestrationSupervisor:
         if _needs_win_probe:
             win_url = await self._get_reachable_windows_coder()
             if win_url is not None:
+                from utils.model_endpoint_url import redact_endpoint_for_log
+
                 _log.info(
-                    "windows_coder_pool: dispatching job %s to %s", spec.job_id, win_url
+                    "windows_coder_pool: dispatching job %s to %s",
+                    spec.job_id,
+                    redact_endpoint_for_log(win_url),
                 )
                 # Re-validate affinity for Windows + inject explicit model id (never "").
                 spec_for_win = self._prepare_spec_for_inference(
@@ -476,8 +480,19 @@ class OrchestrationSupervisor:
         import os
         import httpx
 
+        from utils.model_endpoint_url import (
+            ModelEndpointPolicyError,
+            parse_model_endpoint_list,
+            redact_endpoint_for_log,
+        )
+
         raw = os.environ.get("WIN_CODER_ENDPOINTS", "")
-        pool = [url.strip().rstrip("/") for url in raw.split(",") if url.strip()]
+        try:
+            pool = parse_model_endpoint_list(raw)
+        except ModelEndpointPolicyError as exc:
+            log = __import__("logging").getLogger(__name__)
+            log.error("windows_coder_pool: invalid WIN_CODER_ENDPOINTS — %s", exc)
+            return None
         if not pool:
             return None
 
@@ -487,11 +502,21 @@ class OrchestrationSupervisor:
                 try:
                     r = await client.get(f"{url}/v1/models")
                     if r.status_code < 400:
-                        log.info("windows_coder_pool: %s is reachable", url)
+                        log.info(
+                            "windows_coder_pool: %s is reachable",
+                            redact_endpoint_for_log(url),
+                        )
                         return url
                 except Exception as exc:  # noqa: BLE001
-                    log.warning("windows_coder_pool: probe failed for %s — %s", url, exc)
-        log.warning("windows_coder_pool: no reachable Windows coder in pool %s", pool)
+                    log.warning(
+                        "windows_coder_pool: probe failed for %s — %s",
+                        redact_endpoint_for_log(url),
+                        exc,
+                    )
+        log.warning(
+            "windows_coder_pool: no reachable Windows coder in pool (%d endpoints)",
+            len(pool),
+        )
         return None
 
     def _append_event(self, job_id: str, event: dict) -> None:

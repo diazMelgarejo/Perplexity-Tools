@@ -384,17 +384,30 @@ async def _lmstudio_win_worker(spec: Any) -> dict:
         "max_tokens": max_tokens,
     }
 
+    from utils.model_endpoint_url import (
+        ModelEndpointPolicyError,
+        parse_model_endpoint_list,
+        redact_endpoint_for_log,
+        validate_model_endpoint_url,
+    )
+
     # ── Endpoint resolution ──────────────────────────────────────────────────
     # Priority 1: dispatcher already probed and selected an endpoint.
     pre_probed = metadata.get("_win_endpoint")
     if pre_probed:
-        endpoint = pre_probed.rstrip("/")
-        _log.debug("lmstudio-win: using pre-probed endpoint %s", endpoint)
+        endpoint = validate_model_endpoint_url(str(pre_probed))
+        _log.debug(
+            "lmstudio-win: using pre-probed endpoint %s",
+            redact_endpoint_for_log(endpoint),
+        )
     else:
         # Priority 2: direct invocation — probe LM_STUDIO_WIN_ENDPOINTS ourselves.
         raw_endpoints = os.getenv("LM_STUDIO_WIN_ENDPOINTS", "REQUIRED_SET_IN_ENV")
-        candidates = [e.strip().rstrip("/") for e in raw_endpoints.split(",") if e.strip()]
-        if not candidates or candidates == ["REQUIRED_SET_IN_ENV"]:
+        try:
+            candidates = parse_model_endpoint_list(raw_endpoints)
+        except ModelEndpointPolicyError as exc:
+            raise RuntimeError(f"LM_STUDIO_WIN_ENDPOINTS policy violation: {exc}") from exc
+        if not candidates:
             raise RuntimeError(
                 "LM_STUDIO_WIN_ENDPOINTS is not set. "
                 "Set it to the Windows LM Studio URL, e.g. http://192.168.254.102:1234"
@@ -409,11 +422,13 @@ async def _lmstudio_win_worker(spec: Any) -> dict:
                         break
                 except Exception as exc:
                     _log.warning(
-                        "win_coder_pool: %s offline (%s), trying next", candidate, exc
+                        "win_coder_pool: %s offline (%s), trying next",
+                        redact_endpoint_for_log(candidate),
+                        exc,
                     )
         if endpoint is None:
             raise RuntimeError(
-                f"No Windows coder available in pool: {candidates}. "
+                f"No Windows coder available in pool ({len(candidates)} endpoints). "
                 "Ensure LM Studio is running and a model is loaded."
             )
 
