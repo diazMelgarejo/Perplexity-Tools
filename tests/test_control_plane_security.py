@@ -52,3 +52,19 @@ def test_classify_and_redact_strips_prompt_secrets():
     assert memory_class == "prompt"
     assert "AIzaSy" not in json.dumps(safe)
     assert safe["_memory_class"] == "prompt"
+
+
+@pytest.mark.asyncio
+async def test_gossip_emit_search_retains_redacted_prompt_text(tmp_path):
+    """FTS5 must index prompt bodies after governance redaction (not blanked)."""
+    from orchestrator.gossip_bus import GossipBus
+
+    bus = GossipBus(str(tmp_path / "gossip.db"))
+    await bus.init_db()
+    await bus.emit(
+        "dispatch",
+        {"prompt": "find the blue widget", "role": "coder"},
+    )
+    hits = await bus.search("blue widget")
+    assert len(hits) == 1
+    assert hits[0]["payload"]["prompt"] == "find the blue widget"
