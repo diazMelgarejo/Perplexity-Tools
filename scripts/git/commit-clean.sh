@@ -55,6 +55,28 @@ author_email="${GIT_AUTHOR_EMAIL:-$(git config user.email)}"
   echo "error: configure user.name and user.email or set GIT_AUTHOR_*" >&2
   exit 1
 }
+author_email_lc="$(printf '%s' "$author_email" | tr '[:upper:]' '[:lower:]')"
+author_domain_ok() {
+  local email_lc="$1"
+  local domain="${email_lc#*@}"
+  [[ -z "$domain" || "$domain" == "$email_lc" ]] && return 1
+  case "$domain" in
+    openai.com|*.openai.com|anthropic.com|*.anthropic.com|cursor.com|*.cursor.com|cursor.sh|*.cursor.sh|google.com|*.google.com|google.dev|*.google.dev|github.com|*.github.com|microsoft.com|*.microsoft.com|azure.com|*.azure.com|perplexity.ai|*.perplexity.ai|x.ai|*.x.ai)
+      return 0
+      ;;
+  esac
+  return 1
+}
+case "$author_email_lc" in
+  diazmelgarejo@gmail.com|lawrence@cyre.me|codex@openai.com)
+    ;;
+  *)
+    if ! author_domain_ok "$author_email_lc"; then
+      echo "error: commit author email must be diazMelgarejo@gmail.com, Lawrence@cyre.me, codex@openai.com, or a well-known AI/vendor domain" >&2
+      exit 1
+    fi
+    ;;
+esac
 
 if git diff-index --quiet HEAD -- 2>/dev/null && [[ "$amend" -eq 0 ]]; then
   if git diff-index --quiet --cached HEAD -- 2>/dev/null; then

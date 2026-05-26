@@ -24,9 +24,12 @@ WELL_KNOWN_COAUTHOR_DOMAIN_SUFFIXES=(
   cursor.com
   cursor.sh
   google.com
+  google.dev
   github.com
   microsoft.com
   azure.com
+  perplexity.ai
+  x.ai
 )
 
 # Match in Co-authored-by display name / address when domain alone is ambiguous.
@@ -37,10 +40,13 @@ WELL_KNOWN_COAUTHOR_NAME_MARKERS=(
   cursor
   cursoragent
   gemini
+  google
   copilot
   openai
   github
   microsoft
+  perplexity
+  grok
 )
 
 email_domain_ok() {
