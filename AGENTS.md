@@ -30,3 +30,15 @@ coding agents working in this repo.
   `anthropic`, `cursor`, etc.).
 - Random or unattributable Gmail co-authors are blocked. Only the approved owner
   Gmail addresses may appear in `Co-authored-by`.
+
+## Security PR stacking directive
+
+- Before opening or preparing any security-remediation PR, read the canonical
+  security policy in `../orama-system/docs/SECURITY-POLICY.md` and follow its
+  "Security PR stacking and merge strategy" section.
+- Merge or revive existing security-priority branches before creating duplicate
+  replacement branches.
+- Stack security PRs in policy-priority order: `PR1` starts from `main`; each
+  `PR(N+1)` is rebased on the previous PR branch before opening.
+- Rebasing or force-updating an existing remote branch requires explicit current
+  user authorization.
