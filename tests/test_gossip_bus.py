@@ -196,3 +196,91 @@ async def test_tail_returns_recent_events_newest_first(bus):
     assert len(rows) == 2
     assert rows[0]["event_type"] == "route"   # newest first
     assert rows[1]["event_type"] == "dispatch"
+
+
+# ---------------------------------------------------------------------------
+# resolve_gossip_db_path tests (PR change: new function)
+# ---------------------------------------------------------------------------
+
+def test_resolve_gossip_db_path_explicit_env_overrides_all(tmp_path, monkeypatch):
+    """GOSSIP_DB_PATH env var takes highest precedence over state_dir and PT_STATE_DIR."""
+    from orchestrator.gossip_bus import resolve_gossip_db_path
+
+    explicit = str(tmp_path / "explicit.db")
+    monkeypatch.setenv("GOSSIP_DB_PATH", explicit)
+    monkeypatch.setenv("PT_STATE_DIR", str(tmp_path / "other"))
+
+    result = resolve_gossip_db_path(state_dir=tmp_path / "also_other")
+    assert result == explicit
+
+
+def test_resolve_gossip_db_path_with_state_dir_arg(tmp_path, monkeypatch):
+    """When state_dir is provided and GOSSIP_DB_PATH is unset, path is under state_dir."""
+    from orchestrator.gossip_bus import resolve_gossip_db_path
+
+    monkeypatch.delenv("GOSSIP_DB_PATH", raising=False)
+    monkeypatch.delenv("PT_STATE_DIR", raising=False)
+
+    result = resolve_gossip_db_path(state_dir=tmp_path)
+    assert result == str((tmp_path / "perpetua_core.db").resolve())
+
+
+def test_resolve_gossip_db_path_uses_pt_state_dir_env(tmp_path, monkeypatch):
+    """When state_dir is None, PT_STATE_DIR env var determines the database path."""
+    from orchestrator.gossip_bus import resolve_gossip_db_path
+
+    monkeypatch.delenv("GOSSIP_DB_PATH", raising=False)
+    monkeypatch.setenv("PT_STATE_DIR", str(tmp_path))
+
+    result = resolve_gossip_db_path()
+    assert result == str((tmp_path / "perpetua_core.db").resolve())
+
+
+def test_resolve_gossip_db_path_defaults_to_dot_state(monkeypatch):
+    """When no env vars and no state_dir are set, defaults to .state/perpetua_core.db."""
+    from pathlib import Path
+    from orchestrator.gossip_bus import resolve_gossip_db_path
+
+    monkeypatch.delenv("GOSSIP_DB_PATH", raising=False)
+    monkeypatch.delenv("PT_STATE_DIR", raising=False)
+
+    result = resolve_gossip_db_path()
+    expected = str((Path(".state") / "perpetua_core.db").resolve())
+    assert result == expected
+
+
+def test_resolve_gossip_db_path_state_dir_takes_precedence_over_pt_state_dir(tmp_path, monkeypatch):
+    """Explicit state_dir arg overrides PT_STATE_DIR env var (but GOSSIP_DB_PATH wins both)."""
+    from orchestrator.gossip_bus import resolve_gossip_db_path
+
+    monkeypatch.delenv("GOSSIP_DB_PATH", raising=False)
+    env_dir = tmp_path / "from_env"
+    arg_dir = tmp_path / "from_arg"
+    monkeypatch.setenv("PT_STATE_DIR", str(env_dir))
+
+    result = resolve_gossip_db_path(state_dir=arg_dir)
+    assert result == str((arg_dir / "perpetua_core.db").resolve())
+    # Verify it does NOT use the env dir
+    assert str(env_dir) not in result
+
+
+def test_resolve_gossip_db_path_db_filename_is_perpetua_core(tmp_path, monkeypatch):
+    """The database file is always named perpetua_core.db regardless of input."""
+    from orchestrator.gossip_bus import resolve_gossip_db_path
+
+    monkeypatch.delenv("GOSSIP_DB_PATH", raising=False)
+
+    result = resolve_gossip_db_path(state_dir=tmp_path)
+    assert result.endswith("perpetua_core.db")
+
+
+def test_resolve_gossip_db_path_explicit_env_whitespace_stripped(tmp_path, monkeypatch):
+    """GOSSIP_DB_PATH with surrounding whitespace is treated as non-empty/empty correctly."""
+    from orchestrator.gossip_bus import resolve_gossip_db_path
+
+    monkeypatch.setenv("GOSSIP_DB_PATH", "   ")  # whitespace-only → ignored
+    monkeypatch.delenv("PT_STATE_DIR", raising=False)
+
+    result = resolve_gossip_db_path(state_dir=tmp_path)
+    # Whitespace-only GOSSIP_DB_PATH is stripped to "" → falls through to state_dir
+    assert result == str((tmp_path / "perpetua_core.db").resolve())
