@@ -110,19 +110,19 @@ async def retrieve_context(
     lance_store=None,
 ) -> list[dict]:
     """
-    Retrieve ranked memory hit dictionaries relevant to the provided query.
+    Retrieve relevant memory hits from keyword, vector, and optional semantic stores and return them ranked.
     
-    Performs best-effort keyword, vector, and optional semantic searches and fuses results; failures are treated as empty results and do not raise.
+    Performs best-effort searches (FTS keyword, ANN vector, and optional gbrain semantic) and fuses results; backend errors are treated as empty results and do not raise.
     
     Parameters:
-        query (str): The user prompt or search query.
+        query (str): Search query or user prompt.
         top_n (int): Maximum number of results to return after fusion.
-        use_gbrain (Optional[bool]): If None, uses the module's GBRAIN env default; otherwise overrides gbrain usage.
-        gossip_bus: Optional pre-constructed GossipBus instance to use instead of the module default.
-        lance_store: Optional pre-constructed EmbeddingStore instance to use instead of the module default.
+        use_gbrain (Optional[bool]): If None, uses the module GBRAIN env default; otherwise overrides whether gbrain semantic search is performed.
+        gossip_bus: Optional GossipBus instance to use instead of the module default.
+        lance_store: Optional EmbeddingStore instance to use instead of the module default.
     
     Returns:
-        list[dict]: Ranked list of hit dictionaries, each with at least a `text` key; returns an empty list when no matches are found or on internal failures.
+        list[dict]: Ranked list of hit dictionaries (each contains at least a `text` key); returns an empty list when no matches are found or on internal failures.
     """
     if not query or not query.strip():
         return []
@@ -193,10 +193,10 @@ _default_store = None
 
 def _get_default_bus():
     """
-    Get the module-level GossipBus singleton whose database path is resolved from the supervisor.
+    Lazily instantiate and return the module-level GossipBus singleton using the supervisor-resolved database path.
     
     Returns:
-        GossipBus or None: Cached GossipBus instance if instantiation succeeded, otherwise None.
+        GossipBus or None: The cached GossipBus instance if instantiation succeeded, otherwise `None`.
     """
     global _default_bus  # noqa: PLW0603
     if _default_bus is None:
