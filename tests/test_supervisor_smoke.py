@@ -746,3 +746,103 @@ def test_job_submit_request_has_task_type_field():
 
     req2 = _JobSubmitRequest(prompt="spawn agent", task_type="new_agent")
     assert req2.task_type == "new_agent"
+
+
+# ── _inject_memory_context (Item 7 — RAG wiring) ─────────────────────────────
+
+@pytest.mark.asyncio
+async def test_inject_memory_context_prepends_block(tmp_path):
+    """When retrieve_context returns hits, prompt gets [MEMORY CONTEXT] prefix."""
+    from unittest.mock import AsyncMock, patch
+
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("tell me about Q3")
+
+    mock_hits = [{"text": "Q3 revenue was $10M"}, {"text": "Q3 costs were $8M"}]
+    with patch(
+        "orchestrator.memory_node.retrieve_context", AsyncMock(return_value=mock_hits)
+    ):
+        enriched = await sup._inject_memory_context(spec)
+
+    assert enriched.prompt.startswith("[MEMORY CONTEXT]")
+    assert "Q3 revenue was $10M" in enriched.prompt
+    assert "tell me about Q3" in enriched.prompt
+
+
+@pytest.mark.asyncio
+async def test_inject_memory_context_no_hits_unchanged(tmp_path):
+    """When retrieve_context returns [], spec is returned unchanged."""
+    from unittest.mock import AsyncMock, patch
+
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("original prompt")
+
+    with patch(
+        "orchestrator.memory_node.retrieve_context", AsyncMock(return_value=[])
+    ):
+        enriched = await sup._inject_memory_context(spec)
+
+    assert enriched is spec  # identity — no copy made
+
+
+@pytest.mark.asyncio
+async def test_inject_memory_context_disabled_by_metadata(tmp_path):
+    """use_memory=False in metadata bypasses injection entirely."""
+    from unittest.mock import AsyncMock, patch
+
+    sup = _make_sup(tmp_path)
+    spec = JobSpec(
+        prompt="prompt",
+        backend_hint="echo",
+        metadata={"use_memory": False},
+    )
+    mock_retrieve = AsyncMock(return_value=[{"text": "should not appear"}])
+    with patch("orchestrator.memory_node.retrieve_context", mock_retrieve):
+        enriched = await sup._inject_memory_context(spec)
+
+    mock_retrieve.assert_not_called()
+    assert enriched is spec
+
+
+@pytest.mark.asyncio
+async def test_inject_memory_context_degrades_on_exception(tmp_path):
+    """If retrieve_context raises, original spec is returned unchanged."""
+    from unittest.mock import AsyncMock, patch
+
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("safe prompt")
+
+    with patch(
+        "orchestrator.memory_node.retrieve_context",
+        AsyncMock(side_effect=RuntimeError("store down")),
+    ):
+        enriched = await sup._inject_memory_context(spec)
+
+    assert enriched is spec
+
+
+@pytest.mark.asyncio
+async def test_inject_memory_context_uses_gossip_payload_text(tmp_path):
+    """End-to-end: FTS hits from GossipBus must reach the injected prompt block."""
+    from unittest.mock import AsyncMock, patch
+
+    from orchestrator.gossip_bus import GossipBus
+    from orchestrator.memory_node import reset_singletons
+
+    bus = GossipBus(str(tmp_path / "gossip.db"))
+    await bus.init_db()
+    with patch.object(bus, "_embed_and_store", new_callable=AsyncMock):
+        await bus.emit("dispatch", {"prompt": "prior Q3 revenue was $10M"})
+
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("Q3 revenue")
+
+    reset_singletons()
+    with (
+        patch("orchestrator.memory_store.lancedb_available", return_value=False),
+        patch("orchestrator.memory_node._get_default_bus", return_value=bus),
+    ):
+        enriched = await sup._inject_memory_context(spec)
+
+    assert "prior Q3 revenue was $10M" in enriched.prompt
+    assert enriched.prompt.startswith("[MEMORY CONTEXT]")
