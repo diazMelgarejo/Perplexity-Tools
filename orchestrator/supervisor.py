@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
@@ -185,6 +186,8 @@ class OrchestrationSupervisor:
         self._jobs_file = self._state_dir / "jobs.jsonl"
         self._active: dict[str, asyncio.Task] = {}
         _ensure_state_dir(self._state_dir)
+        # Colocate GossipBus with jobs.jsonl so memory recall sees completed work.
+        os.environ["PT_STATE_DIR"] = str(self._state_dir.resolve())
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
@@ -323,6 +326,7 @@ class OrchestrationSupervisor:
                 "status": JobStatus.SUCCEEDED,
                 "artifact": str(job_dir / "result.json"),
             })
+            await self._record_to_gossip("result", spec)
 
         except asyncio.CancelledError:
             # Write CANCELLED checkpoint BEFORE propagating cancellation
@@ -336,15 +340,47 @@ class OrchestrationSupervisor:
                 "error": str(exc),
                 "policy": True,
             })
+            await self._record_to_gossip("error", spec, {"detail": str(exc), "policy": True})
 
         except Exception as exc:
             self._append_event(spec.job_id, {
                 "status": JobStatus.FAILED,
                 "error": str(exc),
             })
+            await self._record_to_gossip("error", spec, {"detail": str(exc)})
 
         finally:
             self._active.pop(spec.job_id, None)
+
+    async def _record_to_gossip(
+        self,
+        event_type: str,
+        spec: JobSpec,
+        extra: dict | None = None,
+    ) -> None:
+        """Persist job context to GossipBus for later memory injection (never raises)."""
+        import logging
+
+        payload: dict = {
+            "job_id": spec.job_id,
+            "prompt": spec.prompt,
+            "intent": spec.intent,
+        }
+        if spec.role:
+            payload["role"] = spec.role
+        if extra:
+            payload.update(extra)
+        try:
+            from orchestrator.gossip_bus import GossipBus, resolve_gossip_db_path  # noqa: PLC0415
+            from orchestrator.memory_node import ensure_gossip_db_ready  # noqa: PLC0415
+
+            bus = GossipBus(resolve_gossip_db_path(self._state_dir))
+            await ensure_gossip_db_ready(bus)
+            await bus.emit(event_type, payload)  # type: ignore[arg-type]
+        except Exception as exc:  # pragma: no cover
+            logging.getLogger(__name__).debug(
+                "_record_to_gossip: skipped — %s", exc
+            )
 
     async def _inject_memory_context(self, spec: JobSpec) -> JobSpec:
         """Prepend relevant memory context to spec.prompt (Item 7 — RAG wiring).

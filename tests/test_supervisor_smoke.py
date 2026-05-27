@@ -846,3 +846,30 @@ async def test_inject_memory_context_uses_gossip_payload_text(tmp_path):
 
     assert "prior Q3 revenue was $10M" in enriched.prompt
     assert enriched.prompt.startswith("[MEMORY CONTEXT]")
+
+
+@pytest.mark.asyncio
+async def test_completed_job_populates_gossip_for_later_injection(tmp_path, monkeypatch):
+    """Jobs must emit to GossipBus on completion so a later job can recall context."""
+    from unittest.mock import AsyncMock, patch
+
+    from orchestrator.memory_node import reset_singletons
+
+    monkeypatch.setenv("PT_STATE_DIR", str(tmp_path))
+    reset_singletons()
+
+    sup = _make_sup(tmp_path)
+    marker = "unique_recall_marker_7f3a"
+
+    job_id = await sup.submit_job(_echo_spec(f"store fact: {marker} revenue was $10M"))
+    task = sup._active.get(job_id)
+    assert task is not None
+    await task
+
+    # Query must share FTS terms with the stored row (FTS5 ANDs tokens by default).
+    spec2 = _echo_spec(f"{marker} revenue")
+    with patch("orchestrator.memory_store.lancedb_available", return_value=False):
+        enriched = await sup._inject_memory_context(spec2)
+
+    assert "$10M" in enriched.prompt
+    assert enriched.prompt.startswith("[MEMORY CONTEXT]")
