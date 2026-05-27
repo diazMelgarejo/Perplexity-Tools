@@ -197,3 +197,83 @@ async def test_retrieve_context_respects_top_n():
         )
 
     assert len(result) <= 3
+
+
+# ── ensure_gossip_db_ready (PR change: renamed to public) ────────────────────
+
+@pytest.mark.asyncio
+async def test_ensure_gossip_db_ready_calls_init_db(tmp_path):
+    """ensure_gossip_db_ready must call bus.init_db() on a fresh bus."""
+    from orchestrator.gossip_bus import GossipBus
+    from orchestrator.memory_node import ensure_gossip_db_ready
+
+    bus = GossipBus(str(tmp_path / "ready_test.db"))
+    # init_db not yet called — flag is absent
+    assert not getattr(bus, "_memory_node_db_ready", False)
+
+    await ensure_gossip_db_ready(bus)
+
+    assert getattr(bus, "_memory_node_db_ready", False) is True
+
+
+@pytest.mark.asyncio
+async def test_ensure_gossip_db_ready_idempotent(tmp_path):
+    """Second call to ensure_gossip_db_ready must not call init_db again."""
+    from orchestrator.memory_node import ensure_gossip_db_ready
+    from unittest.mock import AsyncMock
+
+    mock_bus = AsyncMock()
+    mock_bus._memory_node_db_ready = False
+
+    await ensure_gossip_db_ready(mock_bus)
+    assert mock_bus.init_db.call_count == 1
+
+    # Mark as ready and call again — init_db must NOT be called a second time.
+    mock_bus._memory_node_db_ready = True
+    await ensure_gossip_db_ready(mock_bus)
+    assert mock_bus.init_db.call_count == 1  # still 1
+
+
+@pytest.mark.asyncio
+async def test_ensure_gossip_db_ready_sets_flag(tmp_path):
+    """ensure_gossip_db_ready must set _memory_node_db_ready=True after init_db."""
+    from orchestrator.memory_node import ensure_gossip_db_ready
+    from unittest.mock import AsyncMock
+
+    mock_bus = AsyncMock()
+    mock_bus._memory_node_db_ready = False
+
+    await ensure_gossip_db_ready(mock_bus)
+    assert mock_bus._memory_node_db_ready is True
+
+
+# ── _get_default_bus uses resolve_gossip_db_path (PR change) ─────────────────
+
+def test_get_default_bus_uses_resolve_gossip_db_path(tmp_path, monkeypatch):
+    """_get_default_bus must use resolve_gossip_db_path() so the path matches PT_STATE_DIR."""
+    from orchestrator.memory_node import _get_default_bus, reset_singletons
+    from orchestrator.gossip_bus import resolve_gossip_db_path
+
+    reset_singletons()
+    monkeypatch.delenv("GOSSIP_DB_PATH", raising=False)
+    monkeypatch.setenv("PT_STATE_DIR", str(tmp_path))
+
+    bus = _get_default_bus()
+    assert bus is not None
+    expected_path = resolve_gossip_db_path()
+    assert bus._db_path == expected_path
+    reset_singletons()
+
+
+def test_get_default_bus_singleton_is_cached(tmp_path, monkeypatch):
+    """_get_default_bus returns the same object on repeated calls (singleton)."""
+    from orchestrator.memory_node import _get_default_bus, reset_singletons
+
+    reset_singletons()
+    monkeypatch.delenv("GOSSIP_DB_PATH", raising=False)
+    monkeypatch.setenv("PT_STATE_DIR", str(tmp_path))
+
+    bus1 = _get_default_bus()
+    bus2 = _get_default_bus()
+    assert bus1 is bus2
+    reset_singletons()
