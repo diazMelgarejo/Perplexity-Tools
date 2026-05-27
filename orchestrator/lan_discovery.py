@@ -288,7 +288,7 @@ def detect_active_tilting_ip() -> str:
 
     Implements the v0.9.9.5 Active Tilting spec: Option B (Discovered IPs).
     Uses NetworkAutoConfig.get_working_local_ip() and full Win probe with a
-    60-second timeout threshold to prevent hanging the startup sequence.
+    25-second timeout threshold to prevent hanging the startup sequence.
 
     Priority order (mirrors LAN_GPU_IP_OVERRIDE from the hardware matrix):
       1. LAN_GPU_IP_OVERRIDE env var — absolute override, any subnet
@@ -311,8 +311,8 @@ def detect_active_tilting_ip() -> str:
             local_ip = configurer.get_working_local_ip()
             subnet = ".".join(local_ip.split(".")[:3])
             
-            # scan_timeout of 0.2s * 254 IPs = ~50.8 seconds max, safely under 60s
-            found = configurer.discover_lan_agents(subnet_prefix=subnet, services=["lmstudio"], scan_timeout=0.2)
+            # scan_timeout of 0.08s * 254 IPs = ~20.3 seconds max, safely under 25s thread budget
+            found = configurer.discover_lan_agents(subnet_prefix=subnet, services=["lmstudio"], scan_timeout=0.08)
             if found and found.get("lmstudio"):
                 win_ip = found["lmstudio"][0]
                 log.debug("detect_active_tilting_ip: discovered windows=%s via live probe", win_ip)
@@ -330,10 +330,10 @@ def detect_active_tilting_ip() -> str:
 
         thread = threading.Thread(target=worker)
         thread.start()
-        thread.join(timeout=60.0)
-        
+        thread.join(timeout=25.0)
+
         if thread.is_alive():
-            log.warning("Active tilting IP discovery timed out after 60 seconds; falling back to 192.168.254.108")
+            log.warning("Active tilting IP discovery timed out after 25 seconds; falling back to 192.168.254.108")
             return "http://192.168.254.108"
             
         if result[0]:
