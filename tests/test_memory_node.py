@@ -5,7 +5,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from orchestrator.memory_node import reset_singletons, retrieve_context
+from orchestrator.memory_node import (
+    _normalise_fts_hits,
+    _text_from_gossip_payload,
+    reset_singletons,
+    retrieve_context,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -14,6 +19,46 @@ def _reset_singletons():
     reset_singletons()
     yield
     reset_singletons()
+
+
+# ── FTS hit normalisation (GossipBus shape) ───────────────────────────────────
+
+def test_text_from_gossip_payload_prefers_prompt():
+    assert _text_from_gossip_payload({"prompt": "find widget", "role": "coder"}) == "find widget"
+
+
+def test_normalise_fts_hits_adds_text_from_payload():
+    raw = [
+        {
+            "row_id": 1,
+            "event_type": "dispatch",
+            "payload": {"prompt": "Q3 revenue was $10M"},
+        }
+    ]
+    out = _normalise_fts_hits(raw)
+    assert len(out) == 1
+    assert out[0]["text"] == "Q3 revenue was $10M"
+    assert out[0]["row_id"] == 1
+
+
+@pytest.mark.asyncio
+async def test_retrieve_context_real_gossip_bus_fts_only(tmp_path):
+    """Integration: GossipBus rows must surface as injectable text (not silent drop)."""
+    from orchestrator.gossip_bus import GossipBus
+
+    bus = GossipBus(str(tmp_path / "gossip.db"))
+    await bus.init_db()
+    with patch.object(bus, "_embed_and_store", new_callable=AsyncMock):
+        await bus.emit("dispatch", {"prompt": "Q3 revenue was $10M"})
+
+    with (
+        patch("orchestrator.memory_store.lancedb_available", return_value=False),
+        patch("orchestrator.memory_embed.get_embedding", AsyncMock()) as mock_embed,
+    ):
+        result = await retrieve_context("Q3 revenue", top_n=5, gossip_bus=bus, use_gbrain=False)
+
+    mock_embed.assert_not_called()
+    assert any("Q3 revenue was $10M" in h.get("text", "") for h in result)
 
 
 # ── Edge cases ────────────────────────────────────────────────────────────────
@@ -68,7 +113,10 @@ async def test_retrieve_context_rrf_merge():
         {"row_id": 2, "text": "vec hit B"},
     ])
 
-    with patch("orchestrator.memory_embed.get_embedding", AsyncMock(return_value=[0.1] * 1024)):
+    with (
+        patch("orchestrator.memory_store.lancedb_available", return_value=True),
+        patch("orchestrator.memory_embed.get_embedding", AsyncMock(return_value=[0.1] * 1024)),
+    ):
         result = await retrieve_context(
             "query",
             top_n=5,

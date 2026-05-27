@@ -795,3 +795,30 @@ async def test_inject_memory_context_degrades_on_exception(tmp_path):
         enriched = await sup._inject_memory_context(spec)
 
     assert enriched is spec
+
+
+@pytest.mark.asyncio
+async def test_inject_memory_context_uses_gossip_payload_text(tmp_path):
+    """End-to-end: FTS hits from GossipBus must reach the injected prompt block."""
+    from unittest.mock import AsyncMock, patch
+
+    from orchestrator.gossip_bus import GossipBus
+    from orchestrator.memory_node import reset_singletons
+
+    bus = GossipBus(str(tmp_path / "gossip.db"))
+    await bus.init_db()
+    with patch.object(bus, "_embed_and_store", new_callable=AsyncMock):
+        await bus.emit("dispatch", {"prompt": "prior Q3 revenue was $10M"})
+
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("Q3 revenue")
+
+    reset_singletons()
+    with (
+        patch("orchestrator.memory_store.lancedb_available", return_value=False),
+        patch("orchestrator.memory_node._get_default_bus", return_value=bus),
+    ):
+        enriched = await sup._inject_memory_context(spec)
+
+    assert "prior Q3 revenue was $10M" in enriched.prompt
+    assert enriched.prompt.startswith("[MEMORY CONTEXT]")

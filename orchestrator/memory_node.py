@@ -30,9 +30,10 @@ Reference: docs/superpowers/plans/2026-05-21-rag-memory-v1-plan.md (Item 6 note)
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
-from typing import Optional
+from typing import Any, Optional
 
 _log = logging.getLogger(__name__)
 
@@ -41,6 +42,49 @@ _DEFAULT_TOP_N = int(os.environ.get("MEMORY_NODE_TOP_N", "5"))
 
 # opt-in env var: set GBRAIN_MEMORY_ENABLED=1 to include gbrain in every recall
 _GBRAIN_ENV_ENABLED = os.environ.get("GBRAIN_MEMORY_ENABLED", "0") == "1"
+
+# Prefer these payload keys when building injectable FTS text (governance-redacted).
+_PAYLOAD_TEXT_KEYS = ("prompt", "intent", "text", "message", "detail", "summary")
+
+
+def _text_from_gossip_payload(payload: Any) -> str:
+    """Extract human-readable text from a GossipBus payload for LLM injection."""
+    if isinstance(payload, str):
+        return payload.strip()
+    if not isinstance(payload, dict):
+        return ""
+    for key in _PAYLOAD_TEXT_KEYS:
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    try:
+        return json.dumps(payload, ensure_ascii=False)
+    except (TypeError, ValueError):
+        return str(payload)
+
+
+def _normalise_fts_hits(hits: list[dict]) -> list[dict]:
+    """Map GossipBus search rows ({payload, ...}) to recall hits with ``text``."""
+    out: list[dict] = []
+    for hit in hits:
+        if not isinstance(hit, dict):
+            continue
+        text = hit.get("text")
+        if not (isinstance(text, str) and text.strip()):
+            text = _text_from_gossip_payload(hit.get("payload"))
+        if not text:
+            continue
+        normalised = {**hit, "text": text}
+        out.append(normalised)
+    return out
+
+
+async def _ensure_gossip_db_ready(bus) -> None:
+    """Idempotent schema init — required before first FTS search on a new bus."""
+    if getattr(bus, "_memory_node_db_ready", False):
+        return
+    await bus.init_db()
+    bus._memory_node_db_ready = True  # noqa: SLF001
 
 
 async def retrieve_context(
@@ -77,15 +121,21 @@ async def retrieve_context(
     try:
         bus = gossip_bus or _get_default_bus()
         if bus is not None:
-            fts_hits = await bus.search(query, limit=top_n * 2)
+            await _ensure_gossip_db_ready(bus)
+            fts_hits = _normalise_fts_hits(
+                await bus.search(query, limit=top_n * 2)
+            )
     except Exception as exc:
         _log.debug("memory_node: FTS5 search error — %s", exc)
 
     # ── 2. LanceDB ANN vector search ──────────────────────────────────────────
     try:
+        from orchestrator.memory_store import lancedb_available  # noqa: PLC0415
+
         store = lance_store or _get_default_store()
-        if store is not None:
+        if store is not None and lancedb_available():
             from orchestrator.memory_embed import get_embedding  # noqa: PLC0415
+
             embedding = await get_embedding(query)
             if embedding:
                 vec_hits = await store.search(embedding, limit=top_n * 2)
