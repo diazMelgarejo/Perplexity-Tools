@@ -185,7 +185,21 @@ class OrchestrationSupervisor:
         self._state_dir = Path(state_dir)
         self._jobs_file = self._state_dir / "jobs.jsonl"
         self._active: dict[str, asyncio.Task] = {}
+        # Cached GossipBus (set on first _record_to_gossip; reused per
+        # supervisor instance to avoid re-running CREATE TABLE IF NOT EXISTS
+        # schema DDL on every job completion). Lazy because GossipBus opens an
+        # aiosqlite connection — we don't pay for that if no jobs ever emit.
+        self._gossip_bus = None
+        # Once-per-process rate limit for gossip emit failures. First failure
+        # logs at WARNING (so ops sees memory recall is broken); subsequent
+        # failures drop back to DEBUG to avoid log spam.
+        self._gossip_warned = False
         _ensure_state_dir(self._state_dir)
+        # Process-global PT_STATE_DIR mutation — load-bearing for memory_node's
+        # module-level `_default_bus` singleton. memory_node._get_default_bus()
+        # is called from request paths that don't have a supervisor handle and
+        # resolves the DB path via this env var. Single supervisor per process
+        # in production; tests use monkeypatch.setenv for isolation.
         # Colocate GossipBus with jobs.jsonl so memory recall sees completed work.
         os.environ["PT_STATE_DIR"] = str(self._state_dir.resolve())
 
@@ -371,16 +385,25 @@ class OrchestrationSupervisor:
         if extra:
             payload.update(extra)
         try:
-            from orchestrator.gossip_bus import GossipBus, resolve_gossip_db_path  # noqa: PLC0415
             from orchestrator.memory_node import ensure_gossip_db_ready  # noqa: PLC0415
 
-            bus = GossipBus(resolve_gossip_db_path(self._state_dir))
-            await ensure_gossip_db_ready(bus)
-            await bus.emit(event_type, payload)  # type: ignore[arg-type]
+            if self._gossip_bus is None:
+                from orchestrator.gossip_bus import GossipBus, resolve_gossip_db_path  # noqa: PLC0415
+                self._gossip_bus = GossipBus(resolve_gossip_db_path(self._state_dir))
+
+            await ensure_gossip_db_ready(self._gossip_bus)
+            await self._gossip_bus.emit(event_type, payload)  # type: ignore[arg-type]
         except Exception as exc:  # pragma: no cover
-            logging.getLogger(__name__).debug(
-                "_record_to_gossip: skipped — %s", exc
-            )
+            log = logging.getLogger(__name__)
+            if not self._gossip_warned:
+                log.warning(
+                    "_record_to_gossip: gossip emit failed — memory recall will not see "
+                    "this job. Further failures suppressed to DEBUG. (%s)",
+                    exc,
+                )
+                self._gossip_warned = True
+            else:
+                log.debug("_record_to_gossip: skipped — %s", exc)
 
     async def _inject_memory_context(self, spec: JobSpec) -> JobSpec:
         """Prepend relevant memory context to spec.prompt (Item 7 — RAG wiring).
