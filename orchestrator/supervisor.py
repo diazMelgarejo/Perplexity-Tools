@@ -334,15 +334,15 @@ class OrchestrationSupervisor:
 
     async def _run_worker(self, spec: JobSpec) -> None:
         """
-        Run a single worker job lifecycle: dispatch work, persist the result artifact, and emit final job events.
+        Run a single job: execute work, persist the result artifact, append lifecycle events, and emit gossip notifications.
         
-        Executes the job described by `spec`, appends lifecycle events to the supervisor event log, writes the job result artifact to `.state/jobs/<job_id>/result.json` before emitting the final SUCCEEDED event, and emits a gossip notification for success or failure. On cancellation, records a CANCELLED event before re-raising the cancellation.
+        Appends a RUNNING event, executes the job described by `spec`, writes the result artifact to `.state/jobs/<job_id>/result.json` before recording a SUCCEEDED event, and emits a gossip `"result"` event. On failure records a FAILED event and emits a gossip `"error"` event; policy-affinity failures are marked with `"policy": True`. On cancellation records a CANCELLED event before re-raising the cancellation.
         
         Parameters:
             spec (JobSpec): Immutable descriptor of the job to run; its `job_id` is used for event records and artifact path.
         
         Raises:
-            asyncio.CancelledError: re-raised after recording a CANCELLED event when the running task is cancelled.
+            asyncio.CancelledError: Re-raised after recording a CANCELLED event when the running task is cancelled.
         """
         self._append_event(spec.job_id, {"status": JobStatus.RUNNING})
         job_dir = self._state_dir / "jobs" / spec.job_id
@@ -394,10 +394,10 @@ class OrchestrationSupervisor:
         extra: dict | None = None,
     ) -> None:
         """
-        Emit a job-related event to the GossipBus for downstream memory/gossip, suppressing all errors.
+        Emit a job-related event to the GossipBus for downstream memory and gossip.
         
-        The emitted payload contains `job_id`, `prompt`, and `intent`, and includes `role` when present on the spec. If `extra` is provided, its keys are merged into the payload. The GossipBus is initialized lazily and the function ensures the gossip DB is ready before emitting. This function never raises: the first emission failure is logged at WARNING and subsequent failures are logged at DEBUG.
-            
+        Builds a payload containing `job_id`, `prompt`, `intent`, and `role` when present, merges `extra` if provided, lazily initializes the GossipBus, ensures the gossip DB is ready, and emits the event. All exceptions are suppressed: the first emission failure is logged at WARNING and subsequent failures are logged at DEBUG.
+        
         Parameters:
             extra (dict | None): Additional key/value pairs to merge into the emitted payload.
         """

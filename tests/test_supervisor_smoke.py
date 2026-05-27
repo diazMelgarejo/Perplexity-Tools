@@ -913,6 +913,15 @@ async def test_record_to_gossip_emits_core_payload(tmp_path):
     emitted: list[tuple] = []
 
     async def _fake_emit(event_type, payload):
+        """
+        Record a gossip event by appending its (event_type, payload) tuple to the captured `emitted` list.
+        
+        This test helper mutates the surrounding `emitted` list by adding a tuple containing the event type and its payload.
+        
+        Parameters:
+            event_type (str): The name/type of the event to record.
+            payload (dict): The event payload to record.
+        """
         emitted.append((event_type, payload))
 
     with (
@@ -952,6 +961,13 @@ async def test_record_to_gossip_includes_role_when_set(tmp_path):
     emitted: list[dict] = []
 
     async def _fake_emit(event_type, payload):
+        """
+        Record a gossip emit by appending the provided payload to the captured `emitted` list.
+        
+        Parameters:
+            event_type (str): The type of event being emitted (accepted for signature compatibility; ignored).
+            payload (dict): The payload object to append to the `emitted` list.
+        """
         emitted.append(payload)
 
     fake_bus = MagicMock()
@@ -977,6 +993,13 @@ async def test_record_to_gossip_omits_role_when_none(tmp_path):
     emitted: list[dict] = []
 
     async def _fake_emit(event_type, payload):
+        """
+        Record a gossip emit by appending the provided payload to the captured `emitted` list.
+        
+        Parameters:
+            event_type (str): The type of event being emitted (accepted for signature compatibility; ignored).
+            payload (dict): The payload object to append to the `emitted` list.
+        """
         emitted.append(payload)
 
     fake_bus = MagicMock()
@@ -1000,6 +1023,13 @@ async def test_record_to_gossip_merges_extra_dict(tmp_path):
     emitted: list[dict] = []
 
     async def _fake_emit(event_type, payload):
+        """
+        Record a gossip emit by appending the provided payload to the captured `emitted` list.
+        
+        Parameters:
+            event_type (str): The type of event being emitted (accepted for signature compatibility; ignored).
+            payload (dict): The payload object to append to the `emitted` list.
+        """
         emitted.append(payload)
 
     fake_bus = MagicMock()
@@ -1084,6 +1114,14 @@ async def test_run_worker_calls_record_to_gossip_on_success(tmp_path):
     calls: list[tuple] = []
 
     async def _capture(event_type, spec_, extra=None):
+        """
+        Record a gossip event into the shared `calls` capture list for test assertions.
+        
+        Parameters:
+            event_type (str): The type of event being emitted (e.g., "result", "error").
+            spec_ (Any): The job spec or payload associated with the event.
+            extra (Optional[dict]): Additional payload data merged into the emitted event; may be None.
+        """
         calls.append((event_type, spec_, extra))
 
     with patch.object(sup, "_record_to_gossip", side_effect=_capture):
@@ -1108,9 +1146,26 @@ async def test_run_worker_calls_record_to_gossip_on_generic_exception(tmp_path, 
     calls: list[tuple] = []
 
     async def _capture(event_type, spec_, extra=None):
+        """
+        Record a gossip event into the shared `calls` capture list for test assertions.
+        
+        Parameters:
+            event_type (str): The type of event being emitted (e.g., "result", "error").
+            spec_ (Any): The job spec or payload associated with the event.
+            extra (Optional[dict]): Additional payload data merged into the emitted event; may be None.
+        """
         calls.append((event_type, spec_, extra))
 
     async def _explode(s):
+        """
+        Raise a RuntimeError with message "boom".
+        
+        Parameters:
+            s: Ignored parameter retained for signature compatibility.
+        
+        Raises:
+            RuntimeError: Always raised with the message "boom".
+        """
         raise RuntimeError("boom")
 
     with (
@@ -1140,9 +1195,26 @@ async def test_run_worker_calls_record_to_gossip_on_hardware_affinity_error(tmp_
     calls: list[tuple] = []
 
     async def _capture(event_type, spec_, extra=None):
+        """
+        Record a gossip event into the shared `calls` capture list for test assertions.
+        
+        Parameters:
+            event_type (str): The type of event being emitted (e.g., "result", "error").
+            spec_ (Any): The job spec or payload associated with the event.
+            extra (Optional[dict]): Additional payload data merged into the emitted event; may be None.
+        """
         calls.append((event_type, spec_, extra))
 
     async def _affinity_error(s):
+        """
+        Raise a HardwareAffinityError indicating the provided model is not allowed on mac hosts.
+        
+        Parameters:
+            s: Ignored input (kept for signature compatibility).
+        
+        Raises:
+            HardwareAffinityError: Always raised with message "NEVER_MAC: model not allowed here".
+        """
         raise HardwareAffinityError("NEVER_MAC: model not allowed here")
 
     with (
