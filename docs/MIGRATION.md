@@ -5,6 +5,7 @@
 **Gate 0:** ✅ Complete (2026-04-20)
 **Gate 1:** ✅ Complete (2026-04-20) — adapter HTTP client, alphaclaw_manager.py, thinned start.sh
 **Sources merged:**
+
 - Migration Plan 3 + Plan Review (AlphaClaw `docs/plan-review-migration-plan-3.md`)
 - System Design: Three-Repo Architecture (`docs/system-design-three-repo-architecture.md`)
 - Old UTS+PT contract (`old-UTS+PT Review and optimize for the most elegant solution.md`)
@@ -15,7 +16,7 @@
 
 ## Architecture (settled — do not re-debate)
 
-```
+```text
 AlphaClaw (Layer 1 — infrastructure / managed dependency)
     │  CLI + HTTP only — NEVER require() AlphaClaw internals
     ▼
@@ -173,6 +174,7 @@ Current state: `lib/mcp/alphaclaw-mcp.js`, `lib/agents/local-agent-client.js`, `
 > Running `start.sh` (or any PT lifecycle command) repeatedly **MUST NOT** re-install or restart unless drift or inconsistency is detected.
 
 Specifically:
+
 - `commandeer-first` daemon pattern: if a compatible gateway already answers on any candidate port, reuse it — do not restart it
 - `~/.openclaw/openclaw.json` is only rewritten if PT detects drift from the resolved state
 - PT's `orchestrator.py` checks existing state before any install/start action (idempotent reconciler)
@@ -210,7 +212,7 @@ Specifically:
 
 ### AlphaClaw (`feature/MacOS-post-install` — stays until Gate 1 verified)
 
-```
+```text
 lib/mcp/alphaclaw-mcp.js          ← COPIED to PT, stays here until Gate 1
 lib/agents/local-agent-client.js  ← COPIED to PT, stays here until Gate 1
 lib/agents/orchestrator.js        ← COPIED to PT, stays here until Gate 1
@@ -223,9 +225,9 @@ docs/system-design-*.md           ← COPIED to PT, authoritative copy stays in 
 
 ### Perpetua-Tools (`main` — receives migrated code)
 
-```
-packages/alphaclaw-adapter/src/mcp/server.js  ← RECEIVED from AlphaClaw
-packages/alphaclaw-adapter/src/index.js       ← Gate 1 stub (implement full client)
+```text
+packages/alphaclaw-adapter/src/index.js       ← HTTP client bridging to AlphaClaw gateway
+packages/alphaclaw-mcp/build/index.js         ← Canonical MCP entry point
 packages/local-agents/src/client.js           ← RECEIVED from AlphaClaw
 packages/local-agents/src/orchestrator.js     ← RECEIVED from AlphaClaw
 packages/local-agents/tests/client.test.js    ← RECEIVED from AlphaClaw
@@ -238,7 +240,7 @@ orchestrator/                                 ← EXISTING Python control plane
 
 ### orama-system (`main` — delegate runtime)
 
-```
+```text
 bin/mcp_servers/openclaw_bridge.py      ← will route through PT adapter at Gate 3
 bin/mcp_servers/openclaw_mcp_server.py  ← stays, references PT
 bin/agents/orchestrator/orchestrator_logic.py  ← EMPTY — Gate 0 fix needed
@@ -258,6 +260,6 @@ setup_macos.py                                 ← OS patch layer — stays as-i
 - orama architecture lessons: `orama-system/.claude/lessons/Perplexity-Ultrathink-Consolidation.md`
 - PT macOS compat lessons: `docs/wiki/08-macos-alphaclaw-compat.md`
 - Repo links:
-  - AlphaClaw: https://github.com/diazMelgarejo/AlphaClaw (branch: `feature/MacOS-post-install`)
-  - Perpetua-Tools: https://github.com/diazMelgarejo/Perpetua-Tools (branch: `main`)
-  - orama-system: https://github.com/diazMelgarejo/orama-system (branch: `main`)
+  - AlphaClaw: <https://github.com/diazMelgarejo/AlphaClaw> (branch: `feature/MacOS-post-install`)
+  - Perpetua-Tools: <https://github.com/diazMelgarejo/Perpetua-Tools> (branch: `main`)
+  - orama-system: <https://github.com/diazMelgarejo/orama-system> (branch: `main`)
