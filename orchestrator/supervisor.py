@@ -182,6 +182,17 @@ class OrchestrationSupervisor:
     MAX_THREADS = MAX_THREADS
 
     def __init__(self, state_dir: Path | str = STATE_DIR):
+        """
+        Initialize the OrchestrationSupervisor and prepare on-disk state and runtime caches.
+        
+        Parameters:
+            state_dir (Path | str): Directory used to persist supervisor state (jobs.jsonl and per-job artifacts). Defaults to the module-level STATE_DIR.
+        
+        Side effects:
+            - Ensures the state directory and its jobs subdirectory exist.
+            - Sets the process environment variable `PT_STATE_DIR` to the resolved state directory path.
+            - Initializes in-memory runtime fields (active task map, cached gossip bus handle, and gossip failure flag).
+        """
         self._state_dir = Path(state_dir)
         self._jobs_file = self._state_dir / "jobs.jsonl"
         self._active: dict[str, asyncio.Task] = {}
@@ -322,7 +333,17 @@ class OrchestrationSupervisor:
     # ── Internal ───────────────────────────────────────────────────────────────
 
     async def _run_worker(self, spec: JobSpec) -> None:
-        """Execute one worker task.  Writes final event before exiting."""
+        """
+        Run a single worker job lifecycle: dispatch work, persist the result artifact, and emit final job events.
+        
+        Executes the job described by `spec`, appends lifecycle events to the supervisor event log, writes the job result artifact to `.state/jobs/<job_id>/result.json` before emitting the final SUCCEEDED event, and emits a gossip notification for success or failure. On cancellation, records a CANCELLED event before re-raising the cancellation.
+        
+        Parameters:
+            spec (JobSpec): Immutable descriptor of the job to run; its `job_id` is used for event records and artifact path.
+        
+        Raises:
+            asyncio.CancelledError: re-raised after recording a CANCELLED event when the running task is cancelled.
+        """
         self._append_event(spec.job_id, {"status": JobStatus.RUNNING})
         job_dir = self._state_dir / "jobs" / spec.job_id
         job_dir.mkdir(parents=True, exist_ok=True)
@@ -372,7 +393,14 @@ class OrchestrationSupervisor:
         spec: JobSpec,
         extra: dict | None = None,
     ) -> None:
-        """Persist job context to GossipBus for later memory injection (never raises)."""
+        """
+        Emit a job-related event to the GossipBus for downstream memory/gossip, suppressing all errors.
+        
+        The emitted payload contains `job_id`, `prompt`, and `intent`, and includes `role` when present on the spec. If `extra` is provided, its keys are merged into the payload. The GossipBus is initialized lazily and the function ensures the gossip DB is ready before emitting. This function never raises: the first emission failure is logged at WARNING and subsequent failures are logged at DEBUG.
+            
+        Parameters:
+            extra (dict | None): Additional key/value pairs to merge into the emitted payload.
+        """
         import logging
 
         payload: dict = {
@@ -406,15 +434,17 @@ class OrchestrationSupervisor:
                 log.debug("_record_to_gossip: skipped — %s", exc)
 
     async def _inject_memory_context(self, spec: JobSpec) -> JobSpec:
-        """Prepend relevant memory context to spec.prompt (Item 7 — RAG wiring).
-
-        Retrieves top-K hits from GossipBus FTS5 + LanceDB + optional gbrain,
-        fuses via RRF, and prepends a ``[MEMORY CONTEXT]`` block to the prompt.
-
-        Design invariants:
-          - Only runs when spec.metadata.get("use_memory") is not False.
-          - Never raises — any failure returns the original spec unchanged.
-          - No context injected when retrieve_context returns [].
+        """
+        Injects retrieved memory snippets into the job prompt when memory is enabled.
+        
+        If memory retrieval yields one or more text hits, a numbered "[MEMORY CONTEXT]" block
+        is prepended to the existing prompt and a new JobSpec with the enriched prompt is returned.
+        If memory is disabled via spec.metadata["use_memory"] == False, or retrieval returns no
+        usable hits, the original spec is returned unchanged. This function never raises; on error
+        it returns the original spec.
+        
+        Returns:
+            JobSpec: the updated JobSpec with an injected memory context when available, otherwise the original spec.
         """
         if (spec.metadata or {}).get("use_memory", True) is False:
             return spec
