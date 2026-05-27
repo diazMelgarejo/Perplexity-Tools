@@ -65,12 +65,24 @@ mlx = [
     "transformers>=4.37.0",
     "huggingface-hub>=0.20.0",
 ]
-rag = [
-    # Optional vector store for GossipBus semantic search (RAG backport 2026-05-22).
-    # Install with: pip install perpetua-tools[rag]
-    # System falls back to FTS5-only keyword recall if not installed.
+# ── Highly recommended but optional ────────────────────────────────────────────
+# Install everything at once: pip install perpetua-tools[recommended]
+# Or pick individually:       pip install perpetua-tools[rag,lan]
+recommended = [
     "lancedb>=0.6",
     "pyarrow>=14.0",
+    "netifaces>=0.11.0",
+]
+rag = [
+    # Semantic vector store for GossipBus (RAG backport 2026-05-22).
+    # Falls back to FTS5-only keyword recall if not installed.
+    "lancedb>=0.6",
+    "pyarrow>=14.0",
+]
+lan = [
+    # LAN interface detection for NetworkAutoConfig (packages/net_utils/).
+    # Falls back to socket-based IP detection if not installed.
+    "netifaces>=0.11.0",
 ]
 dev = [
     "pytest>=7.4",

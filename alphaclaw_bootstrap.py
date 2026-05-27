@@ -429,8 +429,9 @@ def _ensure_autoresearch() -> None:
             check=True,
         )
         branch = f"autoresearch/{datetime.date.today().isoformat()}"
-        subprocess.run(["git", "checkout", "-b", branch], cwd=repo, check=True)
-        subprocess.run(["pip", "install", "uv"], check=True, capture_output=True)
+        # -B creates or resets the branch — idempotent on repeated runs same day.
+        subprocess.run(["git", "checkout", "-B", branch], cwd=repo, check=True)
+        subprocess.run([sys.executable, "-m", "pip", "install", "uv"], check=True, capture_output=True)
         subprocess.run(["uv", "sync", "--dev"], cwd=repo, check=True)
         print("[alphaclaw] ✓ autoresearch ready")
     except subprocess.CalledProcessError as e:
@@ -625,6 +626,10 @@ async def bootstrap_alphaclaw(force: bool = False) -> dict[str, object]:
     try:
         npx_bin = _find_npx_v22plus()   # node:sqlite needs >= 22.5
         # Log to file instead of DEVNULL so hangs are diagnosable.
+        # The file handle is intentionally kept open: Popen inherits it and writes
+        # gateway stdout to the log. It closes when the Popen process exits or this
+        # Python process exits (whichever is first). This is the correct pattern for
+        # a detached subprocess log — do not wrap in `with` (that closes it early).
         _log_fh = open(_log_dir / "alphaclaw.log", "a")  # noqa: WPS515
         subprocess.Popen(
             [npx_bin, "alphaclaw", "start"],

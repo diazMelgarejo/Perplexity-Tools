@@ -5,6 +5,7 @@ Auto-detects a useful LAN address and can scan for PT, ultrathink, LM Studio,
 Ollama, and portal services on the local subnet.
 """
 
+import logging
 import socket
 import platform
 import subprocess
@@ -12,11 +13,14 @@ import re
 import os
 from typing import Optional, Dict
 
+log = logging.getLogger(__name__)
+
 try:
     import netifaces
     NETIFACES_AVAILABLE = True
 except ImportError:
     NETIFACES_AVAILABLE = False
+    log.debug("netifaces not installed; install perpetua-tools[lan] for interface-aware IP detection")
 
 class NetworkAutoConfig:
     def __init__(self):
@@ -74,59 +78,48 @@ class NetworkAutoConfig:
                                 interfaces[interface] = ip
                                 break
             except Exception as e:
-                print(f"Error detecting interfaces via netifaces: {e}")
-        
+                log.warning("netifaces interface scan failed: %s", e)
+        else:
+            log.debug(
+                "netifaces unavailable — detect_active_interfaces() returning empty dict; "
+                "install perpetua-tools[lan] to enable interface-aware detection"
+            )
         return interfaces
     
     def get_working_local_ip(self) -> str:
-        """Get the working local IP with Mac-first preference"""
-        print(f"Detecting IP for {self.system} system...")
-        
-        # Detect all active interfaces
+        """Get the working local IP with Mac-first preference."""
+        log.debug("Detecting IP for %s system…", self.system)
+
         interfaces = self.detect_active_interfaces()
-        print(f"Active interfaces: {interfaces}")
-        
+        log.debug("Active interfaces: %s", interfaces)
+
         # Mac-first logic
         if self.system == 'Darwin':
-            # Prefer macOS interface if available
-            mac_interface = None
             for iface_name, ip in interfaces.items():
-                if any(mac_iface in iface_name.lower() for mac_iface in ['en', 'bridge', 'utun']):
-                    mac_interface = ip
-                    break
-            
-            if mac_interface:
-                print(f"Found Mac interface: {mac_interface}")
-                return mac_interface
-            else:
-                print("No Mac interface found, using preferred IP")
-                return self.get_preferred_ip()
-        
+                if any(token in iface_name.lower() for token in ('en', 'bridge', 'utun')):
+                    log.debug("Found Mac interface %s → %s", iface_name, ip)
+                    return ip
+            log.debug("No Mac interface found — using preferred IP")
+            return self.get_preferred_ip()
+
         # Windows logic
-        elif self.system == 'Windows':
-            # Look for Windows ethernet/wifi adapters
-            win_interface = None
+        if self.system == 'Windows':
             for iface_name, ip in interfaces.items():
-                if any(win_iface in iface_name.lower() for win_iface in ['ethernet', 'wi-fi', 'wlan', 'eth']):
-                    win_interface = ip
-                    break
-            
-            if win_interface:
-                print(f"Found Windows interface: {win_interface}")
-                return win_interface
-            else:
-                print("No Windows interface found, using preferred IP")
-                return self.get_preferred_ip()
-        
-        # Fallback to any active interface
+                if any(token in iface_name.lower() for token in ('ethernet', 'wi-fi', 'wlan', 'eth')):
+                    log.debug("Found Windows interface %s → %s", iface_name, ip)
+                    return ip
+            log.debug("No Windows interface found — using preferred IP")
+            return self.get_preferred_ip()
+
+        # Any active interface
         if interfaces:
             first_ip = next(iter(interfaces.values()))
-            print(f"Using first available interface: {first_ip}")
+            log.debug("Using first available interface: %s", first_ip)
             return first_ip
-        
+
         # Ultimate fallback
         fallback_ip = self.get_preferred_ip()
-        print(f"Using fallback IP: {fallback_ip}")
+        log.debug("No interfaces detected — using fallback IP: %s", fallback_ip)
         return fallback_ip
     
     def verify_connectivity(self, ip: str, port: int = 8000) -> bool:
@@ -195,22 +188,17 @@ class NetworkAutoConfig:
         return results
 
     def get_optimal_server_config(self) -> Dict[str, str]:
-        """Get optimal server configuration based on detected network"""
+        """Get optimal server configuration based on detected network."""
         ip = self.get_working_local_ip()
-        
-        # Verify connectivity
         if self.verify_connectivity(ip):
-            print(f"Verified connectivity for {ip}")
+            log.debug("Verified connectivity for %s", ip)
         else:
-            print(f"Warning: Could not verify connectivity for {ip}")
-        
-        config = {
+            log.warning("Could not verify connectivity for %s — continuing anyway", ip)
+        return {
             'host': ip,
             'port': '8000',
-            'bind_address': f"{ip}:8000"
+            'bind_address': f"{ip}:8000",
         }
-        
-        return config
 
 def main():
     print("=== Network Auto-Configuration for orama-system ===")
