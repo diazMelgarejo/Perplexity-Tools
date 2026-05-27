@@ -74,7 +74,9 @@ async def test_submit_echo_job_succeeds(tmp_path):
     job_id = await sup.submit_job(spec)
     assert job_id == spec.job_id
 
-    await asyncio.sleep(0.2)
+    task = sup._active.get(job_id)
+    assert task is not None
+    await task
 
     status = await sup.get_status(job_id)
     assert status is not None
