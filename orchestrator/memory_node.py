@@ -79,7 +79,7 @@ def _normalise_fts_hits(hits: list[dict]) -> list[dict]:
     return out
 
 
-async def _ensure_gossip_db_ready(bus) -> None:
+async def ensure_gossip_db_ready(bus) -> None:
     """Idempotent schema init — required before first FTS search on a new bus."""
     if getattr(bus, "_memory_node_db_ready", False):
         return
@@ -121,7 +121,7 @@ async def retrieve_context(
     try:
         bus = gossip_bus or _get_default_bus()
         if bus is not None:
-            await _ensure_gossip_db_ready(bus)
+            await ensure_gossip_db_ready(bus)
             fts_hits = _normalise_fts_hits(
                 await bus.search(query, limit=top_n * 2)
             )
@@ -176,12 +176,12 @@ _default_store = None
 
 
 def _get_default_bus():
-    """Return module-level GossipBus singleton (lazy, shared with fastapi_app)."""
+    """Return module-level GossipBus singleton (lazy; path matches supervisor state)."""
     global _default_bus  # noqa: PLW0603
     if _default_bus is None:
         try:
-            from orchestrator.gossip_bus import GossipBus  # noqa: PLC0415
-            _default_bus = GossipBus()
+            from orchestrator.gossip_bus import GossipBus, resolve_gossip_db_path  # noqa: PLC0415
+            _default_bus = GossipBus(resolve_gossip_db_path())
         except Exception as exc:
             _log.debug("memory_node: could not instantiate GossipBus — %s", exc)
     return _default_bus

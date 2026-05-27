@@ -24,11 +24,25 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import re
 import time
+from pathlib import Path
 from typing import Literal, Optional
 
 import aiosqlite
+
+
+def resolve_gossip_db_path(state_dir: Path | str | None = None) -> str:
+    """Return the SQLite path for GossipBus (colocated with supervisor state)."""
+    explicit = os.environ.get("GOSSIP_DB_PATH", "").strip()
+    if explicit:
+        return explicit
+    if state_dir is not None:
+        root = Path(state_dir)
+    else:
+        root = Path(os.environ.get("PT_STATE_DIR", ".state"))
+    return str((root / "perpetua_core.db").resolve())
 
 
 # ---------------------------------------------------------------------------
