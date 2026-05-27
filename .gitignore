@@ -33,3 +33,6 @@ lance_memory.lance/
 **/*\ 2.*
 **/*\ 3.*
 .git.corrupted/
+# Local stray files — kept on disk for reference, not tracked
+/LESSONS.md
+/README.md.BAK

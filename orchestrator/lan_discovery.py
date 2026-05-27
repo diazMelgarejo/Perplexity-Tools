@@ -286,41 +286,63 @@ class LANDiscovery:
 def detect_active_tilting_ip() -> str:
     """Derive the Windows GPU endpoint base URL from the local subnet at runtime.
 
-    Implements the v0.9.9.5 Active Tilting spec: Windows is always .103 on whatever
-    subnet the Mac is on, so the IP is portable across legacy (192.168.1.x) and
-    current (192.168.254.x) network topologies without any config change.
+    Implements the v0.9.9.5 Active Tilting spec: Option B (Discovered IPs).
+    Uses NetworkAutoConfig.get_working_local_ip() and full Win probe with a
+    60-second timeout threshold to prevent hanging the startup sequence.
 
     Priority order (mirrors LAN_GPU_IP_OVERRIDE from the hardware matrix):
       1. LAN_GPU_IP_OVERRIDE env var — absolute override, any subnet
       2. LM_STUDIO_WIN_ENDPOINTS env var — backward-compat with existing .env files
-      3. UDP routing trick (no packets sent) — live detection of outbound interface
-      4. Hardcoded 192.168.254.103 — current-subnet safe fallback
-
-    Returns a base URL string like "http://192.168.254.103" (no port, no path).
-    Callers append the port themselves to keep the function backend-agnostic.
-
-    Table:
-      Detected subnet   | Derived Windows IP
-      192.168.1.x       | 192.168.1.103   (legacy)
-      192.168.254.x     | 192.168.254.103 (current)
-      <any other /24>   | <subnet>.103
+      3. UDP routing trick (no packets sent) — Live probe of outbound interface via NetworkAutoConfig (Option B)
+      4. Hardcoded 192.168.254.108 (fallback)
     """
     for env_var in ("LAN_GPU_IP_OVERRIDE", "LM_STUDIO_WIN_ENDPOINTS"):
         val = os.environ.get(env_var, "")
         if val:
             return val if val.startswith("http") else f"http://{val}"
     try:
-        import socket as _socket
-        with _socket.socket(_socket.AF_INET, _socket.SOCK_DGRAM) as s:
-            s.connect(("8.8.8.8", 80))   # No packets are actually sent
-            local_ip = s.getsockname()[0]
-        subnet = ".".join(local_ip.split(".")[:3])
-        detected = f"http://{subnet}.103"   # Windows RTX 3080 is always .103 on any subnet
-        log.debug("detect_active_tilting_ip: local=%s → windows=%s", local_ip, detected)
-        return detected
+        from packages.net_utils.network_autoconfig import NetworkAutoConfig
+        import threading
+        
+        result = [None]
+        
+        def do_discovery():
+            configurer = NetworkAutoConfig()
+            local_ip = configurer.get_working_local_ip()
+            subnet = ".".join(local_ip.split(".")[:3])
+            
+            # scan_timeout of 0.2s * 254 IPs = ~50.8 seconds max, safely under 60s
+            found = configurer.discover_lan_agents(subnet_prefix=subnet, services=["lmstudio"], scan_timeout=0.2)
+            if found and found.get("lmstudio"):
+                win_ip = found["lmstudio"][0]
+                log.debug("detect_active_tilting_ip: discovered windows=%s via live probe", win_ip)
+                return f"http://{win_ip}"
+            
+            fallback = f"http://{subnet}.108"
+            log.debug("detect_active_tilting_ip: probe found nothing, fallback windows=%s", fallback)
+            return fallback
+
+        def worker():
+            try:
+                result[0] = do_discovery()
+            except Exception as e:
+                log.warning("Discovery worker failed: %s", e)
+
+        thread = threading.Thread(target=worker)
+        thread.start()
+        thread.join(timeout=60.0)
+        
+        if thread.is_alive():
+            log.warning("Active tilting IP discovery timed out after 60 seconds; falling back to 192.168.254.108")
+            return "http://192.168.254.108"
+            
+        if result[0]:
+            return result[0]
+            
+        return "http://192.168.254.108"
     except Exception as exc:
-        log.warning("Active tilting IP detection failed (%s); falling back to 192.168.254.103", exc)
-        return "http://192.168.254.103"
+        log.warning("Active tilting IP detection failed (%s); falling back to 192.168.254.108", exc)
+        return "http://192.168.254.108"
 
 
 async def main():
