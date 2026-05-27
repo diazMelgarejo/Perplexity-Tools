@@ -346,10 +346,47 @@ class OrchestrationSupervisor:
         finally:
             self._active.pop(spec.job_id, None)
 
+    async def _inject_memory_context(self, spec: JobSpec) -> JobSpec:
+        """Prepend relevant memory context to spec.prompt (Item 7 — RAG wiring).
+
+        Retrieves top-K hits from GossipBus FTS5 + LanceDB + optional gbrain,
+        fuses via RRF, and prepends a ``[MEMORY CONTEXT]`` block to the prompt.
+
+        Design invariants:
+          - Only runs when spec.metadata.get("use_memory") is not False.
+          - Never raises — any failure returns the original spec unchanged.
+          - No context injected when retrieve_context returns [].
+        """
+        if (spec.metadata or {}).get("use_memory", True) is False:
+            return spec
+        try:
+            from orchestrator.memory_node import retrieve_context  # noqa: PLC0415
+            hits = await retrieve_context(spec.prompt or spec.intent or "")
+            if not hits:
+                return spec
+            context_block = "\n".join(
+                f"[{i + 1}] {h.get('text', '')}" for i, h in enumerate(hits) if h.get("text")
+            )
+            if not context_block.strip():
+                return spec
+            enriched_prompt = (
+                f"[MEMORY CONTEXT]\n{context_block}\n[END MEMORY CONTEXT]\n\n"
+                + (spec.prompt or "")
+            )
+            return spec.model_copy(update={"prompt": enriched_prompt})
+        except Exception as exc:  # pragma: no cover
+            import logging  # noqa: PLC0415
+            logging.getLogger(__name__).debug(
+                "_inject_memory_context: error (ignored) — %s", exc
+            )
+            return spec
+
     async def _dispatch(self, spec: JobSpec) -> dict:
         """Route spec to the correct backend worker and return its result dict.
 
         Priority:
+          0. Memory context injection (RAG — item 7) — enriches prompt when store
+             has relevant context; degrades silently if store is empty or unavailable.
           1. openclaw-skills primary path (deterministic, zero-LLM)
           2. resolve_backend — compute the intended backend from role/intent/hint
           3. Windows coder pool probe — two cases:
@@ -364,6 +401,10 @@ class OrchestrationSupervisor:
         """
         import logging
         _log = logging.getLogger(__name__)
+
+        # 0. Memory context injection — enriches prompt before any routing decision.
+        #    Degrades silently: empty store, missing dependencies → original spec unchanged.
+        spec = await self._inject_memory_context(spec)
 
         # 1. Spawning gate — check if this task maps to a known openclaw-skills ID
         skill_envelope = self._try_skill_envelope(spec)

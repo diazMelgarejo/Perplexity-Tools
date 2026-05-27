@@ -32,6 +32,11 @@ except ImportError:
     _LANCEDB_AVAILABLE = False
 
 
+def lancedb_available() -> bool:
+    """True when optional LanceDB deps are installed and vector search may run."""
+    return _LANCEDB_AVAILABLE
+
+
 # Path-keyed singleton: (db_path::dimN) → EmbeddingStore
 # Keyed on both path AND dim to prevent schema mismatch if model changes.
 _lance_stores: dict[str, "EmbeddingStore"] = {}
