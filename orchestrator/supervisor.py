@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
@@ -181,10 +182,37 @@ class OrchestrationSupervisor:
     MAX_THREADS = MAX_THREADS
 
     def __init__(self, state_dir: Path | str = STATE_DIR):
+        """
+        Initialize the OrchestrationSupervisor and prepare on-disk state and runtime caches.
+        
+        Parameters:
+            state_dir (Path | str): Directory used to persist supervisor state (jobs.jsonl and per-job artifacts). Defaults to the module-level STATE_DIR.
+        
+        Side effects:
+            - Ensures the state directory and its jobs subdirectory exist.
+            - Sets the process environment variable `PT_STATE_DIR` to the resolved state directory path.
+            - Initializes in-memory runtime fields (active task map, cached gossip bus handle, and gossip failure flag).
+        """
         self._state_dir = Path(state_dir)
         self._jobs_file = self._state_dir / "jobs.jsonl"
         self._active: dict[str, asyncio.Task] = {}
+        # Cached GossipBus (set on first _record_to_gossip; reused per
+        # supervisor instance to avoid re-running CREATE TABLE IF NOT EXISTS
+        # schema DDL on every job completion). Lazy because GossipBus opens an
+        # aiosqlite connection — we don't pay for that if no jobs ever emit.
+        self._gossip_bus = None
+        # Once-per-process rate limit for gossip emit failures. First failure
+        # logs at WARNING (so ops sees memory recall is broken); subsequent
+        # failures drop back to DEBUG to avoid log spam.
+        self._gossip_warned = False
         _ensure_state_dir(self._state_dir)
+        # Process-global PT_STATE_DIR mutation — load-bearing for memory_node's
+        # module-level `_default_bus` singleton. memory_node._get_default_bus()
+        # is called from request paths that don't have a supervisor handle and
+        # resolves the DB path via this env var. Single supervisor per process
+        # in production; tests use monkeypatch.setenv for isolation.
+        # Colocate GossipBus with jobs.jsonl so memory recall sees completed work.
+        os.environ["PT_STATE_DIR"] = str(self._state_dir.resolve())
 
     # ── Public API ─────────────────────────────────────────────────────────────
 
@@ -305,7 +333,17 @@ class OrchestrationSupervisor:
     # ── Internal ───────────────────────────────────────────────────────────────
 
     async def _run_worker(self, spec: JobSpec) -> None:
-        """Execute one worker task.  Writes final event before exiting."""
+        """
+        Run a single job: execute work, persist the result artifact, append lifecycle events, and emit gossip notifications.
+        
+        Appends a RUNNING event, executes the job described by `spec`, writes the result artifact to `.state/jobs/<job_id>/result.json` before recording a SUCCEEDED event, and emits a gossip `"result"` event. On failure records a FAILED event and emits a gossip `"error"` event; policy-affinity failures are marked with `"policy": True`. On cancellation records a CANCELLED event before re-raising the cancellation.
+        
+        Parameters:
+            spec (JobSpec): Immutable descriptor of the job to run; its `job_id` is used for event records and artifact path.
+        
+        Raises:
+            asyncio.CancelledError: Re-raised after recording a CANCELLED event when the running task is cancelled.
+        """
         self._append_event(spec.job_id, {"status": JobStatus.RUNNING})
         job_dir = self._state_dir / "jobs" / spec.job_id
         job_dir.mkdir(parents=True, exist_ok=True)
@@ -323,6 +361,7 @@ class OrchestrationSupervisor:
                 "status": JobStatus.SUCCEEDED,
                 "artifact": str(job_dir / "result.json"),
             })
+            await self._record_to_gossip("result", spec)
 
         except asyncio.CancelledError:
             # Write CANCELLED checkpoint BEFORE propagating cancellation
@@ -336,26 +375,76 @@ class OrchestrationSupervisor:
                 "error": str(exc),
                 "policy": True,
             })
+            await self._record_to_gossip("error", spec, {"detail": str(exc), "policy": True})
 
         except Exception as exc:
             self._append_event(spec.job_id, {
                 "status": JobStatus.FAILED,
                 "error": str(exc),
             })
+            await self._record_to_gossip("error", spec, {"detail": str(exc)})
 
         finally:
             self._active.pop(spec.job_id, None)
 
+    async def _record_to_gossip(
+        self,
+        event_type: str,
+        spec: JobSpec,
+        extra: dict | None = None,
+    ) -> None:
+        """
+        Emit a job-related event to the GossipBus for downstream memory and gossip.
+        
+        Builds a payload containing `job_id`, `prompt`, `intent`, and `role` when present, merges `extra` if provided, lazily initializes the GossipBus, ensures the gossip DB is ready, and emits the event. All exceptions are suppressed: the first emission failure is logged at WARNING and subsequent failures are logged at DEBUG.
+        
+        Parameters:
+            extra (dict | None): Additional key/value pairs to merge into the emitted payload.
+        """
+        import logging
+
+        payload: dict = {
+            "job_id": spec.job_id,
+            "prompt": spec.prompt,
+            "intent": spec.intent,
+        }
+        if spec.role:
+            payload["role"] = spec.role
+        if extra:
+            payload.update(extra)
+        try:
+            from orchestrator.memory_node import ensure_gossip_db_ready  # noqa: PLC0415
+
+            if self._gossip_bus is None:
+                from orchestrator.gossip_bus import GossipBus, resolve_gossip_db_path  # noqa: PLC0415
+                self._gossip_bus = GossipBus(resolve_gossip_db_path(self._state_dir))
+
+            await ensure_gossip_db_ready(self._gossip_bus)
+            await self._gossip_bus.emit(event_type, payload)  # type: ignore[arg-type]
+        except Exception as exc:  # pragma: no cover
+            log = logging.getLogger(__name__)
+            if not self._gossip_warned:
+                log.warning(
+                    "_record_to_gossip: gossip emit failed — memory recall will not see "
+                    "this job. Further failures suppressed to DEBUG. (%s)",
+                    exc,
+                )
+                self._gossip_warned = True
+            else:
+                log.debug("_record_to_gossip: skipped — %s", exc)
+
     async def _inject_memory_context(self, spec: JobSpec) -> JobSpec:
-        """Prepend relevant memory context to spec.prompt (Item 7 — RAG wiring).
-
-        Retrieves top-K hits from GossipBus FTS5 + LanceDB + optional gbrain,
-        fuses via RRF, and prepends a ``[MEMORY CONTEXT]`` block to the prompt.
-
-        Design invariants:
-          - Only runs when spec.metadata.get("use_memory") is not False.
-          - Never raises — any failure returns the original spec unchanged.
-          - No context injected when retrieve_context returns [].
+        """
+        Injects retrieved memory snippets into the job prompt when memory is enabled.
+        
+        If memory retrieval yields one or more text hits, a numbered "[MEMORY CONTEXT]" block
+        is prepended to the existing prompt and a new JobSpec with the enriched prompt is returned.
+        If memory is disabled via spec.metadata["use_memory"] == False, or retrieval returns no
+        usable hits, the original spec is returned unchanged. This function never raises; on error
+        it returns the original spec.
+        
+        Returns:
+            JobSpec: the updated JobSpec with an injected memory context when available, otherwise the original spec.
         """
         if (spec.metadata or {}).get("use_memory", True) is False:
             return spec

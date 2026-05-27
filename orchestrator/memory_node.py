@@ -64,7 +64,14 @@ def _text_from_gossip_payload(payload: Any) -> str:
 
 
 def _normalise_fts_hits(hits: list[dict]) -> list[dict]:
-    """Map GossipBus search rows ({payload, ...}) to recall hits with ``text``."""
+    """
+    Normalize GossipBus FTS search rows into recall hit dictionaries that include a usable `text` field.
+    
+    Scans each element in `hits`, derives a human-readable text value (preferring an existing `text` string, falling back to a representation extracted from `payload`), omits entries without resolvable text, and preserves other fields.
+    
+    Returns:
+        normalized_hits (list[dict]): List of hit dictionaries with a guaranteed `text` string; entries without resolvable text are omitted.
+    """
     out: list[dict] = []
     for hit in hits:
         if not isinstance(hit, dict):
@@ -79,8 +86,15 @@ def _normalise_fts_hits(hits: list[dict]) -> list[dict]:
     return out
 
 
-async def _ensure_gossip_db_ready(bus) -> None:
-    """Idempotent schema init — required before first FTS search on a new bus."""
+async def ensure_gossip_db_ready(bus) -> None:
+    """
+    Ensure a GossipBus instance is initialized for FTS searches.
+    
+    Performs idempotent schema initialization by calling the bus's init_db() if it has not already been prepared, and marks the bus as ready to avoid repeated initializations. If the bus is already marked ready, this function returns immediately.
+    
+    Parameters:
+        bus: GossipBus-like object with an `init_db()` coroutine and an internal readiness flag attribute.
+    """
     if getattr(bus, "_memory_node_db_ready", False):
         return
     await bus.init_db()
@@ -95,18 +109,20 @@ async def retrieve_context(
     gossip_bus=None,
     lance_store=None,
 ) -> list[dict]:
-    """Retrieve memory context relevant to *query*.
-
-    Args:
-        query:       The user prompt / search query.
-        top_n:       Maximum hits to return after RRF fusion.
-        use_gbrain:  Override gbrain usage.  None → use GBRAIN_MEMORY_ENABLED env.
-        gossip_bus:  Optional pre-constructed GossipBus (for testing).
-        lance_store: Optional pre-constructed EmbeddingStore (for testing).
-
+    """
+    Retrieve relevant memory hits from keyword, vector, and optional semantic stores and return them ranked.
+    
+    Performs best-effort searches (FTS keyword, ANN vector, and optional gbrain semantic) and fuses results; backend errors are treated as empty results and do not raise.
+    
+    Parameters:
+        query (str): Search query or user prompt.
+        top_n (int): Maximum number of results to return after fusion.
+        use_gbrain (Optional[bool]): If None, uses the module GBRAIN env default; otherwise overrides whether gbrain semantic search is performed.
+        gossip_bus: Optional GossipBus instance to use instead of the module default.
+        lance_store: Optional EmbeddingStore instance to use instead of the module default.
+    
     Returns:
-        Ranked list of hit dicts, each with at least a ``text`` key.
-        Returns [] on any failure — never raises.
+        list[dict]: Ranked list of hit dictionaries (each contains at least a `text` key); returns an empty list when no matches are found or on internal failures.
     """
     if not query or not query.strip():
         return []
@@ -121,7 +137,7 @@ async def retrieve_context(
     try:
         bus = gossip_bus or _get_default_bus()
         if bus is not None:
-            await _ensure_gossip_db_ready(bus)
+            await ensure_gossip_db_ready(bus)
             fts_hits = _normalise_fts_hits(
                 await bus.search(query, limit=top_n * 2)
             )
@@ -176,12 +192,17 @@ _default_store = None
 
 
 def _get_default_bus():
-    """Return module-level GossipBus singleton (lazy, shared with fastapi_app)."""
+    """
+    Lazily instantiate and return the module-level GossipBus singleton using the supervisor-resolved database path.
+    
+    Returns:
+        GossipBus or None: The cached GossipBus instance if instantiation succeeded, otherwise `None`.
+    """
     global _default_bus  # noqa: PLW0603
     if _default_bus is None:
         try:
-            from orchestrator.gossip_bus import GossipBus  # noqa: PLC0415
-            _default_bus = GossipBus()
+            from orchestrator.gossip_bus import GossipBus, resolve_gossip_db_path  # noqa: PLC0415
+            _default_bus = GossipBus(resolve_gossip_db_path())
         except Exception as exc:
             _log.debug("memory_node: could not instantiate GossipBus — %s", exc)
     return _default_bus

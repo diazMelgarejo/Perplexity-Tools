@@ -74,7 +74,9 @@ async def test_submit_echo_job_succeeds(tmp_path):
     job_id = await sup.submit_job(spec)
     assert job_id == spec.job_id
 
-    await asyncio.sleep(0.2)
+    task = sup._active.get(job_id)
+    assert task is not None
+    await task
 
     status = await sup.get_status(job_id)
     assert status is not None
@@ -846,3 +848,384 @@ async def test_inject_memory_context_uses_gossip_payload_text(tmp_path):
 
     assert "prior Q3 revenue was $10M" in enriched.prompt
     assert enriched.prompt.startswith("[MEMORY CONTEXT]")
+
+
+@pytest.mark.asyncio
+async def test_completed_job_populates_gossip_for_later_injection(tmp_path, monkeypatch):
+    """Jobs must emit to GossipBus on completion so a later job can recall context."""
+    from unittest.mock import AsyncMock, patch
+
+    from orchestrator.memory_node import reset_singletons
+
+    monkeypatch.setenv("PT_STATE_DIR", str(tmp_path))
+    reset_singletons()
+
+    sup = _make_sup(tmp_path)
+    marker = "unique_recall_marker_7f3a"
+
+    job_id = await sup.submit_job(_echo_spec(f"store fact: {marker} revenue was $10M"))
+    task = sup._active.get(job_id)
+    assert task is not None
+    await task
+
+    # Query must share FTS terms with the stored row (FTS5 ANDs tokens by default).
+    spec2 = _echo_spec(f"{marker} revenue")
+    with patch("orchestrator.memory_store.lancedb_available", return_value=False):
+        enriched = await sup._inject_memory_context(spec2)
+
+    assert "$10M" in enriched.prompt
+    assert enriched.prompt.startswith("[MEMORY CONTEXT]")
+
+
+# ── OrchestrationSupervisor.__init__ new fields (PR change) ──────────────────
+
+def test_supervisor_init_sets_pt_state_dir(tmp_path):
+    """Supervisor __init__ must export PT_STATE_DIR so memory_node can resolve the db path."""
+    import os
+
+    sup = _make_sup(tmp_path)
+    assert os.environ.get("PT_STATE_DIR") == str(tmp_path.resolve())
+
+
+def test_supervisor_init_gossip_bus_starts_none(tmp_path):
+    """_gossip_bus must be None at construction — bus is created lazily."""
+    sup = _make_sup(tmp_path)
+    assert sup._gossip_bus is None
+
+
+def test_supervisor_init_gossip_warned_starts_false(tmp_path):
+    """_gossip_warned must be False at construction."""
+    sup = _make_sup(tmp_path)
+    assert sup._gossip_warned is False
+
+
+# ── _record_to_gossip (PR change: new method) ─────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_record_to_gossip_emits_core_payload(tmp_path):
+    """_record_to_gossip must emit at minimum job_id, prompt, and intent."""
+    from unittest.mock import AsyncMock, patch
+
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("test the gossip payload")
+    spec = spec.model_copy(update={"intent": "test-intent"})
+
+    emitted: list[tuple] = []
+
+    async def _fake_emit(event_type, payload):
+        """
+        Record a gossip event by appending its (event_type, payload) tuple to the captured `emitted` list.
+        
+        This test helper mutates the surrounding `emitted` list by adding a tuple containing the event type and its payload.
+        
+        Parameters:
+            event_type (str): The name/type of the event to record.
+            payload (dict): The event payload to record.
+        """
+        emitted.append((event_type, payload))
+
+    with (
+        patch.object(sup, "_gossip_bus", create=True),
+        patch("orchestrator.memory_node.ensure_gossip_db_ready", AsyncMock()),
+    ):
+        # Inject a pre-initialized fake bus
+        from unittest.mock import MagicMock
+        fake_bus = MagicMock()
+        fake_bus.emit = _fake_emit
+        sup._gossip_bus = fake_bus
+
+        await sup._record_to_gossip("result", spec)
+
+    assert len(emitted) == 1
+    event_type, payload = emitted[0]
+    assert event_type == "result"
+    assert payload["job_id"] == spec.job_id
+    assert payload["prompt"] == spec.prompt
+    assert payload["intent"] == spec.intent
+
+
+@pytest.mark.asyncio
+async def test_record_to_gossip_includes_role_when_set(tmp_path):
+    """When spec.role is set, role must be present in the emitted payload."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    sup = _make_sup(tmp_path)
+    spec = JobSpec(
+        job_id=_new_id(),
+        intent="coder task",
+        prompt="write a sort function",
+        backend_hint="echo",
+        role="coder",
+    )
+
+    emitted: list[dict] = []
+
+    async def _fake_emit(event_type, payload):
+        """
+        Record a gossip emit by appending the provided payload to the captured `emitted` list.
+        
+        Parameters:
+            event_type (str): The type of event being emitted (accepted for signature compatibility; ignored).
+            payload (dict): The payload object to append to the `emitted` list.
+        """
+        emitted.append(payload)
+
+    fake_bus = MagicMock()
+    fake_bus.emit = _fake_emit
+    sup._gossip_bus = fake_bus
+
+    from unittest.mock import patch
+    with patch("orchestrator.memory_node.ensure_gossip_db_ready", AsyncMock()):
+        await sup._record_to_gossip("result", spec)
+
+    assert emitted[0].get("role") == "coder"
+
+
+@pytest.mark.asyncio
+async def test_record_to_gossip_omits_role_when_none(tmp_path):
+    """When spec.role is None, 'role' key must NOT appear in the emitted payload."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("no role here")
+    assert spec.role is None
+
+    emitted: list[dict] = []
+
+    async def _fake_emit(event_type, payload):
+        """
+        Record a gossip emit by appending the provided payload to the captured `emitted` list.
+        
+        Parameters:
+            event_type (str): The type of event being emitted (accepted for signature compatibility; ignored).
+            payload (dict): The payload object to append to the `emitted` list.
+        """
+        emitted.append(payload)
+
+    fake_bus = MagicMock()
+    fake_bus.emit = _fake_emit
+    sup._gossip_bus = fake_bus
+
+    with patch("orchestrator.memory_node.ensure_gossip_db_ready", AsyncMock()):
+        await sup._record_to_gossip("result", spec)
+
+    assert "role" not in emitted[0]
+
+
+@pytest.mark.asyncio
+async def test_record_to_gossip_merges_extra_dict(tmp_path):
+    """Extra kwargs must be merged into the emitted payload."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("merge extra")
+
+    emitted: list[dict] = []
+
+    async def _fake_emit(event_type, payload):
+        """
+        Record a gossip emit by appending the provided payload to the captured `emitted` list.
+        
+        Parameters:
+            event_type (str): The type of event being emitted (accepted for signature compatibility; ignored).
+            payload (dict): The payload object to append to the `emitted` list.
+        """
+        emitted.append(payload)
+
+    fake_bus = MagicMock()
+    fake_bus.emit = _fake_emit
+    sup._gossip_bus = fake_bus
+
+    with patch("orchestrator.memory_node.ensure_gossip_db_ready", AsyncMock()):
+        await sup._record_to_gossip("error", spec, {"detail": "timeout", "policy": True})
+
+    assert emitted[0]["detail"] == "timeout"
+    assert emitted[0]["policy"] is True
+
+
+@pytest.mark.asyncio
+async def test_record_to_gossip_lazily_initializes_gossip_bus(tmp_path, monkeypatch):
+    """_gossip_bus must be None before first call and set after."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    monkeypatch.delenv("GOSSIP_DB_PATH", raising=False)
+    sup = _make_sup(tmp_path)
+    assert sup._gossip_bus is None
+
+    spec = _echo_spec("lazy init")
+
+    fake_bus = MagicMock()
+    fake_bus.emit = AsyncMock()
+
+    with (
+        patch("orchestrator.gossip_bus.GossipBus", return_value=fake_bus),
+        patch("orchestrator.memory_node.ensure_gossip_db_ready", AsyncMock()),
+    ):
+        await sup._record_to_gossip("result", spec)
+
+    assert sup._gossip_bus is fake_bus
+
+
+@pytest.mark.asyncio
+async def test_record_to_gossip_reuses_existing_gossip_bus(tmp_path):
+    """_gossip_bus is not re-created on the second call."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("reuse bus")
+
+    first_bus = MagicMock()
+    first_bus.emit = AsyncMock()
+    sup._gossip_bus = first_bus
+
+    with patch("orchestrator.memory_node.ensure_gossip_db_ready", AsyncMock()):
+        await sup._record_to_gossip("result", spec)
+        await sup._record_to_gossip("result", spec)
+
+    # The bus must not have been replaced.
+    assert sup._gossip_bus is first_bus
+
+
+@pytest.mark.asyncio
+async def test_record_to_gossip_never_raises(tmp_path):
+    """_record_to_gossip must swallow all exceptions — job worker must not crash."""
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("must not raise")
+
+    failing_bus = MagicMock()
+    failing_bus.emit = AsyncMock(side_effect=RuntimeError("db unavailable"))
+    sup._gossip_bus = failing_bus
+
+    with patch("orchestrator.memory_node.ensure_gossip_db_ready", AsyncMock()):
+        # Must not raise
+        await sup._record_to_gossip("result", spec)
+
+
+@pytest.mark.asyncio
+async def test_run_worker_calls_record_to_gossip_on_success(tmp_path):
+    """After a successful job, _record_to_gossip must be called with event_type='result'."""
+    from unittest.mock import AsyncMock, patch
+
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("gossip on success")
+
+    calls: list[tuple] = []
+
+    async def _capture(event_type, spec_, extra=None):
+        """
+        Record a gossip event into the shared `calls` capture list for test assertions.
+        
+        Parameters:
+            event_type (str): The type of event being emitted (e.g., "result", "error").
+            spec_ (Any): The job spec or payload associated with the event.
+            extra (Optional[dict]): Additional payload data merged into the emitted event; may be None.
+        """
+        calls.append((event_type, spec_, extra))
+
+    with patch.object(sup, "_record_to_gossip", side_effect=_capture):
+        job_id = await sup.submit_job(spec)
+        task = sup._active.get(job_id)
+        assert task is not None
+        await task
+
+    result_calls = [(et, s) for et, s, _ in calls if et == "result"]
+    assert len(result_calls) == 1
+    assert result_calls[0][1].job_id == spec.job_id
+
+
+@pytest.mark.asyncio
+async def test_run_worker_calls_record_to_gossip_on_generic_exception(tmp_path, monkeypatch):
+    """When _dispatch raises a generic Exception, _record_to_gossip is called with 'error'."""
+    from unittest.mock import AsyncMock, patch
+
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("error gossip")
+
+    calls: list[tuple] = []
+
+    async def _capture(event_type, spec_, extra=None):
+        """
+        Record a gossip event into the shared `calls` capture list for test assertions.
+        
+        Parameters:
+            event_type (str): The type of event being emitted (e.g., "result", "error").
+            spec_ (Any): The job spec or payload associated with the event.
+            extra (Optional[dict]): Additional payload data merged into the emitted event; may be None.
+        """
+        calls.append((event_type, spec_, extra))
+
+    async def _explode(s):
+        """
+        Raise a RuntimeError with message "boom".
+        
+        Parameters:
+            s: Ignored parameter retained for signature compatibility.
+        
+        Raises:
+            RuntimeError: Always raised with the message "boom".
+        """
+        raise RuntimeError("boom")
+
+    with (
+        patch.object(sup, "_dispatch", side_effect=_explode),
+        patch.object(sup, "_record_to_gossip", side_effect=_capture),
+    ):
+        job_id = await sup.submit_job(spec)
+        task = sup._active.get(job_id)
+        assert task is not None
+        await task
+
+    error_calls = [(et, ex) for et, _, ex in calls if et == "error"]
+    assert len(error_calls) == 1
+    assert error_calls[0][1] is not None
+    assert "boom" in error_calls[0][1].get("detail", "")
+
+
+@pytest.mark.asyncio
+async def test_run_worker_calls_record_to_gossip_on_hardware_affinity_error(tmp_path, monkeypatch):
+    """HardwareAffinityError must trigger _record_to_gossip with 'error' and policy=True."""
+    from unittest.mock import patch
+    from utils.hardware_policy import HardwareAffinityError
+
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("affinity gossip")
+
+    calls: list[tuple] = []
+
+    async def _capture(event_type, spec_, extra=None):
+        """
+        Record a gossip event into the shared `calls` capture list for test assertions.
+        
+        Parameters:
+            event_type (str): The type of event being emitted (e.g., "result", "error").
+            spec_ (Any): The job spec or payload associated with the event.
+            extra (Optional[dict]): Additional payload data merged into the emitted event; may be None.
+        """
+        calls.append((event_type, spec_, extra))
+
+    async def _affinity_error(s):
+        """
+        Raise a HardwareAffinityError indicating the provided model is not allowed on mac hosts.
+        
+        Parameters:
+            s: Ignored input (kept for signature compatibility).
+        
+        Raises:
+            HardwareAffinityError: Always raised with message "NEVER_MAC: model not allowed here".
+        """
+        raise HardwareAffinityError("NEVER_MAC: model not allowed here")
+
+    with (
+        patch.object(sup, "_dispatch", side_effect=_affinity_error),
+        patch.object(sup, "_record_to_gossip", side_effect=_capture),
+    ):
+        job_id = await sup.submit_job(spec)
+        task = sup._active.get(job_id)
+        assert task is not None
+        await task
+
+    error_calls = [(et, ex) for et, _, ex in calls if et == "error"]
+    assert len(error_calls) == 1
+    assert error_calls[0][1].get("policy") is True
