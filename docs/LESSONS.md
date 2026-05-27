@@ -13,6 +13,7 @@ Backported 4 RAG modules from the v2 design plan (`orama-system feat/rag-gstack-
 into `diazMelgarejo/Perpetua-Tools` on branch `feat/rag-backport-v1`.
 
 **What shipped:**
+
 - `orchestrator/gossip_bus.py` — aiosqlite event log with FTS5 BM25 keyword search + `_pending_embeds` GC guard + `embed_status` column
 - `orchestrator/memory_embed.py` — httpx Ollama bge-m3 embed helper + `probe_embed_dim()` (Gap 1 fix)
 - `orchestrator/memory_store.py` — LanceDB `EmbeddingStore(dim=...)` + `get_lance_store()` singleton (Gap 1 fix)
@@ -20,6 +21,7 @@ into `diazMelgarejo/Perpetua-Tools` on branch `feat/rag-backport-v1`.
 - 27 new tests across 3 test files; 345/345 passing, 0 regressions
 
 **Three gap fixes from external review (Antigravity Gemini 3.5):**
+
 1. Gap 1 (dim hardcode → schema mismatch): `probe_embed_dim()` + `EmbeddingStore(dim=...)` + env var override
 2. Gap 2 (FTS5 silent failure on special chars): `_sanitize_fts_query()` strips operators before MATCH
 3. Gap 3 (GC test was a tautology): real `asyncio.sleep` behavioral test verifies `_pending_embeds` lifecycle
@@ -45,6 +47,7 @@ to `openclaw.json`. This could cause `lmstudio-mac` to advertise Windows-only
 Discovery trusted endpoint responses without cross-referencing a hardware policy.
 
 **Defense-in-depth solution:**
+
 - L1: `discover.py` filters through `Perpetua-Tools/config/model_hardware_policy.yml`
   before writing discovery state, `openclaw.json`, or `.env.lmstudio`.
 - L2: `utils/hardware_policy.py`, `alphaclaw_manager.py`, and `agent_launcher.py`
@@ -74,6 +77,7 @@ existing CLI, tests, and agents — not a separate product surface.
 > **Cross-repo companion**: [orama-system/docs/LESSONS.md](https://github.com/diazMelgarejo/orama-system/blob/main/docs/LESSONS.md)
 >
 > **Rules**:
+>
 > - Read this file at the start of every session
 > - Append new learnings before ending a session
 > - Keep entries dated and agent-tagged (`ECC | AutoResearcher | Claude`)
@@ -137,28 +141,34 @@ Import command: `/instinct-import .claude/homunculus/instincts/inherited/Perpetu
 ### Learned
 
 **Architecture decisions (do not re-debate):**
+
 - `"type": "module"` in `packages/alphaclaw-adapter/package.json` conflicted with `require()` in all source files (copied from AlphaClaw, which is CJS). Fix: remove `"type": "module"`. Keep everything CommonJS in this package.
 - `spawnSync` with `detached:true` does NOT actually detach — the parent blocks until the child exits. Always use `spawn` (not `spawnSync`) then `child.unref()` for detached background processes.
 - Session cookies from AlphaClaw's `/api/auth/login` arrive in `res.headers["set-cookie"]` as an array. Must `map(c => c.split(";")[0]).join("; ")` to extract the key=value without attributes (Secure, HttpOnly, Path).
 
 **AlphaClaw auth model (SETUP_API_PREFIXES):**
+
 - Two auth tiers exist: "setup-allowlisted" (`/api/status`, `/api/gateway*`, `/api/restart-status`) accessible without a full session, and "session²" (`/api/models`, `/api/env`, `/api/watchdog/*`) requiring a cookie from `POST /api/auth/login`. Always probe via `/health` first (no auth), then setup-allowlisted endpoints, then login before calling session² endpoints.
 
 **orchestrator/alphaclaw_manager.py pattern:**
+
 - The `--env-only` flag pattern (print `export KEY='val'` lines, caller does `eval "$(...)"`) is the cleanest way to propagate PT-resolved env vars into a bash script without a temp file or JSON parsing in bash.
 - `--resolve --env-only` pipes through `tee /dev/stderr` so progress messages appear in the terminal while `grep '^export '` captures only the eval-able lines.
 - `subprocess.run()` with `capture_output=False` lets the Python child's stdout/stderr stream to the terminal in real time — critical for long-running operations like AlphaClaw bootstrap.
 
 **start.sh thinning rule:**
+
 - Sections 2a (backend probe) and 2c (mode determination) were gateway decision logic — they belong in PT, not in orama. If a shell script is making gateway routing decisions, it violates the PT-is-authoritative invariant.
 - The thinned start.sh pattern: resolve via PT (`eval "$PT_ENV_EXPORTS"`), then unconditionally start services. The shell script is now a pure process manager, not a policy engine.
 
 **Smoke test structure:**
+
 - Group tests by auth tier (no-auth → setup-allowlisted → session-auth → watchdog) to match the contract document. This makes it obvious which section a failure belongs to.
 - Mark destructive tests (restartGateway, watchdogRepair) as `null` (SKIP) by default; gate behind `SMOKE_DESTRUCTIVE=1` env var.
 - Exit code 1 on any FAIL so CI can catch regressions.
 
 **FUSE mount git limitations (still applies at Gate 1):**
+
 - `git add`, `git commit`, `git push` in the sandbox FUSE-mounted paths often fail with `index.lock` or `Resource deadlock avoided`. Always provide Mac terminal commands for git operations.
 
 ### Decisions Made
@@ -198,6 +208,7 @@ Import command: `/instinct-import .claude/homunculus/instincts/inherited/Perpetu
 - `AgentTracker._load()` skips non-dict entries and rewrites file clean
 
 ### Commits
+
 - `ffb1be0` (PT) — fix(researchers): auto-discover loaded model via /v1/models + /api/tags
 - `d9e4f50` (PT) — fix(tracker): handle stale routing data in agents.json
 
@@ -224,6 +235,7 @@ Import command: `/instinct-import .claude/homunculus/instincts/inherited/Perpetu
 6. Show progress bar during recovery
 
 ### Commits
+
 - `8af62f5` (PT) — feat(routing): one-role-per-device guard + GPU crash recovery cooldown
 
 → [wiki/03-device-identity.md](wiki/03-device-identity.md)
@@ -247,6 +259,7 @@ Import command: `/instinct-import .claude/homunculus/instincts/inherited/Perpetu
 5. Candidate port list must be env-configurable (`OPENCLAW_EXTRA_PORTS`, etc.)
 
 ### Commits
+
 - `6bc40d0` (UTS) — feat(bootstrap): probe all candidate ports and commandeer any running gateway
 
 → [wiki/04-gateway-discovery.md](wiki/04-gateway-discovery.md)
@@ -258,12 +271,14 @@ Import command: `/instinct-import .claude/homunculus/instincts/inherited/Perpetu
 ### Key Changes
 
 1. **`AUTORESEARCH_REMOTE` is now an env var** (not hardcoded):
+
    ```bash
    AUTORESEARCH_REMOTE=https://github.com/uditgoenka/autoresearch.git  # default
    AUTORESEARCH_BRANCH=main  # default sync branch (was hardcoded 'master')
    ```
 
 2. **Plugin install is primary mode:**
+
    ```bash
    claude plugin marketplace add uditgoenka/autoresearch
    claude plugin install autoresearch@autoresearch
@@ -328,6 +343,7 @@ python -m pytest -q
 ```
 
 ### Commits
+
 - `71a15f7` (PT) — fix(health): restore 127.0.0.1 loopback defaults
 
 → [wiki/07-multi-agent-collab.md](wiki/07-multi-agent-collab.md)
@@ -353,6 +369,7 @@ PATH order on macOS: `~/.local/bin` (pos 4) → `/usr/local/bin` (pos 9). Instal
 ### Idempotent Setup
 
 `orama-system/setup_macos.py` (called from `start.sh` on every boot):
+
 - Creates `~/.local/bin`, adds it to PATH in `~/.zshrc`
 - Validates `~/.openclaw/openclaw.json` — adds `models[]` if missing
 - Applies 6 alphaclaw.js patches idempotently (detect string guards)
@@ -377,6 +394,7 @@ All lessons above are expanded with root causes, exact fixes, and verification c
 | 08 | [macOS alphaclaw Compat](wiki/08-macos-alphaclaw-compat.md) | EACCES fixes, ~/.local/bin, setup_macos.py |
 
 ## [2026-04-21] Configuration Portability: OS-Agnostic Paths
+
 *(synced from [AlphaClaw `feature/MacOS-post-install` → `7-Lessons.md`](https://github.com/diazMelgarejo/AlphaClaw/blob/feature/MacOS-post-install/7-Lessons.md))*
 
 - **Problem**: Absolute paths (e.g. `/Users/user/...`) in `openclaw.json` break cross-platform deployments.
@@ -386,6 +404,7 @@ All lessons above are expanded with root causes, exact fixes, and verification c
 ---
 
 ## [2026-04-21] Core Policy: Additive Ghost Orchestration
+
 *(synced from [AlphaClaw `feature/MacOS-post-install` → `7-Lessons.md`](https://github.com/diazMelgarejo/AlphaClaw/blob/feature/MacOS-post-install/7-Lessons.md))*
 
 - **Additive Configuration**: Never overwrite `openclaw.json`. Always read → deep-merge (spread) → write back.
@@ -396,6 +415,7 @@ All lessons above are expanded with root causes, exact fixes, and verification c
 ---
 
 ## [2026-04-22] Symlink Portability & Validation
+
 *(synced from [AlphaClaw `feature/MacOS-post-install` → `7-Lessons.md`](https://github.com/diazMelgarejo/AlphaClaw/blob/feature/MacOS-post-install/7-Lessons.md))*
 
 - **Requirement**: Git must track symlinks as Mode 120000. Use `git ls-files -s` to verify.
@@ -443,22 +463,26 @@ discovered in any plan or code review.
 ## Changes landed
 
 **G3 — device_affinity → affinity key rename (PT side):**
+
 - `config/routing.yml` autoresearch routes: `device_affinity` → `affinity`
 - Value `win-rtx3080` preserved — future Windows hardware profiles (e.g. win-rtx4090) share the windows_only blocklist but need distinct whitelists. Device-specific affinity is the extension point. **Never normalize `win-rtx3080` to generic `win`.**
 - Fixed stale test: `ULTRATHINK_ENDPOINT` → `ORAMA_ENDPOINT` (the rename had happened in routing.yml but the test didn't track it)
 - Regression guard: `test_routing_affinity_keys_normalized` blocks future re-introduction of `device_affinity` key
 
 **G1 — shared: section:**
+
 - Commented out in `config/model_hardware_policy.yml` with TODO pointing to Part 2 Phase 5
 - Added `_POLICY_CACHE` autouse fixture to clear module-level cache between tests (prevents test-ordering contamination)
 - Parametrized test covers all 3 YAML variants (commented-out, absent, explicit-empty) × both parsers (PyYAML + `_simple_policy_parse`)
 
 **G2 — PERPETUA_TOOLS_ROOT:**
+
 - Documented in `.env.example` with cross-repo usage context
 
 ## Disaster Recovery Pattern (owned by orama, mirrors here for cross-repo context)
 
 `HardwarePolicyResolver` in `orama/api_server.py` implements:
+
 1. **PT-first**: import from `PERPETUA_TOOLS_ROOT` → authoritative
 2. **Cache fallback**: `config/hardware_policy_cache.yml` → degraded (CRITICAL warning)
 3. **Hard fail if cache missing**: never silently skip enforcement
@@ -487,6 +511,7 @@ discovered in any plan or code review.
 **Problem:** Codex `--full-auto` requires a TTY. Spawning from Python subprocesses fails with "stdin is not a terminal".
 
 **Automated solution using `pty.openpty()`:**
+
 ```python
 import pty, select, os, subprocess
 
@@ -499,20 +524,24 @@ proc = subprocess.Popen(
 os.close(slave_fd)
 # Collect output via master_fd with select() + timeout
 ```
+
 **This makes Codex 100% automatable — no human terminal needed, works from Claude Code, CI, FastAPI, or any Python subprocess.**
 
 See: `orama-system/scripts/spawn_agents.py → _dispatch_codex()`
 
 ### Gemini CLI Fix
+
 ```bash
 # Create wrapper in ~/.local/bin/gemini:
 #!/usr/bin/env bash
 exec /path/to/nvm/v24/bin/node /path/to/nvm/v24/bin/gemini "$@"
 ```
+
 Fixes `??= SyntaxError` when shell resolves `node` to v14.
 Auto-created by `scripts/setup_codex.sh` on every stack startup.
 
 ### Tools Available (cross-session reference)
+
 | Tool | Status | How to use |
 |------|--------|-----------|
 | Codex | ✓ via PTY | `spawn_agents.py --agent codex` |
@@ -522,13 +551,14 @@ Auto-created by `scripts/setup_codex.sh` on every stack startup.
 | All agents | parallel + serial | `spawn_agents.py --agent all` |
 
 ### Module Loading Pattern (sys.modules registration)
+
 When loading a Python module with `importlib.util.exec_module` and it contains dataclasses:
+
 ```python
 mod = importlib.util.module_from_spec(spec)
 sys.modules['module_name'] = mod  # MUST register before exec_module
 spec.loader.exec_module(mod)       # otherwise dataclass field annotations fail
 ```
-
 
 ## [2026-04-27] Hardware × Agent Matrix Test — Full Results
 
@@ -606,6 +636,7 @@ hangs at 5s. `git status --no-optional-locks --ignore-submodules=all` also hangs
 confirming the fsevents daemon, not submodule scanning, is the primary blocker.
 
 **Workaround (used successfully):**
+
 ```bash
 # 1. Stage specific files directly (bypasses full worktree scan)
 git add docs/LESSONS.md .claude/skills/alphaclaw-session/SKILL.md
@@ -625,6 +656,7 @@ GIT_TERMINAL_PROMPT=0 git push origin main
 ```
 
 **Permanent fix options:**
+
 - `git config core.fsmonitor false` in PT repo (disables fsevents polling)
 - `git submodule deinit --force vendor/ecc-tools packages/agentic-stack` if submodules
   are not actively used
@@ -640,6 +672,7 @@ GIT_TERMINAL_PROMPT=0 git push origin main
 Five bugs found and fixed across two review passes:
 
 **Codex review (claude-code-reviewer subagent) found:**
+
 1. `local win_ip="${WIN_IP:-?"}"` — malformed bash param expansion; `"` closed outer
    double-quote. Caused syntax error on `--status`/`--stop` paths. Fix: `"${WIN_IP:-?}"`
 2. `$_` instead of `${_exit}` in discover.py fallback warning (line 203) — printed
@@ -682,6 +715,7 @@ Do not load a second model on Win while a first is actively inferring.
 100–308s. This is 5× slower than with thinking disabled (~15–25s expected).
 
 **Solution (two-layer):**
+
 1. **LM Studio UI** — toggle "Thinking Mode" off in the model settings panel.
    Must be done manually per LM Studio session; resets on restart.
 2. **openclaw.json** (persistent) — set `thinkingLevel: "off"` and
@@ -731,6 +765,7 @@ referenced in openclaw.json. After a DHCP reassignment Win moved to `.105`, brea
 all Win agent dispatches.
 
 **Root cause:** Two separate issues mixed into one symptom:
+
 1. IP hardcoded in docs/skills instead of reading from openclaw.json
 2. `discover.py` used `--force` flag for "always probe" — unintuitive for automation
 
@@ -738,6 +773,7 @@ all Win agent dispatches.
 
 1. **discover.py default reversed:** Always probes on every call (no TTL skip by default).
    `--cached` flag is the new opt-in to use TTL-cached state. `--force` kept as no-op alias.
+
    ```bash
    python3 ~/.openclaw/scripts/discover.py          # always scans — finds new IP
    python3 ~/.openclaw/scripts/discover.py --cached # skip if < 5 min old
@@ -745,6 +781,7 @@ all Win agent dispatches.
 
 2. **SKILL.md updated:** Win IP row now reads "dynamic (auto-detected)" — no IP literal.
    Lookup pattern:
+
    ```python
    import json, pathlib
    cfg = json.loads(pathlib.Path.home().joinpath('.openclaw/openclaw.json').read_text())
@@ -832,6 +869,7 @@ what gets committed. `npm install` (or equivalent) reproduces `node_modules/`
 exactly from the lockfile.
 
 **Why this matters beyond performance:**
+
 1. `node_modules/` binaries are platform-specific (`darwin-arm64` won't run on Linux CI)
 2. Inflates clone size (often 100MB+ per workspace)
 3. Pollutes diffs (any `npm install` produces thousands of file changes)
@@ -840,7 +878,8 @@ exactly from the lockfile.
 **For agents debugging future "git hangs":** the diagnostic recipe above takes
 ~2 minutes and reliably identifies the root cause. Start there before reaching
 for plumbing workarounds. The plumbing workaround we used for weeks (write-tree
-+ commit-tree + direct ref write) was the wrong layer to fix at — the index
+
+- commit-tree + direct ref write) was the wrong layer to fix at — the index
 itself was healthy; the working tree was the problem.
 
 `Agent: Claude | 2026-04-29`
@@ -848,12 +887,14 @@ itself was healthy; the working tree was the problem.
 ## [2026-04-29] Module Rename → Test Drift Pattern
 
 **Problem**: File renames (ultrathink_bridge.py → orama_bridge.py, ultrathink_mcp_client.py → orama_mcp_client.py) caused 16 test failures because:
+
 1. Internal import in orama_bridge.py still referenced old module path
 2. `patch()` strings in tests referenced old module paths
 3. Routing config env vars changed (ULTRATHINK_ENDPOINT → ORAMA_ENDPOINT, ultrathink_available → orama_available) but test assertions were not updated
 4. Hardware affinity tests relied on live policy file content, which was intentionally emptied
 
 **Fix pattern**:
+
 - After any file rename: `grep -rn "old_module_name" tests/` immediately
 - Hardware policy tests: always pass explicit `policy={}` dict — never couple test logic to live YAML
 - Routing contract tests: env var names come from `routing.yml`; update tests when routing.yml changes
@@ -890,10 +931,12 @@ To install on a fresh clone: `cp .claude/hooks/pre-commit .git/hooks/pre-commit 
 **Gemini CLI syntax update:** all production gemini invocations must use `--yolo` (alias `-y`). Without it, the subprocess hangs on the first sandbox/tool prompt. Updated `spawn_agents.py` + docs.
 
 **Deferred** (needs both Mac + Win on LAN):
+
 - `test_full_distributed_scenario_e2e` — actual probe both backends
 - `test_routing_hints_with_real_p50` — needs ≥2 real Windows runs
 
 Re-run when both nodes are up:
+
 ```bash
 python3 -m pytest tests/ -k "distributed or real_p50" -v
 ```
@@ -905,6 +948,7 @@ python3 -m pytest tests/ -k "distributed or real_p50" -v
 **Context:** Synthesised three reference files (`v1/B2-ai-cli-mcp.md`, `v1/003-Gemini-Hardware.md.md`, `v2/5-Anthropic-agent-design.md`) and adapted them for V1 repos under the no-DB/no-SQLite constraint.
 
 **New files shipped:**
+
 - `orchestrator/supervisor.py` — `OrchestrationSupervisor` + `JobSpec` + `JobStatus` (jsonl-only, no SQLite)
 - `orchestrator/worker_registry.py` — static `WORKER_REGISTRY`; all workers use `POST /api/chat` or `POST /v1/chat/completions`, never `ollama run`
 - `utils/action_validator.py` — two-phase validate-then-execute gate (IRREVERSIBLE + REQUIRES_HITL)
@@ -913,6 +957,7 @@ python3 -m pytest tests/ -k "distributed or real_p50" -v
 - `tests/test_supervisor_lan.py` — LAN integration tests (auto-skipped until both nodes live)
 
 **FastAPI surface added (`orchestrator/fastapi_app.py`):**
+
 - `POST /v1/jobs` — submit job
 - `GET /v1/jobs` — list jobs
 - `GET /v1/jobs/{id}` — get status
@@ -920,17 +965,20 @@ python3 -m pytest tests/ -k "distributed or real_p50" -v
 - `POST /v1/jobs/{id}/replay` — replay
 
 **Anthropic pattern constants:**
+
 - `MAX_DEPTH = 1` — workers cannot spawn sub-workers (hard limit)
 - `MAX_THREADS = 25` — Anthropic spec ceiling
 - Write final checkpoint BEFORE propagating `CancelledError` (not after)
 
 **Model instantiation rules confirmed:**
+
 - All workers use `POST /api/chat` (Ollama) or `POST /v1/chat/completions` (LM Studio/OpenAI)
 - Never use `ollama run` in a shared shell
 - Mac Ollama (localhost:11434) + Windows LM Studio (remote IP:1234) = safest simultaneous LAN pair
 - 1 instance per model per physical device
 
 **mac_probe.sh output (this Mac, 2026-05-08):**
+
 ```json
 {"model_id":"Mac14,9","ram_gb":16,"gpu_cores":16,"private_ip":"192.168.1.147","arch":"arm64","is_apple_silicon":true,"ai_tier":"standard","ollama_recommended_parallel":2}
 ```
@@ -938,6 +986,7 @@ python3 -m pytest tests/ -k "distributed or real_p50" -v
 **V2 spec:** `orama-system/docs/v2/14-supervisor-and-anthropic-patterns.md` — DB persistence, audit log, MAESTRO gates, SWARM guardrails (planning only).
 
 **Deferred (LAN):**
+
 - `test_supervisor_lan.py::test_winonly_model_routes_to_win` — Win node required
 - `test_supervisor_lan.py::test_failclosed_when_win_offline` — Win node required
 - `start.ps1` end-to-end on a real Windows box
@@ -964,6 +1013,7 @@ Silent failure mode: `RAM_GB=0`, `GPU_CORES=` (empty string), `PRIVATE_IP=0.0.0.
 Full rewrite with platform detection at the top (`_OS="$(uname -s)"`):
 
 **RAM:**
+
 ```bash
 # macOS (unchanged)
 RAM_BYTES=$(sysctl -n hw.memsize 2>/dev/null || echo "0")
@@ -973,6 +1023,7 @@ RAM_GB=$(( RAM_KB / 1024 / 1024 ))
 ```
 
 **Model ID:**
+
 ```bash
 # macOS
 MODEL_ID=$(sysctl -n hw.model)          # "Mac14,9"
@@ -983,6 +1034,7 @@ MODEL_ID=$(tr -d '\0' < /proc/device-tree/model)          # "Raspberry Pi 4 Mode
 ```
 
 **GPU:**
+
 ```bash
 # macOS — Apple Silicon GPU core count via system_profiler (unchanged)
 # Linux NVIDIA
@@ -992,6 +1044,7 @@ GPU_COUNT=$(lspci | grep -ciE 'VGA|3D|Display')
 ```
 
 **Private IP:**
+
 ```bash
 # macOS — interface-based (unchanged)
 ipconfig getifaddr en0 || ipconfig getifaddr en1
@@ -1065,3 +1118,48 @@ Added `pip install respx` to `.github/workflows/ci.yml` Install dependencies ste
 
 - **CI workflow installs are independent of `pyproject.toml`** — adding a dep to `pyproject.toml` (even under `dependencies`, not `[dev]`) does NOT make it available in CI unless the workflow explicitly installs it or uses `pip install -e "."`. Any new test dependency that isn't in `requirements.txt` must also be added to the `pip install` block in `ci.yml`.
 - **Check `[project.optional-dependencies].dev`** — test-only deps like `respx`, `pytest-asyncio`, `pytest-cov` should live there so `pip install -e ".[dev]"` gives a working local environment. `respx` is missing from that section; fix in a follow-up.
+
+## 2026-05-27 — PR #50: GossipBus emit was a silent no-op + gbrain venv gap
+
+### Bug discovered (PR #50)
+`GossipBus.emit()` was NEVER called in production despite RAG items 5–7
+shipping in PR #49. `_inject_memory_context()` ran (reading from gossip_db
+path on stdin), but `_record_to_gossip()` used a bare `import + emit` pattern
+that silently failed on every job because `GossipBus` was instantiated fresh
+each call with no schema init — and then discarded without ever calling `emit`.
+
+**Fix pattern (PR #50, commit c1ae82e):**
+- `self._gossip_bus = None` lazy cached on `Supervisor.__init__`
+- `self._gossip_warned = False` rate-limits log spam
+- `_record_to_gossip()` lazy-inits bus, calls `ensure_gossip_db_ready()`, then `emit()`
+- First gossip failure: `log.warning(...)` (ops sees broken recall). Subsequent: `log.debug(...)`.
+
+### Python venv gap
+Running `pytest` in a git worktree without activating the canonical `.venv`
+falls back to system Python 3.9.6 (macOS). `aiosqlite` isn't installed there
+→ `ModuleNotFoundError` on 2 of 46 tests.
+
+**Fix:** Always `source .venv/bin/activate` from
+`perplexity-api/Perpetua-Tools/` before running tests in any PT worktree.
+The `.venv` uses Python 3.12.13 (miniconda3) and has all deps. CI uses 3.11
+and 3.12 — both pass fine. System Python (3.9, EOL Oct 2025) should never
+be the test runner for this repo.
+
+**Rule:** If tests fail with `ModuleNotFoundError: No module named 'aiosqlite'`
+the cause is almost certainly the wrong Python. Check: `python3 --version`
+should show 3.11+; if not, activate `.venv` first.
+
+### gbrain sync has 29-skipped-file gap in PT source
+`gbrain sync --skip-failed` advanced checkpoint to `f60a7173` but left 29
+Python files (including `orchestrator/gbrain_search.py`) unindexed as code
+symbols. Caused by PgBouncer transaction-mode prepared-statement errors.
+
+**Fix:** `gbrain sync --force --source gstack-code-ools-27e2b79c-df8a28`
+(run once, ~10 min). Kicked off 2026-05-27.
+
+### LESSONS.md not in gbrain isolated source
+`orama-src` isolated source indexes only `docs/v2/*`, `bin/orama-system/*`,
+`docs/superpowers/*` — not the 2,400-line `docs/LESSONS.md`.
+
+**Fix:** `gbrain put "orama-system/lessons" < docs/LESSONS.md` (idempotent,
+run once per major update). Now makes `gbrain search "HITL"` work cross-session.
