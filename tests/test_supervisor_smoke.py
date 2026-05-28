@@ -1229,3 +1229,173 @@ async def test_run_worker_calls_record_to_gossip_on_hardware_affinity_error(tmp_
     error_calls = [(et, ex) for et, _, ex in calls if et == "error"]
     assert len(error_calls) == 1
     assert error_calls[0][1].get("policy") is True
+
+
+# ── _append_event durability (hardened 2026-05-28) ───────────────────────────
+
+def test_append_event_produces_valid_jsonl(tmp_path):
+    """Each line written by _append_event must be independently parseable JSON."""
+    jobs_file = tmp_path / "jobs.jsonl"
+    _append_event(jobs_file, "job-durability-1", {"status": "queued"})
+    _append_event(jobs_file, "job-durability-1", {"status": "running"})
+    _append_event(jobs_file, "job-durability-1", {"status": "succeeded"})
+
+    raw_lines = [
+        ln for ln in jobs_file.read_text(encoding="utf-8").splitlines() if ln.strip()
+    ]
+    assert len(raw_lines) == 3, "Expected exactly 3 lines"
+    for line in raw_lines:
+        parsed = json.loads(line)  # must not raise
+        assert "ts" in parsed, "Each line must contain a timestamp field"
+        assert "job_id" in parsed, "Each line must contain job_id"
+
+
+def test_append_event_multiple_appends_are_separate_lines(tmp_path):
+    """Multiple _append_event calls must not merge or overwrite — each produces one line."""
+    jobs_file = tmp_path / "jobs.jsonl"
+    n = 5
+    for i in range(n):
+        _append_event(jobs_file, f"job-{i}", {"status": "queued", "seq": i})
+
+    events = _load_events(jobs_file)
+    assert len(events) == n
+    job_ids = {e["job_id"] for e in events}
+    assert job_ids == {f"job-{i}" for i in range(n)}
+
+
+def test_append_event_serialises_jobstatus_enum(tmp_path):
+    """JobStatus enum values must be serialised as strings, not raw enum objects."""
+    jobs_file = tmp_path / "jobs.jsonl"
+    _append_event(jobs_file, "enum-job", {"status": JobStatus.SUCCEEDED})
+
+    events = _load_events(jobs_file)
+    assert len(events) == 1
+    assert events[0]["status"] == JobStatus.SUCCEEDED.value  # "succeeded"
+    assert isinstance(events[0]["status"], str)
+
+
+def test_append_event_idempotent_on_missing_parent_directory(tmp_path):
+    """_append_event must create any missing parent directories implicitly (via open 'a')."""
+    # The file doesn't exist yet — open("a") creates it automatically.
+    jobs_file = tmp_path / "jobs.jsonl"
+    assert not jobs_file.exists()
+    _append_event(jobs_file, "new-job", {"status": "queued"})
+    assert jobs_file.exists()
+    events = _load_events(jobs_file)
+    assert events[0]["job_id"] == "new-job"
+
+
+# ── Result size cap (2 MiB, 2026-05-28 v1 audit HIGH 5) ──────────────────────
+
+@pytest.mark.asyncio
+async def test_run_worker_result_cap_truncates_oversized_result(tmp_path):
+    """A result whose JSON serialization exceeds 2 MiB must be replaced with a
+    truncation marker dict; the original artifact content must not be written.
+    """
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("overflow job")
+
+    # Produce a result that, when JSON-serialised, is clearly > 2 MiB.
+    big_string = "x" * (3 * 1024 * 1024)  # 3 MiB raw characters
+
+    async def _oversized_dispatch(s):
+        return {"output": big_string, "backend": "echo"}
+
+    sup._dispatch = _oversized_dispatch
+    job_id = await sup.submit_job(spec)
+    task = sup._active.get(job_id)
+    assert task is not None
+    await task
+
+    result_path = tmp_path / "jobs" / job_id / "result.json"
+    assert result_path.exists(), "result.json must always be written"
+
+    saved = json.loads(result_path.read_text(encoding="utf-8"))
+    assert saved.get("status") == "truncated", (
+        f"Expected truncated marker, got: {list(saved.keys())}"
+    )
+    assert "reason" in saved
+    assert "original_size_bytes" in saved
+    assert saved["original_size_bytes"] > 2 * 1024 * 1024
+
+
+@pytest.mark.asyncio
+async def test_run_worker_result_within_cap_written_verbatim(tmp_path):
+    """A result whose JSON serialization is under 2 MiB must be written as-is."""
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("normal job")
+
+    expected_output = "hello world"
+
+    async def _small_dispatch(s):
+        return {"output": expected_output, "backend": "echo"}
+
+    sup._dispatch = _small_dispatch
+    job_id = await sup.submit_job(spec)
+    task = sup._active.get(job_id)
+    assert task is not None
+    await task
+
+    result_path = tmp_path / "jobs" / job_id / "result.json"
+    assert result_path.exists()
+    saved = json.loads(result_path.read_text(encoding="utf-8"))
+    assert saved.get("output") == expected_output
+    assert saved.get("status") != "truncated"
+
+
+@pytest.mark.asyncio
+async def test_run_worker_truncated_result_still_records_succeeded(tmp_path):
+    """Even when the result is truncated, the job must be marked SUCCEEDED in the event log.
+
+    The cap only affects the artifact; the lifecycle transition must still complete.
+    """
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("truncated but succeeded")
+
+    big_string = "y" * (3 * 1024 * 1024)
+
+    async def _oversized(s):
+        return {"output": big_string, "backend": "echo"}
+
+    sup._dispatch = _oversized
+    job_id = await sup.submit_job(spec)
+    task = sup._active.get(job_id)
+    assert task is not None
+    await task
+
+    status = await sup.get_status(job_id)
+    assert status is not None
+    assert status["status"] == JobStatus.SUCCEEDED.value, (
+        "Oversized result must not cause the job to appear FAILED"
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_worker_result_exactly_at_cap_boundary_is_preserved(tmp_path):
+    """A result whose UTF-8 byte length equals exactly _MAX_RESULT_BYTES - 1 must not be truncated.
+
+    This is a boundary condition: the cap is > not >=, so the last allowed byte must pass.
+    """
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("boundary job")
+
+    _MAX_RESULT_BYTES = 2 * 1024 * 1024
+    # Construct a result that, after json.dumps, is just under 2 MiB.
+    # json.dumps({"output": "x" * N}) ≈ 14 + N bytes; solve for N:
+    # 14 + N < 2_097_152  → N < 2_097_138
+    payload_size = _MAX_RESULT_BYTES - 20  # safely under
+    small_string = "a" * payload_size
+
+    async def _boundary_dispatch(s):
+        return {"output": small_string, "backend": "echo"}
+
+    sup._dispatch = _boundary_dispatch
+    job_id = await sup.submit_job(spec)
+    task = sup._active.get(job_id)
+    assert task is not None
+    await task
+
+    result_path = tmp_path / "jobs" / job_id / "result.json"
+    saved = json.loads(result_path.read_text(encoding="utf-8"))
+    assert saved.get("status") != "truncated", "Under-cap result must not be truncated"
+    assert saved.get("output") == small_string

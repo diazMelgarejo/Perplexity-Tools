@@ -62,10 +62,12 @@ def test_control_plane_auth_failure_helper(monkeypatch):
 
 
 def test_default_stack_without_auth_env_enforces_auth_on_operator_routes(monkeypatch):
-    """
-    Verify that operator routes require authentication when no auth-related environment variables are set.
-    
-    Asserts that GET /agents and POST /user-input return 401 (unauthorized) when neither ORAMA_INSECURE_DEV nor ORAMA_CONTROL_PLANE_TOKEN is present in the environment.
+    """Secure-by-default (2026-05-28): no env vars → auth ENFORCED.
+
+    Previously this test asserted that unauthenticated routes returned 200; the
+    pre-v1 security audit flipped the default so a fresh deployment auto-
+    generates a token. Local stacks that need the old behaviour must explicitly
+    set ORAMA_INSECURE_DEV=1 (see test below).
     """
     monkeypatch.delenv("ORAMA_INSECURE_DEV", raising=False)
     monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
@@ -209,3 +211,107 @@ def test_redact_runtime_payload_empty():
         "gateway_ready": False,
         "distributed": False,
     }
+
+
+# ── auth_enforced() edge cases (secure-by-default, 2026-05-28) ───────────────
+
+def test_auth_enforced_insecure_dev_true(monkeypatch):
+    """ORAMA_INSECURE_DEV=true (string) must disable enforcement."""
+    monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "true")
+    assert auth_enforced() is False
+
+
+def test_auth_enforced_insecure_dev_yes(monkeypatch):
+    """ORAMA_INSECURE_DEV=yes must disable enforcement."""
+    monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "yes")
+    assert auth_enforced() is False
+
+
+def test_auth_enforced_insecure_dev_false_enforces(monkeypatch):
+    """ORAMA_INSECURE_DEV=false must NOT disable enforcement (not in opt-out set)."""
+    monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "false")
+    assert auth_enforced() is True
+
+
+def test_auth_enforced_insecure_dev_no_enforces(monkeypatch):
+    """ORAMA_INSECURE_DEV=no must NOT disable enforcement (not in opt-out set)."""
+    monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "no")
+    assert auth_enforced() is True
+
+
+def test_auth_enforced_insecure_dev_whitespace_normalised(monkeypatch):
+    """ORAMA_INSECURE_DEV with surrounding whitespace must strip before comparison."""
+    monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "  1  ")
+    assert auth_enforced() is False
+
+
+def test_auth_enforced_insecure_dev_empty_string_enforces(monkeypatch):
+    """Empty ORAMA_INSECURE_DEV must fall through to the secure default (enforce)."""
+    monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "")
+    assert auth_enforced() is True
+
+
+def test_auth_enforced_token_wins_over_insecure_dev(monkeypatch):
+    """Token presence enforces auth regardless of ORAMA_INSECURE_DEV value."""
+    monkeypatch.setenv("ORAMA_CONTROL_PLANE_TOKEN", "some-token")
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "1")
+    # Token check happens first — auth must still be enforced
+    assert auth_enforced() is True
+
+
+# ── verify_control_plane_auth 503 when no token configured ───────────────────
+
+def test_verify_control_plane_auth_503_when_auth_enforced_but_no_token(
+    monkeypatch, tmp_path
+):
+    """verify_control_plane_auth raises HTTP 503 when auth is enforced but no
+    token is available (neither env nor persisted file).
+
+    This guards against the window between first startup and token generation,
+    or a misconfigured deployment where ensure_control_plane_token was not
+    called.
+    """
+    monkeypatch.setattr(
+        "orchestrator.control_plane_auth.DEFAULT_TOKEN_PATH",
+        tmp_path / "no_token",
+    )
+    monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
+    monkeypatch.delenv("ORAMA_INSECURE_DEV", raising=False)
+
+    from orchestrator.control_plane_auth import verify_control_plane_auth
+    from fastapi import HTTPException
+
+    class _FakeRequest:
+        headers: dict = {}
+
+    with pytest.raises(HTTPException) as exc_info:
+        verify_control_plane_auth(_FakeRequest())
+
+    assert exc_info.value.status_code == 503
+
+
+def test_default_stack_no_token_file_enforces_auth(monkeypatch, tmp_path):
+    """Regression: a fresh deployment with no token file must still enforce auth.
+
+    Previously the fallback was to allow access; now both env and file absent
+    must result in 401 (503 at verify time, surfaced as 401 or 503 via the app).
+    """
+    monkeypatch.setattr(
+        "orchestrator.control_plane_auth.DEFAULT_TOKEN_PATH",
+        tmp_path / "no_token",
+    )
+    monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
+    monkeypatch.delenv("ORAMA_INSECURE_DEV", raising=False)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        resp = client.get("/agents")
+
+    assert resp.status_code in (401, 503), (
+        f"Expected 401 or 503 for unauthenticated request with no token configured, got {resp.status_code}"
+    )
