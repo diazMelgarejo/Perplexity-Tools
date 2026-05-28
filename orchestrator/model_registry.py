@@ -51,6 +51,7 @@ class ModelRegistry:
         self.devices: Dict[str, Any] = self._normalize_devices(raw_devices)
         self.models_cfg: Dict[str, Any] = self._read_yaml("models.yml")
         self.routing_cfg: Dict[str, Any] = self._read_yaml("routing.yml")
+        self._active_tilting_host: Optional[str] = None
 
     @staticmethod
     def _normalize_devices(raw: Dict[str, Any]) -> Dict[str, Any]:
@@ -88,8 +89,11 @@ class ModelRegistry:
         device_name = item.get("device", "")
         dev_info = self.device_info(device_name)
         if dev_info.get("identity_method") == "active_tilting":
-            from orchestrator.lan_discovery import detect_active_tilting_ip
-            return detect_active_tilting_ip()
+            if self._active_tilting_host is None:
+                from orchestrator.lan_discovery import detect_active_tilting_ip
+
+                self._active_tilting_host = detect_active_tilting_ip()
+            return self._active_tilting_host
         return _expand_env_default(str(item.get("host", "")))
 
     # ── model listing ─────────────────────────────────────────────────────────

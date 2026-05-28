@@ -49,6 +49,9 @@ PROBE_TIMEOUT = 2  # seconds
 DISCOVERY_STATE_FILE = Path(".state/lan_discovery.json")
 log = logging.getLogger("orchestrator.lan_discovery")
 
+# Process-lifetime cache for active tilting probe (env overrides bypass this).
+_cached_active_tilting_url: Optional[str] = None
+
 
 def _utc_now_iso() -> str:
     """Return an ISO 8601 timestamp with an explicit UTC offset."""
@@ -283,6 +286,41 @@ class LANDiscovery:
         return consented
 
 
+def _select_windows_lmstudio_host(
+    lm_hosts: List[str],
+    local_ip: str,
+    preferred_win_ip: Optional[str] = None,
+) -> str:
+    """Choose the Windows LM Studio host from a subnet scan.
+
+    Scan order is ascending IP, so ``lm_hosts[0]`` is often the Mac mirror (.105)
+    rather than the Windows GPU box (.108). Exclude the local machine, prefer the
+    IP recorded in openclaw.json when it responded, else the highest last-octet
+    among remaining remotes.
+    """
+    if not lm_hosts:
+        if preferred_win_ip and preferred_win_ip != local_ip:
+            return preferred_win_ip
+        parts = local_ip.split(".")
+        subnet = ".".join(parts[:3]) if len(parts) == 4 else "192.168.254"
+        return f"{subnet}.108"
+
+    remotes = [h for h in lm_hosts if h != local_ip]
+    if not remotes:
+        return lm_hosts[0]
+
+    if preferred_win_ip and preferred_win_ip in remotes:
+        return preferred_win_ip
+
+    def _last_octet(ip: str) -> int:
+        try:
+            return int(ip.rsplit(".", 1)[-1])
+        except ValueError:
+            return 0
+
+    return max(remotes, key=_last_octet)
+
+
 def detect_active_tilting_ip() -> str:
     """Derive the Windows GPU endpoint base URL from the local subnet at runtime.
 
@@ -296,53 +334,87 @@ def detect_active_tilting_ip() -> str:
       3. UDP routing trick (no packets sent) — Live probe of outbound interface via NetworkAutoConfig (Option B)
       4. Hardcoded 192.168.254.108 (fallback)
     """
+    global _cached_active_tilting_url
+
     for env_var in ("LAN_GPU_IP_OVERRIDE", "LM_STUDIO_WIN_ENDPOINTS"):
         val = os.environ.get(env_var, "")
         if val:
             return val if val.startswith("http") else f"http://{val}"
+
+    if _cached_active_tilting_url is not None:
+        return _cached_active_tilting_url
+
     try:
         from packages.net_utils.network_autoconfig import NetworkAutoConfig
         import threading
-        
-        result = [None]
-        
-        def do_discovery():
+
+        result: List[Optional[str]] = [None]
+
+        def do_discovery() -> str:
             configurer = NetworkAutoConfig()
             local_ip = configurer.get_working_local_ip()
+            preferred_win_ip = configurer.preferred_ips.get("Windows")
             subnet = ".".join(local_ip.split(".")[:3])
-            
+
             # scan_timeout of 0.08s * 254 IPs = ~20.3 seconds max, safely under 25s thread budget
-            found = configurer.discover_lan_agents(subnet_prefix=subnet, services=["lmstudio"], scan_timeout=0.08)
-            if found and found.get("lmstudio"):
-                win_ip = found["lmstudio"][0]
-                log.debug("detect_active_tilting_ip: discovered windows=%s via live probe", win_ip)
+            found = configurer.discover_lan_agents(
+                subnet_prefix=subnet, services=["lmstudio"], scan_timeout=0.08
+            )
+            lm_hosts = (found or {}).get("lmstudio") or []
+            if lm_hosts:
+                win_ip = _select_windows_lmstudio_host(
+                    lm_hosts, local_ip, preferred_win_ip=preferred_win_ip
+                )
+                log.debug(
+                    "detect_active_tilting_ip: discovered windows=%s from %s (local=%s)",
+                    win_ip,
+                    lm_hosts,
+                    local_ip,
+                )
                 return f"http://{win_ip}"
-            
+
+            if preferred_win_ip and preferred_win_ip != local_ip:
+                log.debug(
+                    "detect_active_tilting_ip: probe empty, using openclaw windows=%s",
+                    preferred_win_ip,
+                )
+                return f"http://{preferred_win_ip}"
+
             fallback = f"http://{subnet}.108"
             log.debug("detect_active_tilting_ip: probe found nothing, fallback windows=%s", fallback)
             return fallback
 
-        def worker():
+        def worker() -> None:
             try:
                 result[0] = do_discovery()
             except Exception as e:
                 log.warning("Discovery worker failed: %s", e)
 
-        thread = threading.Thread(target=worker)
+        thread = threading.Thread(target=worker, daemon=True)
         thread.start()
         thread.join(timeout=25.0)
 
         if thread.is_alive():
-            log.warning("Active tilting IP discovery timed out after 25 seconds; falling back to 192.168.254.108")
-            return "http://192.168.254.108"
-            
-        if result[0]:
-            return result[0]
-            
-        return "http://192.168.254.108"
+            log.warning(
+                "Active tilting IP discovery timed out after 25 seconds; "
+                "falling back to 192.168.254.108"
+            )
+            resolved = "http://192.168.254.108"
+        elif result[0]:
+            resolved = result[0]
+        else:
+            resolved = "http://192.168.254.108"
+
+        _cached_active_tilting_url = resolved
+        return resolved
     except Exception as exc:
-        log.warning("Active tilting IP detection failed (%s); falling back to 192.168.254.108", exc)
-        return "http://192.168.254.108"
+        log.warning(
+            "Active tilting IP detection failed (%s); falling back to 192.168.254.108",
+            exc,
+        )
+        resolved = "http://192.168.254.108"
+        _cached_active_tilting_url = resolved
+        return resolved
 
 
 async def main():
