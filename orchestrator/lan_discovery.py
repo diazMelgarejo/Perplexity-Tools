@@ -307,6 +307,14 @@ def detect_active_tilting_ip() -> str:
         result = [None]
         
         def do_discovery():
+            """
+            Attempts to discover a local LM Studio host and return its base HTTP URL, falling back to a subnet-derived Windows endpoint if none are found.
+            
+            Uses NetworkAutoConfig to determine the working local IP, probes the local /24 prefix for services labeled "lmstudio", and if any host is discovered returns "http://{host}". If no hosts are found, returns "http://{subnet}.108" where {subnet} is the first three octets of the working local IP.
+            
+            Returns:
+                str: Base HTTP URL of the discovered LM Studio host or the subnet fallback (e.g., "http://192.168.1.108").
+            """
             configurer = NetworkAutoConfig()
             local_ip = configurer.get_working_local_ip()
             subnet = ".".join(local_ip.split(".")[:3])
@@ -323,12 +331,17 @@ def detect_active_tilting_ip() -> str:
             return fallback
 
         def worker():
+            """
+            Background worker that runs the discovery routine and stores its outcome into a shared result slot.
+            
+            Attempts to call do_discovery() and assign its return value to result[0]. If an exception occurs, logs a warning and leaves the shared result unchanged.
+            """
             try:
                 result[0] = do_discovery()
             except Exception as e:
                 log.warning("Discovery worker failed: %s", e)
 
-        thread = threading.Thread(target=worker)
+        thread = threading.Thread(target=worker, daemon=True)
         thread.start()
         thread.join(timeout=25.0)
 
@@ -347,7 +360,19 @@ def detect_active_tilting_ip() -> str:
 
 async def main():
     """
-    CLI entry point for LAN discovery.
+    Command-line entry point that runs LAN discovery, loads or saves discovery state, and optionally prompts the user for takeover consent.
+    
+    Parses the following CLI options and performs their associated actions:
+    - --scan: scan the LAN for AI inference servers and save the resulting discovery state.
+    - --subnet: specify the CIDR subnet to scan (e.g., 192.168.1.0/24).
+    - --interactive: present an interactive consent UI to mark discovered endpoints for orchestrator takeover.
+    - --load: load previously saved discovery state and restore discovered endpoints.
+    
+    Behavior details:
+    - When --load is used, previously saved endpoints are appended to the in-memory discovery list.
+    - When --scan is used, the subnet (provided or auto-detected) is scanned and results are persisted to the discovery state file.
+    - --interactive requires discovered endpoints (from --scan or --load); consenting endpoints are marked and the updated state is saved, with brief next-step instructions printed.
+    - If neither --scan nor --load is provided, the function prints the current discovery table and guidance about available actions.
     """
     import argparse
     

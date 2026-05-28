@@ -8,7 +8,7 @@
 #   but Mac hardware CANNOT run them (qwen3.5-27b is RTX 3080-only).
 # - Dispatching the same heavy model to both Mac LM Studio AND Win LM Studio
 #   simultaneously = "double barrel" = GPU contention → hardware damage risk.
-# - Win RTX 3080 (192.168.254.103:1234) exclusively runs heavy Win-native models.
+# - Win RTX 3080 (192.168.254.108:1234) exclusively runs heavy Win-native models.
 # - Code enforcement: _MIRROR_BACKENDS in perpetua/discovery/selector.py.
 
 version: "0.9.9.8"

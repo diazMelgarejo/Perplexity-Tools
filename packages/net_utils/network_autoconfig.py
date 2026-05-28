@@ -24,6 +24,17 @@ except ImportError:
 
 class NetworkAutoConfig:
     def __init__(self):
+        """
+        Initialize the NetworkAutoConfig instance by detecting the host operating system and establishing a prioritized mapping of preferred LAN IPs.
+        
+        If available, preferred IPs are loaded from the user's OpenClaw configuration via _load_from_openclaw(); otherwise a last-resort fallback mapping is used:
+        - Darwin: 192.168.254.105
+        - Windows: 192.168.254.105
+        
+        Sets:
+        - self.system: detected platform name (e.g., 'Darwin', 'Windows')
+        - self.preferred_ips: dict mapping OS names to preferred LAN IPs (authoritative source preferred, fallbacks used only if loading fails)
+        """
         self.system = platform.system()
         # Priority 1: read from openclaw.json (authoritative — kept fresh by discover.py).
         # Priority 2: fall back to confirmed hardware constants (last-resort only).
@@ -35,9 +46,11 @@ class NetworkAutoConfig:
 
     def _load_from_openclaw(self) -> Optional[Dict[str, str]]:
         """
-        Read IPs from ~/.openclaw/openclaw.json — the single authoritative store
-        that discover.py patches after every successful live probe.
-        Returns None if the file is missing or malformed (caller falls back to constants).
+        Load preferred IPs from ~/.openclaw/openclaw.json by extracting the LM Studio base URL.
+        
+        Returns:
+            dict: Mapping of OS name to IP string (e.g., {'Darwin': '192.168.254.105', 'Windows': '<ip>'}) when a usable LM Studio IP is found.
+            None: If the file is missing, malformed, or does not contain a usable LM Studio IP.
         """
         try:
             import json
@@ -56,11 +69,23 @@ class NetworkAutoConfig:
             return None
 
     def get_preferred_ip(self) -> str:
-        """Get OS-preferred IP address"""
+        """
+        Get the preferred IP address for the current operating system.
+        
+        Returns:
+            str: Preferred IP address for the current OS, or '127.0.0.1' if no preference is configured.
+        """
         return self.preferred_ips.get(self.system, '127.0.0.1')
     
     def detect_active_interfaces(self) -> Dict[str, str]:
-        """Detect all active network interfaces and their IPs"""
+        """
+        Return a mapping of active network interface names to their detected IPv4 addresses.
+        
+        Scans system network interfaces (when the optional `netifaces` module is available) and collects the first non-localhost, non-APIPA IPv4 address found for each non-loopback interface. If `netifaces` is not available, an empty dict is returned. If an error occurs during scanning, any successfully collected interfaces are returned and a warning is logged.
+        
+        Returns:
+            Dict[str, str]: Mapping from interface name to its selected IPv4 address; empty if none detected or if interface-aware detection is unavailable.
+        """
         interfaces = {}
         
         if NETIFACES_AVAILABLE:
@@ -87,7 +112,17 @@ class NetworkAutoConfig:
         return interfaces
     
     def get_working_local_ip(self) -> str:
-        """Get the working local IP with Mac-first preference."""
+        """
+        Selects the most appropriate local IPv4 address for the current operating system.
+        
+        For macOS, prefers an interface whose name contains 'en', 'bridge', or 'utun'.
+        For Windows, prefers an interface whose name contains 'ethernet', 'wi-fi', 'wlan', or 'eth'.
+        For other systems, uses the first detected non-loopback IPv4 address.
+        If no suitable interface is found, returns the configured preferred IP.
+        
+        Returns:
+            chosen_ip (str): The selected IPv4 address in dotted-quad form.
+        """
         log.debug("Detecting IP for %s system…", self.system)
 
         interfaces = self.detect_active_interfaces()
@@ -123,7 +158,12 @@ class NetworkAutoConfig:
         return fallback_ip
     
     def verify_connectivity(self, ip: str, port: int = 8000) -> bool:
-        """Verify that the IP is actually working"""
+        """
+        Check TCP reachability for the given IP and port.
+        
+        Returns:
+            `true` if a TCP connection to the given IP and port could be established, `false` otherwise.
+        """
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.settimeout(2)
@@ -144,7 +184,15 @@ class NetworkAutoConfig:
     }
 
     def _get_subnet_prefix(self, ip: str) -> str:
-        """Return /24 prefix (e.g. '192.168.254') from an IP."""
+        """
+        Get the /24 subnet prefix (first three octets) from an IPv4 address string.
+        
+        Parameters:
+            ip (str): IPv4 address in dotted-decimal form (e.g., "192.168.254.105").
+        
+        Returns:
+            str: The subnet prefix (e.g., "192.168.254"). Returns "192.168.1" if the input is not a valid dotted IPv4 string.
+        """
         parts = ip.rsplit(".", 1)
         return parts[0] if len(parts) == 2 else "192.168.1"
 
@@ -155,11 +203,15 @@ class NetworkAutoConfig:
         scan_timeout: float = 0.3,
     ) -> Dict[str, list]:
         """
-        Scan the LAN subnet for running agent instances (LM Studio, Ollama, etc.).
-        Reuses verify_connectivity() for each host:port pair.
-
-        Returns dict: service_name → [list of reachable IPs]
-        e.g. {"lmstudio": ["192.168.254.105"], "ollama": ["192.168.254.105"]}
+        Scan a /24 LAN subnet for reachable agent services and return discovered host IPs per service.
+        
+        Parameters:
+            subnet_prefix (Optional[str]): First three octets of the subnet (e.g. "192.168.1"). If omitted, the method derives the prefix from the system's working local IP.
+            services (Optional[list]): List of service names to probe (keys of `AGENT_PORTS`). If omitted, all known services are probed.
+            scan_timeout (float): Socket timeout in seconds for each probe.
+        
+        Returns:
+            Dict[str, list]: Mapping from service name to a list of reachable IPv4 addresses (as strings). For example: {"lmstudio": ["192.168.254.105"], "ollama": []}
         """
         if subnet_prefix is None:
             local_ip = self.get_working_local_ip()
@@ -180,15 +232,25 @@ class NetworkAutoConfig:
                 try:
                     if sock.connect_ex((host, port)) == 0:
                         results[svc].append(host)
-                except Exception:
-                    pass
+                except Exception as _e:
+                    log.debug("LAN scan probe %s:%d failed: %s", host, port, _e)
                 finally:
                     sock.close()
 
         return results
 
     def get_optimal_server_config(self) -> Dict[str, str]:
-        """Get optimal server configuration based on detected network."""
+        """
+        Builds a recommended server configuration using the detected local IP.
+        
+        Attempts to verify TCP connectivity to the chosen IP on port 8000; verification failures are logged but do not prevent returning the configuration.
+        
+        Returns:
+            config (Dict[str, str]): Mapping with keys:
+                - 'host': selected local IP address.
+                - 'port': port number as a string ('8000').
+                - 'bind_address': host and port combined as "host:8000".
+        """
         ip = self.get_working_local_ip()
         if self.verify_connectivity(ip):
             log.debug("Verified connectivity for %s", ip)
@@ -201,6 +263,11 @@ class NetworkAutoConfig:
         }
 
 def main():
+    """
+    Prints a recommended server configuration and, when requested, scans the local network for known agents.
+    
+    Uses NetworkAutoConfig to determine a preferred working local IP and builds a host/port/bind_address recommendation, which is printed along with shell export lines for HOST and PORT. If the command-line flag `--scan` is present, performs a LAN scan for known service ports and prints discovered agent IPs (may take about 30 seconds).
+    """
     print("=== Network Auto-Configuration for orama-system ===")
 
     configurer = NetworkAutoConfig()
