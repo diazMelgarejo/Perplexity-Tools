@@ -283,6 +283,58 @@ class LANDiscovery:
         return consented
 
 
+def _host_from_endpoint(value: str) -> str:
+    """Extract a bare IPv4/hostname from an env URL or host:port string."""
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+    if "://" in raw:
+        raw = raw.split("://", 1)[1]
+    return raw.split(":")[0].strip()
+
+
+def pick_windows_lmstudio_host(
+    hosts: list[str],
+    *,
+    local_ip: str,
+    preferred_win_ip: str = "",
+) -> str | None:
+    """Choose the Windows LM Studio host from a LAN scan.
+
+    Mac LM Studio is a mirror on the same port (1234). A naive scan-order pick
+    often selects the Mac (.105) before the Win GPU (.108), breaking dispatch.
+    """
+    if not hosts:
+        return None
+
+    seen: set[str] = set()
+    candidates: list[str] = []
+    for host in hosts:
+        if host and host not in seen:
+            seen.add(host)
+            candidates.append(host)
+
+    for hint in (preferred_win_ip, os.environ.get("WIN_IP", "")):
+        host = _host_from_endpoint(hint)
+        if host and host in candidates:
+            return host
+
+    non_local = [
+        host
+        for host in candidates
+        if host != local_ip and not host.startswith("127.")
+    ]
+    if len(non_local) == 1:
+        return non_local[0]
+    if non_local:
+        for host in non_local:
+            if host.endswith(".108"):
+                return host
+        return non_local[-1]
+
+    return candidates[0]
+
+
 def detect_active_tilting_ip() -> str:
     """Derive the Windows GPU endpoint base URL from the local subnet at runtime.
 
@@ -321,10 +373,23 @@ def detect_active_tilting_ip() -> str:
             
             # scan_timeout of 0.08s * 254 IPs = ~20.3 seconds max, safely under 25s thread budget
             found = configurer.discover_lan_agents(subnet_prefix=subnet, services=["lmstudio"], scan_timeout=0.08)
-            if found and found.get("lmstudio"):
-                win_ip = found["lmstudio"][0]
-                log.debug("detect_active_tilting_ip: discovered windows=%s via live probe", win_ip)
-                return f"http://{win_ip}"
+            lm_hosts = found.get("lmstudio") if found else []
+            if lm_hosts:
+                preferred = configurer.preferred_ips.get("Windows", "")
+                win_ip = pick_windows_lmstudio_host(
+                    lm_hosts,
+                    local_ip=local_ip,
+                    preferred_win_ip=preferred,
+                )
+                if win_ip:
+                    log.debug(
+                        "detect_active_tilting_ip: discovered windows=%s via live probe "
+                        "(candidates=%s, local=%s)",
+                        win_ip,
+                        lm_hosts,
+                        local_ip,
+                    )
+                    return f"http://{win_ip}"
             
             fallback = f"http://{subnet}.108"
             log.debug("detect_active_tilting_ip: probe found nothing, fallback windows=%s", fallback)
