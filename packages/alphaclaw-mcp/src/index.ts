@@ -11,6 +11,7 @@ import { createRequire } from "module";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import { isDirectExecution as checkDirectExecution } from "./is-direct-execution.js";
 // @ts-ignore
 import adapter from "@diazmelgarejo/alphaclaw-adapter";
 // @ts-ignore
@@ -606,9 +607,12 @@ export async function startServer() {
   );
 }
 
-// Only start the server when module is executed directly (not imported)
-const isMainModule = import.meta.url === `file://${process.argv[1]}`;
-if (isMainModule) {
+/** @see is-direct-execution.ts — re-exported for tests */
+export function isDirectExecution(entryArgv = process.argv[1]): boolean {
+  return checkDirectExecution(import.meta.url, entryArgv);
+}
+
+if (checkDirectExecution(import.meta.url, process.argv[1])) {
   startServer().catch((error) => {
     console.error("Fatal error:", error);
     process.exit(1);
