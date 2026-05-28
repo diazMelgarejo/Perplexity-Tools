@@ -125,7 +125,25 @@ def _ensure_state_dir(state_dir: Path) -> None:
 
 
 def _append_event(jobs_file: Path, job_id: str, event: dict) -> None:
-    """Append one JSON event line.  Thread-safe via Python GIL + append mode."""
+    """Append one JSON event line.
+
+    Durability + concurrency (hardened 2026-05-28 per v1 security audit):
+    - fcntl.LOCK_EX guards against interleaving from a second supervisor
+      process (the prior GIL claim only covered threads of one process and
+      did not hold across asyncio await boundaries).
+    - flush() + os.fsync() force the entry through the kernel page cache to
+      the device, so the documented "write checkpoint then kill, never kill
+      then write" ordering survives a power-loss / OOM-kill window.
+    - Append mode + size-bounded line means an interrupted write only ever
+      leaves a truncated trailing line; reader code in _load_events already
+      tolerates that (try/except in the loop below).
+    """
+    import os as _os
+
+    try:
+        import fcntl as _fcntl
+    except ImportError:
+        _fcntl = None  # Windows: no advisory locks; pre-hardening append semantics
     # Serialise JobStatus values to their string form
     serialisable = {
         k: (v.value if isinstance(v, JobStatus) else v)
@@ -133,7 +151,18 @@ def _append_event(jobs_file: Path, job_id: str, event: dict) -> None:
     }
     line = json.dumps({"ts": _now_iso(), "job_id": job_id, **serialisable}) + "\n"
     with jobs_file.open("a", encoding="utf-8") as fh:
-        fh.write(line)
+        try:
+            if _fcntl is not None:
+                _fcntl.flock(fh.fileno(), _fcntl.LOCK_EX)
+            fh.write(line)
+            fh.flush()
+            _os.fsync(fh.fileno())
+        finally:
+            if _fcntl is not None:
+                try:
+                    _fcntl.flock(fh.fileno(), _fcntl.LOCK_UN)
+                except OSError:
+                    pass  # lock release on a closing fh is non-fatal
 
 
 def _load_events(jobs_file: Path) -> list[dict]:
@@ -353,10 +382,21 @@ class OrchestrationSupervisor:
             # Write result artifact BEFORE persisting final state.
             # Critical ordering from Anthropic spec: write checkpoint then kill,
             # never kill then write (data loss on crash during termination).
-            (job_dir / "result.json").write_text(
-                json.dumps(result, ensure_ascii=False, indent=2),
-                encoding="utf-8",
-            )
+            #
+            # Security (2026-05-28 v1 audit, HIGH 5): cap result size at 2 MiB.
+            # An LLM running away (or a prompt-injected loop) can return many MB
+            # of text per job; without a cap this fills .state/ and degrades the
+            # supervisor. Truncated marker lets _dispatch tests assert the cap.
+            _MAX_RESULT_BYTES = 2 * 1024 * 1024  # 2 MiB
+            serialized = json.dumps(result, ensure_ascii=False, indent=2)
+            if len(serialized.encode("utf-8")) > _MAX_RESULT_BYTES:
+                truncated = {
+                    "status": "truncated",
+                    "reason": f"result exceeded {_MAX_RESULT_BYTES} bytes",
+                    "original_size_bytes": len(serialized.encode("utf-8")),
+                }
+                serialized = json.dumps(truncated, ensure_ascii=False, indent=2)
+            (job_dir / "result.json").write_text(serialized, encoding="utf-8")
             self._append_event(spec.job_id, {
                 "status": JobStatus.SUCCEEDED,
                 "artifact": str(job_dir / "result.json"),
