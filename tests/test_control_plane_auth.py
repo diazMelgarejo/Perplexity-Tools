@@ -82,9 +82,6 @@ def test_default_stack_without_auth_env_enforces_auth_on_operator_routes(monkeyp
 
 def test_explicit_insecure_dev_opens_operator_routes(monkeypatch, tmp_path):
     """ORAMA_INSECURE_DEV=1 is the only path back to the prior insecure default."""
-    # Point DEFAULT_TOKEN_PATH at a non-existent temp file so a previously
-    # persisted .state/control_plane_token from another test does not bleed in
-    # (control_plane_token() would otherwise lift it back into env and re-enable auth).
     monkeypatch.setattr(
         "orchestrator.control_plane_auth.DEFAULT_TOKEN_PATH",
         tmp_path / "no_token",
@@ -96,6 +93,24 @@ def test_explicit_insecure_dev_opens_operator_routes(monkeypatch, tmp_path):
         agents = client.get("/agents")
 
     assert agents.status_code == 200
+
+
+def test_insecure_dev_wins_over_persisted_token_after_startup(monkeypatch, tmp_path):
+    """ORAMA_INSECURE_DEV=1 must disable auth even when a persisted token exists."""
+    token_path = tmp_path / "control_plane_token"
+    token_path.write_text("persisted-from-prior-secure-run", encoding="utf-8")
+    monkeypatch.setattr(
+        "orchestrator.control_plane_auth.DEFAULT_TOKEN_PATH",
+        token_path,
+    )
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "1")
+    monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        agents = client.get("/agents")
+
+    assert agents.status_code == 200
+    assert auth_enforced() is False
 
 
 def test_persisted_token_reused_on_restart_without_env(monkeypatch, tmp_path):
@@ -180,7 +195,12 @@ def test_auth_enforced_matrix(monkeypatch):
     monkeypatch.setenv("ORAMA_INSECURE_DEV", "1")
     assert auth_enforced() is False
 
-    # Case 4: ORAMA_INSECURE_DEV=0 → ENFORCE
+    # Case 4: token + ORAMA_INSECURE_DEV=1 → SKIP (insecure opt-out wins)
+    monkeypatch.setenv("ORAMA_CONTROL_PLANE_TOKEN", "secret")
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "1")
+    assert auth_enforced() is False
+
+    # Case 5: ORAMA_INSECURE_DEV=0 → ENFORCE
     monkeypatch.setenv("ORAMA_INSECURE_DEV", "0")
     assert auth_enforced() is True
 

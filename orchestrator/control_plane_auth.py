@@ -94,11 +94,13 @@ def auth_enforced() -> bool:
     that relied on the insecure default must either set ORAMA_INSECURE_DEV=1
     explicitly OR read the auto-generated token from .state/control_plane_token.
     """
-    if control_plane_token():
-        return True
     insecure = os.getenv(ENV_INSECURE, "").strip().lower()
     if insecure in ("1", "true", "yes"):
         return False
+    if control_plane_token():
+        return True
+    if insecure in ("0", "false", "no"):
+        return True
     # Default: enforce. ensure_control_plane_token() will auto-generate.
     return True
 

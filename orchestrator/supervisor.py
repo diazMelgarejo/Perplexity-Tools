@@ -138,8 +138,12 @@ def _append_event(jobs_file: Path, job_id: str, event: dict) -> None:
       leaves a truncated trailing line; reader code in _load_events already
       tolerates that (try/except in the loop below).
     """
-    import fcntl as _fcntl
     import os as _os
+
+    try:
+        import fcntl as _fcntl
+    except ImportError:
+        _fcntl = None  # Windows: no advisory locks; pre-hardening append semantics
     # Serialise JobStatus values to their string form
     serialisable = {
         k: (v.value if isinstance(v, JobStatus) else v)
@@ -148,15 +152,17 @@ def _append_event(jobs_file: Path, job_id: str, event: dict) -> None:
     line = json.dumps({"ts": _now_iso(), "job_id": job_id, **serialisable}) + "\n"
     with jobs_file.open("a", encoding="utf-8") as fh:
         try:
-            _fcntl.flock(fh.fileno(), _fcntl.LOCK_EX)
+            if _fcntl is not None:
+                _fcntl.flock(fh.fileno(), _fcntl.LOCK_EX)
             fh.write(line)
             fh.flush()
             _os.fsync(fh.fileno())
         finally:
-            try:
-                _fcntl.flock(fh.fileno(), _fcntl.LOCK_UN)
-            except OSError:
-                pass  # lock release on a closing fh is non-fatal
+            if _fcntl is not None:
+                try:
+                    _fcntl.flock(fh.fileno(), _fcntl.LOCK_UN)
+                except OSError:
+                    pass  # lock release on a closing fh is non-fatal
 
 
 def _load_events(jobs_file: Path) -> list[dict]:
