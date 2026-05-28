@@ -358,12 +358,18 @@ def test_auth_enforced_insecure_dev_empty_string_enforces(monkeypatch):
     assert auth_enforced() is True
 
 
-def test_auth_enforced_token_wins_over_insecure_dev(monkeypatch):
-    """Token presence enforces auth regardless of ORAMA_INSECURE_DEV value."""
+def test_auth_enforced_insecure_dev_wins_over_token(monkeypatch):
+    """ORAMA_INSECURE_DEV=1 explicitly disables auth even when a token is configured.
+
+    Updated per PR #56 (fix: honor ORAMA_INSECURE_DEV when persisted token exists).
+    Previously the token check ran first and silently re-enabled auth even when
+    the operator had explicitly opted into insecure-dev mode. The new contract:
+    INSECURE_DEV is an explicit user-intent override and always wins.
+    """
     monkeypatch.setenv("ORAMA_CONTROL_PLANE_TOKEN", "some-token")
     monkeypatch.setenv("ORAMA_INSECURE_DEV", "1")
-    # Token check happens first — auth must still be enforced
-    assert auth_enforced() is True
+    # INSECURE_DEV check happens first now — auth must be disabled
+    assert auth_enforced() is False
 
 
 # ── verify_control_plane_auth 503 when no token configured ───────────────────
