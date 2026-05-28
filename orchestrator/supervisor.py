@@ -125,18 +125,10 @@ def _ensure_state_dir(state_dir: Path) -> None:
 
 
 def _append_event(jobs_file: Path, job_id: str, event: dict) -> None:
-    """Append one JSON event line.
-
-    Durability + concurrency (hardened 2026-05-28 per v1 security audit):
-    - fcntl.LOCK_EX guards against interleaving from a second supervisor
-      process (the prior GIL claim only covered threads of one process and
-      did not hold across asyncio await boundaries).
-    - flush() + os.fsync() force the entry through the kernel page cache to
-      the device, so the documented "write checkpoint then kill, never kill
-      then write" ordering survives a power-loss / OOM-kill window.
-    - Append mode + size-bounded line means an interrupted write only ever
-      leaves a truncated trailing line; reader code in _load_events already
-      tolerates that (try/except in the loop below).
+    """
+    Append a single JSONL event record for a job to the given jobs file.
+    
+    The written record combines an ISO UTC timestamp (`ts`), the provided `job_id`, and the key/value pairs from `event` (any `JobStatus` values are serialized to their `.value`). The append is performed under an exclusive file lock and flushed to stable storage to avoid interleaved lines and to make the entry durable on disk.
     """
     import fcntl as _fcntl
     import os as _os
@@ -160,7 +152,14 @@ def _append_event(jobs_file: Path, job_id: str, event: dict) -> None:
 
 
 def _load_events(jobs_file: Path) -> list[dict]:
-    """Return all events from jobs.jsonl; empty list if the file is missing."""
+    """
+    Load persisted job event records from a JSONL file.
+    
+    Ignores empty lines and silently skips lines that fail JSON decoding (tolerates truncated or corrupt trailing lines).
+    
+    Returns:
+        list[dict]: Parsed event objects in file order; an empty list if the file does not exist.
+    """
     if not jobs_file.exists():
         return []
     events: list[dict] = []
@@ -357,9 +356,9 @@ class OrchestrationSupervisor:
 
     async def _run_worker(self, spec: JobSpec) -> None:
         """
-        Run a single job: execute work, persist the result artifact, append lifecycle events, and emit gossip notifications.
+        Execute a job, persist its result artifact, record lifecycle events, and emit gossip notifications.
         
-        Appends a RUNNING event, executes the job described by `spec`, writes the result artifact to `.state/jobs/<job_id>/result.json` before recording a SUCCEEDED event, and emits a gossip `"result"` event. On failure records a FAILED event and emits a gossip `"error"` event; policy-affinity failures are marked with `"policy": True`. On cancellation records a CANCELLED event before re-raising the cancellation.
+        Appends a RUNNING event, calls the dispatch pipeline, writes the job artifact to .state/jobs/<job_id>/result.json (the serialized UTF-8 payload is capped at 2 MiB; if exceeded a truncated marker object is written), then appends a SUCCEEDED event and emits a "result" gossip. On HardwareAffinityError records a FAILED event with `policy: True` and emits an "error" gossip; on any other exception records a FAILED event and emits an "error" gossip. On cancellation records a CANCELLED event before re-raising the cancellation. Always removes the job from the active task map when finished.
         
         Parameters:
             spec (JobSpec): Immutable descriptor of the job to run; its `job_id` is used for event records and artifact path.

@@ -76,15 +76,23 @@ WIN_MODEL  = os.getenv("WINDOWS_LMS_MODEL",
 
 
 def _find_npx_v22plus() -> str:
-    """Return path to npx that runs Node >= 22.5 (required for node:sqlite builtin).
-
-    Search order:
-    1. Current npx in PATH — if its node >= 22.5, use it immediately.
-    2. nvm directories: ~/.nvm/versions/node/v{22,23,24,...}/bin/npx
-    3. Homebrew node@22+ paths (/opt/homebrew, /usr/local)
-    4. Fallback to whatever npx is in PATH with a printed warning.
+    """
+    Selects an npx executable whose bundled Node.js is version 22.5 or newer.
+    
+    Searches in this order: the npx found in PATH, nvm-installed Node versions (~/.nvm/...), and common Homebrew node@22+/node@24 locations. Returns the first npx whose associated node reports a major/minor version of at least 22.5; if none qualify, falls back to the PATH npx and prints a warning or informational message.
+    Returns:
+        str: Filesystem path to an npx executable whose Node.js is >= 22.5, or the PATH npx when no qualifying binary is found.
     """
     def _node_semver(npx_path: str) -> tuple[int, int]:
+        """
+        Determine the major and minor Node.js semantic version reported by the `node` executable adjacent to a given `npx` path.
+        
+        Parameters:
+            npx_path (str): Filesystem path to an `npx` executable; the function looks for a sibling `node` executable in the same directory.
+        
+        Returns:
+            tuple[int, int]: A tuple (major, minor) containing the parsed Node.js major and minor version numbers. Returns (0, 0) if the version cannot be determined.
+        """
         node_exe = str(Path(npx_path).parent / "node")
         try:
             out = subprocess.check_output(
@@ -162,7 +170,16 @@ class AlphaClawBootstrapResult:
 # ── ASCII progress bar: poll /health after gateway start ─────────────────────
 
 async def _wait_for_gateway(url: str, timeout: int = 30) -> bool:
-    """Poll gateway /health with ASCII progress bar. Returns True when ready."""
+    """
+    Waits until the gateway at the given base URL responds to /health or the timeout elapses.
+    
+    Parameters:
+        url (str): Base gateway URL (e.g. "http://127.0.0.1:18789"); "/health" will be appended.
+        timeout (int): Maximum number of seconds to wait.
+    
+    Returns:
+        True if the gateway returned an HTTP status code < 400 before the timeout, False otherwise.
+    """
     try:
         import httpx
     except ImportError:
@@ -202,6 +219,18 @@ async def _wait_for_gateway(url: str, timeout: int = 30) -> bool:
 # ── gateway discovery ─────────────────────────────────────────────────────────
 
 async def _probe_url(url: str, client) -> bool:
+    """
+    Checks whether the given base URL behaves like an OpenClaw-compatible gateway.
+    
+    Attempts GET requests to the "/health" and "/v1/models" endpoints and treats any response with status code less than 400 as a positive probe.
+    
+    Parameters:
+        url (str): Base URL to probe (may include or omit a trailing slash).
+        client: Asynchronous HTTP client exposing an awaitable `get(url)` method.
+    
+    Returns:
+        bool: `True` if either endpoint responds with a status code less than 400, `False` otherwise.
+    """
     for path in ("/health", "/v1/models"):
         try:
             r = await client.get(f"{url.rstrip('/')}{path}")
@@ -213,7 +242,12 @@ async def _probe_url(url: str, client) -> bool:
 
 
 async def _find_any_gateway() -> str | None:
-    """Probe all candidate ports. Returns base URL of first responsive gateway."""
+    """
+    Finds a running OpenClaw-compatible gateway on the local candidate ports.
+    
+    Returns:
+        str: Base URL (e.g., "http://127.0.0.1:18789") of the first responsive gateway, or `None` if no gateway is found or the required HTTP client (`httpx`) is unavailable.
+    """
     try:
         import httpx
     except ImportError:
@@ -227,7 +261,14 @@ async def _find_any_gateway() -> str | None:
 
 
 def _is_alphaclaw_installed() -> bool:
-    """Return True if alphaclaw binary or local node_modules package is present."""
+    """
+    Determine whether AlphaClaw is available on the system.
+    
+    Checks for a global "alphaclaw" executable on PATH or for the package directory at ALPHACLAW_INSTALL_DIR/node_modules/@chrysb/alphaclaw.
+    
+    Returns:
+        `True` if AlphaClaw is available as a system executable or a local package, `False` otherwise.
+    """
     if shutil.which("alphaclaw"):
         return True
     nm = ALPHACLAW_INSTALL_DIR / "node_modules" / "@chrysb" / "alphaclaw"
@@ -237,6 +278,13 @@ def _is_alphaclaw_installed() -> bool:
 # ── config + workspaces ───────────────────────────────────────────────────────
 
 def _load_pt_state() -> dict | None:
+    """
+    Load and parse the PT agents state JSON from the path specified by the PT_AGENTS_STATE environment variable.
+    
+    Returns:
+        dict: Parsed JSON object from the file pointed to by `PT_AGENTS_STATE`.
+        None: If `PT_AGENTS_STATE` is not set or the referenced file does not exist.
+    """
     state_path = os.getenv("PT_AGENTS_STATE")
     if state_path and Path(state_path).exists():
         with open(state_path) as f:
@@ -245,11 +293,35 @@ def _load_pt_state() -> dict | None:
 
 
 def _lms_base_url(raw: str) -> str:
+    """
+    Normalize an LM Studio base URL so it ends with `/v1`.
+    
+    Parameters:
+        raw (str): Base URL which may include a trailing slash or path.
+    
+    Returns:
+        str: The input URL ensured to end with `/v1`.
+    """
     raw = raw.rstrip("/")
     return raw if raw.endswith("/v1") else f"{raw}/v1"
 
 
 def build_role_routing(pt: dict | None = None) -> dict[str, object]:
+    """
+    Builds a role routing specification for the gateway using PT agent state or sensible defaults.
+    
+    Parameters:
+        pt (dict | None): Optional PT agents state dictionary; when omitted the function will attempt to load PT state internally. Recognized keys:
+            - "manager_backend", "manager_endpoint", "manager_model"
+            - "coder_backend", "coder_endpoint", "coder_model"
+            - "distributed" (truthy enables distributed topology)
+    
+    Returns:
+        dict: A routing dictionary with the following keys:
+            - "topology" (str): either "manager-local_researcher-remote" when distributed is true or "single-node-local" otherwise.
+            - "distributed" (bool): whether a distributed researcher/coder topology is selected.
+            - "manager", "researcher", "coder", "autoresearcher" (dict): each contains "backend", "endpoint", and "model" entries describing where that role should be routed.
+    """
     pt = pt or _load_pt_state() or {}
     manager_backend = pt.get("manager_backend", "mac-ollama")
     manager_endpoint = pt.get("manager_endpoint", OLLAMA_MAC)
@@ -290,6 +362,18 @@ def build_role_routing(pt: dict | None = None) -> dict[str, object]:
 
 
 def build_openclaw_config(pt: dict | None = None) -> dict[str, object]:
+    """
+    Builds the OpenClaw configuration dictionary from Perpetua-Tools agent state or sensible defaults.
+    
+    Parameters:
+    	pt (dict | None): Optional PT agents state (as returned by _load_pt_state()). When provided, its keys (e.g. `mac_lmstudio_endpoint`, `lmstudio_endpoint`, `coder_model`, `manager_model`, `coder_backend`, `mac_lmstudio_ok`) influence which endpoints, models, and provider selections are used. If omitted or None, environment-derived defaults are used.
+    
+    Returns:
+    	config (dict): A configuration mapping suitable for writing to ~/.openclaw/openclaw.json with top-level keys:
+    	- `gateway`: local gateway settings (`mode`, `port`, `bind`, `commandeered`).
+    	- `agents`: `defaults` and `list` of agent entries with `id`, `model.primary`, and `workspace` paths.
+    	- `models`: provider definitions for `lmstudio-mac`, `lmstudio-win`, `ollama-mac`, and `ollama-win`, including base URLs, API keys, and model metadata.
+    """
     pt = pt or _load_pt_state()
     if pt:
         mac_lms_url   = pt.get("mac_lmstudio_endpoint") or LMS_MAC
@@ -382,6 +466,18 @@ def build_openclaw_config(pt: dict | None = None) -> dict[str, object]:
 
 
 def _write_openclaw_config(config_dir: Path, config_file: Path) -> dict[str, object]:
+    """
+    Write the OpenClaw configuration to disk and return the generated config.
+    
+    Creates config_dir if missing, builds the OpenClaw configuration from PT agent state, writes it to config_file as pretty-printed JSON, prints a status line with the chosen coder backend, and returns the config dictionary.
+    
+    Parameters:
+        config_dir (Path): Directory in which the configuration file will be placed; created if it does not exist.
+        config_file (Path): Path to the JSON configuration file to write.
+    
+    Returns:
+        dict[str, object]: The OpenClaw configuration dictionary that was written to disk.
+    """
     pt = _load_pt_state()
     config = build_openclaw_config(pt)
     role_routing = build_role_routing(pt)
@@ -396,6 +492,16 @@ def _write_openclaw_config(config_dir: Path, config_file: Path) -> dict[str, obj
 
 
 def _ensure_agent_workspaces(config_dir: Path) -> None:
+    """
+    Ensure agent workspace directories exist under the OpenClaw config directory and populate missing SOUL.md files.
+    
+    For each role (mac-researcher, win-researcher, orchestrator, coder, autoresearcher) this creates a directory at
+    `<config_dir>/agents/<role>` if missing. If that role's `SOUL.md` is absent, attempts to copy it from the repository
+    SOUL source (`SOUL_SRC/<role>/SOUL.md`) and prints a status message; if the source file is missing, prints a warning.
+    
+    Parameters:
+        config_dir (Path): Root OpenClaw configuration directory under which the `agents/` subdirectory will be created.
+    """
     agents_dir = config_dir / "agents"
     roles = ["mac-researcher", "win-researcher", "orchestrator", "coder", "autoresearcher"]
     for role in roles:
@@ -413,7 +519,11 @@ def _ensure_agent_workspaces(config_dir: Path) -> None:
 
 
 def _ensure_autoresearch() -> None:
-    """Idempotent clone + uv sync --dev of ~/autoresearch (uditgoenka fork)."""
+    """
+    Ensure the ~/autoresearch repository exists and is prepared for development.
+    
+    If ~/autoresearch already exists, the function does nothing. Otherwise it clones the configured remote into ~/autoresearch, sets or resets a dated branch for idempotent first-run setup, installs the `uv` package, and runs the repository's development sync. Failures during cloning, branch checkout, package installation, or sync are reported (printed) and treated as non-fatal; the function does not raise on these errors.
+    """
     import datetime
     repo = Path.home() / "autoresearch"
     if repo.exists():
@@ -443,10 +553,18 @@ _DEFAULT_SETUP_PASSWORD = "alpha1claw"
 
 
 def _gather_alphaclaw_credentials(timeout: int = 30) -> dict[str, object]:
-    """Prompt for SETUP_PASSWORD with *timeout*-second default fallback.
-
-    Uses a daemon thread + join(timeout) — works on Windows (no select.select).
-    Returns {"password": str, "is_default": bool}.
+    """
+    Prompt for an AlphaClaw admin password, falling back to a default after a timeout.
+    
+    If the SETUP_PASSWORD environment variable is set that value is returned immediately. If stdin is not a TTY, the default password is used without prompting. When interactive, the function prompts for input and uses the provided value; if no input is given within `timeout` seconds the default password is used.
+    
+    Parameters:
+        timeout (int): Seconds to wait for user input before using the default password.
+    
+    Returns:
+        dict: A dictionary with keys:
+            - "password" (str): The chosen or default password.
+            - "is_default" (bool): `true` if the returned password is the default, `false` if provided via env or user input.
     """
     password = os.getenv("SETUP_PASSWORD", "").strip()
     if password:
@@ -469,6 +587,11 @@ def _gather_alphaclaw_credentials(timeout: int = 30) -> dict[str, object]:
     result: dict[str, object] = {"value": None}
 
     def _read() -> None:
+        """
+        Read a password prompt from stdin and store the entered value in the shared `result` mapping.
+        
+        Attempts to read a line with the prompt "  Password (blank = use default): " and assigns the stripped input to result["value"]. If an EOFError or OSError occurs, stores an empty string instead.
+        """
         try:
             result["value"] = input("  Password (blank = use default): ").strip()
         except (EOFError, OSError):
@@ -491,9 +614,26 @@ def _gather_alphaclaw_credentials(timeout: int = 30) -> dict[str, object]:
 
 async def bootstrap_alphaclaw(force: bool = False) -> dict[str, object]:
     """
-    Idempotent AlphaClaw gateway bootstrap. Safe to call on every start.sh run.
-
-    Steps 30 s apart maximum (or immediately when the previous one finishes).
+    Idempotently ensure an AlphaClaw gateway is installed, configured, and running, suitable to call on every start.sh run.
+    
+    Performs discovery to reuse an existing gateway when available, writes or updates ~/.openclaw/openclaw.json and agent workspaces, installs @chrysb/alphaclaw locally when needed, prepares ~/.alphaclaw/.env with setup credentials, starts the gateway, and polls its /health endpoint for readiness.
+    
+    Parameters:
+    	force (bool): If True, overwrite existing configuration and environment files even if they already exist.
+    
+    Returns:
+    	A dict with the bootstrap outcome, matching AlphaClawBootstrapResult fields:
+    	  - ok (bool): overall success indicator
+    	  - gateway_ready (bool): whether the gateway passed the readiness check
+    	  - gateway_url (str): base URL of the active gateway (if available)
+    	  - gateway_port (int|None): numeric gateway port when known
+    	  - runtime (str|None): runtime identifier when set
+    	  - commandeered (bool): True if an existing gateway was reused
+    	  - install_dir (str|None): path to the local AlphaClaw install directory
+    	  - config_path (str|None): path to the written openclaw config file
+    	  - error (str): error message when ok is False, empty otherwise
+    	  - role_routing (dict): computed role routing payload
+    	  - openclaw_config (dict): computed OpenClaw configuration payload
     """
     try:
         import httpx  # noqa: F401

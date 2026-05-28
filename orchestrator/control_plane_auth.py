@@ -80,19 +80,16 @@ def auth_headers() -> dict[str, str]:
 
 
 def auth_enforced() -> bool:
-    """Return True when control-plane bearer auth must be checked.
-
-    Secure-by-default (changed 2026-05-28 per v1 security audit):
-
-    - If a token is configured (env or persisted): ENFORCE
-    - If ORAMA_INSECURE_DEV={1,true,yes}: DO NOT enforce (explicit dev opt-out)
-    - Otherwise: ENFORCE — ensure_control_plane_token() auto-generates one
-
-    Prior behaviour silently left a fresh deployment with no token AND no env
-    var configured fully unauthenticated. That default is reversed: the system
-    now generates and persists a token on first startup. Existing local stacks
-    that relied on the insecure default must either set ORAMA_INSECURE_DEV=1
-    explicitly OR read the auto-generated token from .state/control_plane_token.
+    """
+    Determine whether control-plane bearer authentication must be enforced.
+    
+    Enforcement rules:
+    - Enforce when an explicit control-plane token is configured via environment or persisted file.
+    - Do not enforce when `ORAMA_INSECURE_DEV` is set to `1`, `true`, or `yes` (case-insensitive).
+    - Otherwise enforce by default (the system will auto-generate and persist a token).
+    
+    Returns:
+        bool: `True` if authentication must be enforced, `False` otherwise.
     """
     if control_plane_token():
         return True
@@ -104,6 +101,17 @@ def auth_enforced() -> bool:
 
 
 def verify_control_plane_auth(request: Request) -> None:
+    """
+    Verify the incoming request's Authorization bearer token matches the configured control-plane token and raise on failure.
+    
+    If authentication enforcement is disabled, no check is performed.
+    
+    Parameters:
+        request (Request): Incoming HTTP request whose "authorization" header will be validated against the expected bearer token.
+    
+    Raises:
+        HTTPException: 503 if no control-plane token is configured; 401 if the Authorization header is missing or does not match `Bearer <token>`.
+    """
     if not auth_enforced():
         return
     expected = _resolved_control_plane_token()

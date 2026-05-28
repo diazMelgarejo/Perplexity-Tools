@@ -62,12 +62,10 @@ def test_control_plane_auth_failure_helper(monkeypatch):
 
 
 def test_default_stack_without_auth_env_enforces_auth_on_operator_routes(monkeypatch):
-    """Secure-by-default (2026-05-28): no env vars → auth ENFORCED.
-
-    Previously this test asserted that unauthenticated routes returned 200; the
-    pre-v1 security audit flipped the default so a fresh deployment auto-
-    generates a token. Local stacks that need the old behaviour must explicitly
-    set ORAMA_INSECURE_DEV=1 (see test below).
+    """
+    Verify that operator routes require authentication when no auth-related environment variables are set.
+    
+    Asserts that GET /agents and POST /user-input return 401 (unauthorized) when neither ORAMA_INSECURE_DEV nor ORAMA_CONTROL_PLANE_TOKEN is present in the environment.
     """
     monkeypatch.delenv("ORAMA_INSECURE_DEV", raising=False)
     monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
