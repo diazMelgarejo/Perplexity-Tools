@@ -91,8 +91,6 @@ def auth_enforced() -> bool:
     Returns:
         bool: `True` if authentication must be enforced, `False` otherwise.
     """
-    if control_plane_token():
-        return True
     insecure = os.getenv(ENV_INSECURE, "").strip().lower()
     if insecure in ("1", "true", "yes"):
         return False

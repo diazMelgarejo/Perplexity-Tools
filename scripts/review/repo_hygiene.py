@@ -65,6 +65,7 @@ GENERATED_ARTIFACT_EXCEPTIONS: frozenset[str] = frozenset({
     # requiring `npm run build`. Keep this entry as long as the package is
     # distributed as a pre-built artifact.
     "packages/alphaclaw-mcp/build/index.js",
+    "packages/alphaclaw-mcp/build/is-direct-execution.js",
 })
 
 GENERATED_ARTIFACT_PATTERNS = (
