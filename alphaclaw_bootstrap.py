@@ -287,7 +287,7 @@ def _load_pt_state() -> dict | None:
     """
     state_path = os.getenv("PT_AGENTS_STATE")
     if state_path and Path(state_path).exists():
-        with open(state_path) as f:
+        with open(state_path, encoding="utf-8") as f:
             return json.load(f)
     return None
 
@@ -454,11 +454,13 @@ def build_openclaw_config(pt: dict | None = None) -> dict[str, object]:
                     "apiKey": "ollama-local",
                     "baseUrl": OLLAMA_MAC,
                     "api": "ollama",
+                    "models": [],
                 },
                 "ollama-win": {
                     "apiKey": "ollama-remote",
                     "baseUrl": OLLAMA_WIN,
                     "api": "ollama",
+                    "models": [],
                 },
             },
         },
