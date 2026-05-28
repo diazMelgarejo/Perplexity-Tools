@@ -61,7 +61,14 @@ def test_control_plane_auth_failure_helper(monkeypatch):
     assert denied.status_code == 401
 
 
-def test_default_stack_without_auth_env_allows_operator_routes(monkeypatch):
+def test_default_stack_without_auth_env_enforces_auth_on_operator_routes(monkeypatch):
+    """Secure-by-default (2026-05-28): no env vars → auth ENFORCED.
+
+    Previously this test asserted that unauthenticated routes returned 200; the
+    pre-v1 security audit flipped the default so a fresh deployment auto-
+    generates a token. Local stacks that need the old behaviour must explicitly
+    set ORAMA_INSECURE_DEV=1 (see test below).
+    """
     monkeypatch.delenv("ORAMA_INSECURE_DEV", raising=False)
     monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
 
@@ -69,8 +76,26 @@ def test_default_stack_without_auth_env_allows_operator_routes(monkeypatch):
         agents = client.get("/agents")
         queued = client.post("/user-input", json={"message": "hello"})
 
+    assert agents.status_code == 401, "operator route must require auth by default"
+    assert queued.status_code == 401, "operator route must require auth by default"
+
+
+def test_explicit_insecure_dev_opens_operator_routes(monkeypatch, tmp_path):
+    """ORAMA_INSECURE_DEV=1 is the only path back to the prior insecure default."""
+    # Point DEFAULT_TOKEN_PATH at a non-existent temp file so a previously
+    # persisted .state/control_plane_token from another test does not bleed in
+    # (control_plane_token() would otherwise lift it back into env and re-enable auth).
+    monkeypatch.setattr(
+        "orchestrator.control_plane_auth.DEFAULT_TOKEN_PATH",
+        tmp_path / "no_token",
+    )
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "1")
+    monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        agents = client.get("/agents")
+
     assert agents.status_code == 200
-    assert queued.status_code == 200
 
 
 def test_persisted_token_reused_on_restart_without_env(monkeypatch, tmp_path):
@@ -140,17 +165,22 @@ def test_head_on_protected_route_requires_auth_when_enforced(monkeypatch):
 
 
 def test_auth_enforced_matrix(monkeypatch):
+    """Matrix reflects secure-by-default behavior (changed 2026-05-28)."""
+    # Case 1: no env vars → ENFORCE (was: skip)
     monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
     monkeypatch.delenv("ORAMA_INSECURE_DEV", raising=False)
-    assert auth_enforced() is False
+    assert auth_enforced() is True
 
+    # Case 2: token configured → ENFORCE
     monkeypatch.setenv("ORAMA_CONTROL_PLANE_TOKEN", "secret")
     assert auth_enforced() is True
 
+    # Case 3: ORAMA_INSECURE_DEV=1 → SKIP (explicit opt-out)
     monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
     monkeypatch.setenv("ORAMA_INSECURE_DEV", "1")
     assert auth_enforced() is False
 
+    # Case 4: ORAMA_INSECURE_DEV=0 → ENFORCE
     monkeypatch.setenv("ORAMA_INSECURE_DEV", "0")
     assert auth_enforced() is True
 
