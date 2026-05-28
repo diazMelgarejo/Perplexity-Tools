@@ -2,6 +2,7 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema, ErrorCode, McpError, } from "@modelcontextprotocol/sdk/types.js";
 import { spawnSync } from "child_process";
+import { createRequire } from "module";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -67,12 +68,49 @@ import { isToolAllowed, profileStartupSummary, toolDisabledMessage, } from "./mc
  */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const require = createRequire(import.meta.url);
+const { resolveAllowedPath, redactLogText, getApprovedRoots, } = require("../../local-agents/src/path-boundary.cjs");
 // AlphaClaw project root — PT drives AlphaClaw externally via CLI/HTTP only, NEVER require()
 const PROJECT_ROOT = process.env.ALPHACLAW_ROOT ||
     path.resolve(__dirname, "..", "..", "..", "..", "AlphaClaw");
+const PERPETUA_TOOLS_ROOT = path.resolve(__dirname, "..", "..", "..");
 const OPENCLAW_DIR = path.join(PROJECT_ROOT, ".openclaw");
 const CONFIG_PATH = path.join(OPENCLAW_DIR, "openclaw.json");
 const ENV_PATH = path.join(PROJECT_ROOT, ".env");
+if (!process.env.ALPHACLAW_ROOT)
+    process.env.ALPHACLAW_ROOT = PROJECT_ROOT;
+if (!process.env.PERPETUA_TOOLS_ROOT)
+    process.env.PERPETUA_TOOLS_ROOT = PERPETUA_TOOLS_ROOT;
+// ─── Exported path-gate helpers (for testing and reuse) ──────────────────────
+/**
+ * Get MCP-approved roots for path validation.
+ * Exported for testing.
+ */
+export function getPathGateConfig() {
+    const projRoot = process.env.ALPHACLAW_ROOT || path.resolve(__dirname, "..", "..", "..", "..", "AlphaClaw");
+    const perpRoot = path.resolve(__dirname, "..", "..", "..");
+    return {
+        projectRoot: projRoot,
+        perpetuaRoot: perpRoot,
+        approvedRoots: getApprovedRoots([projRoot, perpRoot]),
+    };
+}
+/**
+ * Evaluate path against approved roots.
+ * Exported for testing.
+ */
+export function evaluatePathGate(targetPath, roots) {
+    const allowed = resolveAllowedPath(targetPath, { roots, mustExist: false });
+    if (!allowed.ok)
+        return { ok: false, error: allowed.error || "path not allowed" };
+    return { ok: true, abs: allowed.abs };
+}
+function mcpApprovedRoots() {
+    return getPathGateConfig().approvedRoots;
+}
+function assertAllowedFixedPath(targetPath) {
+    return evaluatePathGate(targetPath, mcpApprovedRoots());
+}
 // ─── Secret redactor ─────────────────────────────────────────────────────────
 // Preserves arrays (P2 fix: Object.fromEntries on an array produces numeric-keyed object)
 const REDACT_KEYS = /token|secret|password|key|auth|credential/i;
@@ -86,18 +124,80 @@ function redact(obj) {
         REDACT_KEYS.test(k) ? "[REDACTED]" : redact(v),
     ]));
 }
-// ─── File-based tool implementations ─────────────────────────────────────────
-function readConfig() {
-    if (!fs.existsSync(CONFIG_PATH)) {
+// ─── Exported file-based helpers (for testing) ────────────────────────────────
+/**
+ * Read and validate a config file with path gating and secret redaction.
+ * Exported for testing.
+ */
+export function readConfigFile(configPath, roots) {
+    const gate = evaluatePathGate(configPath, roots);
+    if (!gate.ok)
+        return { configured: false, error: gate.error };
+    if (!fs.existsSync(gate.abs)) {
         return { configured: false, message: "openclaw.json not found — run setup first." };
     }
     try {
-        const raw = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
+        const raw = JSON.parse(fs.readFileSync(gate.abs, "utf8"));
         return { configured: true, config: redact(raw) };
     }
     catch (e) {
         return { configured: false, error: e.message };
     }
+}
+/**
+ * Read and tail a log file with path gating and secret redaction.
+ * Exported for testing.
+ */
+export function readLogTail(logPath, roots, lines = 50) {
+    // P2 fix: guard against negative, NaN, or Infinity inputs
+    const raw = Number(lines);
+    const cap = Number.isFinite(raw) && raw > 0 ? Math.min(Math.floor(raw), 200) : 50;
+    const gate = evaluatePathGate(logPath, roots);
+    if (!gate.ok)
+        return { found: false, error: gate.error };
+    if (!fs.existsSync(gate.abs)) {
+        return { found: false, message: "Log not found under approved AlphaClaw root" };
+    }
+    try {
+        const content = fs.readFileSync(gate.abs, "utf8");
+        const tail = redactLogText(content.trim().split("\n").slice(-cap).join("\n"));
+        return { found: true, lines: cap, log: tail };
+    }
+    catch (e) {
+        return { found: false, error: e.message };
+    }
+}
+/**
+ * Check .env file presence and SETUP_PASSWORD configuration with path gating.
+ * Exported for testing.
+ */
+export function readEnvVars(envPath, roots) {
+    const gate = evaluatePathGate(envPath, roots);
+    if (!gate.ok)
+        return { env_file: false, error: gate.error };
+    const exists = fs.existsSync(gate.abs);
+    if (!exists) {
+        return {
+            env_file: false,
+            setup_password: false,
+            message: ".env not found — create it with SETUP_PASSWORD=yourpassword",
+        };
+    }
+    const content = fs.readFileSync(gate.abs, "utf8");
+    const hasPassword = /^SETUP_PASSWORD\s*=\s*.+/m.test(content);
+    return {
+        env_file: true,
+        setup_password: hasPassword,
+        message: hasPassword
+            ? ".env exists and SETUP_PASSWORD is set ✓"
+            : ".env exists but SETUP_PASSWORD is missing or empty",
+    };
+}
+// Re-export redactLogText for testing
+export { redactLogText };
+// ─── File-based tool implementations ─────────────────────────────────────────
+function readConfig() {
+    return readConfigFile(CONFIG_PATH, mcpApprovedRoots());
 }
 function listProviders() {
     const cfg = readConfig();
@@ -115,40 +215,11 @@ function listProviders() {
     };
 }
 function tailLogs(lines = 50) {
-    // P2 fix: guard against negative, NaN, or Infinity inputs
-    const raw = Number(lines);
-    const cap = Number.isFinite(raw) && raw > 0 ? Math.min(Math.floor(raw), 200) : 50;
     const logPath = path.join(OPENCLAW_DIR, "hourly-sync.log");
-    if (!fs.existsSync(logPath)) {
-        return { found: false, message: `Log not found at ${logPath}` };
-    }
-    try {
-        const content = fs.readFileSync(logPath, "utf8");
-        const tail = content.trim().split("\n").slice(-cap).join("\n");
-        return { found: true, lines: cap, log: tail };
-    }
-    catch (e) {
-        return { found: false, error: e.message };
-    }
+    return readLogTail(logPath, mcpApprovedRoots(), lines);
 }
 function checkEnv() {
-    const exists = fs.existsSync(ENV_PATH);
-    if (!exists) {
-        return {
-            env_file: false,
-            setup_password: false,
-            message: ".env not found — create it with SETUP_PASSWORD=yourpassword",
-        };
-    }
-    const content = fs.readFileSync(ENV_PATH, "utf8");
-    const hasPassword = /^SETUP_PASSWORD\s*=\s*.+/m.test(content);
-    return {
-        env_file: true,
-        setup_password: hasPassword,
-        message: hasPassword
-            ? ".env exists and SETUP_PASSWORD is set ✓"
-            : ".env exists but SETUP_PASSWORD is missing or empty",
-    };
+    return readEnvVars(ENV_PATH, mcpApprovedRoots());
 }
 // ─── Process-spawning tool implementations ────────────────────────────────────
 function buildUi() {
@@ -327,7 +398,7 @@ const ALL_TOOL_DEFINITIONS = [
             properties: {
                 filePath: {
                     type: "string",
-                    description: "Path to the file to analyze (relative to AlphaClaw project root or absolute)",
+                    description: "Path to the file under ALPHACLAW_ROOT or PERPETUA_TOOLS_ROOT (relative to project root preferred; absolute paths outside approved roots are rejected)",
                 },
                 question: {
                     type: "string",
@@ -351,7 +422,7 @@ const ALL_TOOL_DEFINITIONS = [
             properties: {
                 filePath: {
                     type: "string",
-                    description: "Path to the file to edit (relative to AlphaClaw project root or absolute)",
+                    description: "Path to the file under approved MCP roots (relative to AlphaClaw root preferred; paths outside allowlist are rejected)",
                 },
                 instruction: {
                     type: "string",
@@ -443,13 +514,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
     }
 });
-async function run() {
+/**
+ * Start the MCP server on stdio transport.
+ * Exported for programmatic use; automatically invoked when module is run directly.
+ */
+export async function startServer() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
     const visible = ALL_TOOL_DEFINITIONS.filter((t) => isToolAllowed(t.name)).length;
     console.error(`AlphaClaw MCP Server v0.9.16.9 started on stdio (${visible}/${ALL_TOOL_DEFINITIONS.length} tools — ${profileStartupSummary()})`);
 }
-run().catch((error) => {
-    console.error("Fatal error:", error);
-    process.exit(1);
-});
+// Only start the server when module is executed directly (not imported)
+const isMainModule = import.meta.url === `file://${process.argv[1]}`;
+if (isMainModule) {
+    startServer().catch((error) => {
+        console.error("Fatal error:", error);
+        process.exit(1);
+    });
+}
