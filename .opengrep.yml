@@ -1,0 +1,174 @@
+# OpenGrep / Semgrep configuration for Perpetua-Tools
+# Runs during CodeRabbit PR reviews and can be invoked locally:
+#   semgrep scan --config .opengrep.yml .
+
+rules:
+  # ── Python security (OWASP Top-10 subset relevant to PT stack) ────────────
+
+  - id: pt-no-shell-true
+    patterns:
+      - pattern: subprocess.$FUNC(..., shell=True, ...)
+    message: >
+      subprocess with shell=True is a command-injection vector.
+      Use a list-form command instead: subprocess.run(["cmd", arg], ...).
+    languages: [python]
+    severity: ERROR
+    metadata:
+      category: security
+      owasp: A03:2021 - Injection
+      cwe: CWE-78
+
+  - id: pt-no-yaml-load
+    patterns:
+      - pattern: yaml.load($X)
+      - pattern: yaml.load($X, ...)
+    fix: yaml.safe_load($X)
+    message: >
+      yaml.load() with an untrusted loader can execute arbitrary Python.
+      Use yaml.safe_load() instead.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      category: security
+      owasp: A08:2021 - Software and Data Integrity Failures
+      cwe: CWE-502
+
+  - id: pt-no-eval
+    pattern: eval(...)
+    message: eval() on untrusted data enables arbitrary code execution.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      category: security
+      owasp: A03:2021 - Injection
+
+  - id: pt-no-hardcoded-secret-env
+    patterns:
+      - pattern: |
+          $VAR = "..."
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: "(?i)(api_key|secret|password|token|auth_key|private_key)"
+      - metavariable-regex:
+          metavariable: "..."
+          regex: ".{8,}"
+    message: >
+      Possible hardcoded credential in $VAR. Store secrets in environment
+      variables or a secrets manager; never commit literal secret values.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      category: security
+      owasp: A02:2021 - Cryptographic Failures
+      cwe: CWE-798
+
+  - id: pt-no-deprecated-pydantic-validator
+    pattern: "@validator(...)"
+    message: >
+      @validator is deprecated in Pydantic v2. Use @field_validator with
+      mode='before'/'after' and the new signature (cls, value, info).
+    languages: [python]
+    severity: WARNING
+    metadata:
+      category: correctness
+
+  - id: pt-path-traversal-guard
+    patterns:
+      - pattern: open(os.path.join($BASE, $USER_INPUT), ...)
+      - pattern: Path($BASE) / $USER_INPUT
+    message: >
+      Potential path traversal: $USER_INPUT flows into a file-system path.
+      Validate $USER_INPUT with a strict allowlist or UUID regex before use.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      category: security
+      owasp: A01:2021 - Broken Access Control
+      cwe: CWE-22
+
+  - id: pt-no-bind-all-interfaces
+    patterns:
+      - pattern: uvicorn.run(..., host="0.0.0.0", ...)
+      - pattern: app.run(..., host="0.0.0.0", ...)
+    message: >
+      Binding to 0.0.0.0 exposes the service on all interfaces.
+      Use host="127.0.0.1" for local-only services; require explicit
+      BIND_LAN=1 override for LAN exposure.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      category: security
+      owasp: A05:2021 - Security Misconfiguration
+
+  - id: pt-sql-injection
+    patterns:
+      - pattern: $CONN.execute($QUERY % ...)
+      - pattern: $CONN.execute(f"... {$VAR} ...")
+      - pattern: $CONN.execute("..." + $VAR + "...")
+    message: >
+      String-interpolated SQL is vulnerable to injection.
+      Use parameterised queries: conn.execute("SELECT ... WHERE x=?", (val,)).
+    languages: [python]
+    severity: ERROR
+    metadata:
+      category: security
+      owasp: A03:2021 - Injection
+      cwe: CWE-89
+
+  # ── TypeScript / JavaScript security (alphaclaw-mcp) ─────────────────────
+
+  - id: pt-ts-no-eval
+    patterns:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+    message: eval/Function constructor from untrusted input enables code injection.
+    languages: [typescript, javascript]
+    severity: ERROR
+    metadata:
+      category: security
+      owasp: A03:2021 - Injection
+
+  - id: pt-ts-no-shell-exec
+    patterns:
+      - pattern: exec($CMD)
+      - pattern: execSync($CMD)
+    message: >
+      exec/execSync with a string argument is shell-injection prone.
+      Pass an array form or validate $CMD against a strict allowlist.
+    languages: [typescript, javascript]
+    severity: WARNING
+    metadata:
+      category: security
+      owasp: A03:2021 - Injection
+      cwe: CWE-78
+
+  - id: pt-ts-no-hardcoded-secret
+    patterns:
+      - pattern: |
+          const $VAR = "..."
+      - metavariable-regex:
+          metavariable: $VAR
+          regex: "(?i)(apiKey|api_key|secret|password|token|authKey|privateKey)"
+    message: Possible hardcoded credential in $VAR. Move to environment variable.
+    languages: [typescript, javascript]
+    severity: WARNING
+    metadata:
+      category: security
+      owasp: A02:2021 - Cryptographic Failures
+      cwe: CWE-798
+
+  # ── Bash security (install scripts) ──────────────────────────────────────
+
+  - id: pt-bash-unquoted-var
+    patterns:
+      - pattern: $ENV_VAR
+      - pattern: "rm -rf $VAR"
+      - pattern: "rm -rf ${VAR}"
+    message: >
+      Unquoted shell variable in destructive command. Quote all variables
+      to prevent word-splitting on attacker-controlled values.
+    languages: [bash]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: CWE-78
