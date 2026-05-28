@@ -341,7 +341,7 @@ def detect_active_tilting_ip() -> str:
             except Exception as e:
                 log.warning("Discovery worker failed: %s", e)
 
-        thread = threading.Thread(target=worker)
+        thread = threading.Thread(target=worker, daemon=True)
         thread.start()
         thread.join(timeout=25.0)
 

@@ -163,13 +163,19 @@ def test_get_job_invalid_id_returns_400(auth_client, auth_headers):
     assert resp2.status_code == 400
 
 
-def test_get_job_path_traversal_returns_400(auth_client, auth_headers):
-    """GET /v1/jobs/<path-traversal-string> must return 400."""
-    # URL-encode the traversal so FastAPI routes it to the handler
+def test_get_job_path_traversal_returns_4xx(auth_client, auth_headers):
+    """GET /v1/jobs/<path-traversal-string> must be rejected (400 or 404).
+
+    When %2F-encoded slashes are present, Starlette normalises the path before
+    routing and the route may not match (404). Both 400 (UUID validation) and
+    404 (no route match) are valid rejections — neither allows 2xx for traversal.
+    """
     import urllib.parse
     traversal = urllib.parse.quote("../../etc/passwd", safe="")
     resp = auth_client.get(f"/v1/jobs/{traversal}", headers=auth_headers)
-    assert resp.status_code == 400
+    assert resp.status_code in (400, 404), (
+        f"path traversal must not succeed; got {resp.status_code}"
+    )
 
 
 def test_get_job_valid_uuid4_not_found_returns_404_with_new_message(auth_client, auth_headers):
@@ -204,12 +210,19 @@ def test_cancel_job_invalid_id_returns_400(auth_client, auth_headers):
     assert resp.status_code == 400
 
 
-def test_cancel_job_path_traversal_returns_400(auth_client, auth_headers):
-    """POST /v1/jobs/<traversal>/cancel must return 400."""
+def test_cancel_job_path_traversal_returns_4xx(auth_client, auth_headers):
+    """POST /v1/jobs/<traversal>/cancel must be rejected (400 or 404).
+
+    Starlette normalises %2F-encoded slashes in the path before routing,
+    so the handler may never be reached (404). Both 400 and 404 are valid
+    rejections — neither allows 2xx for a path traversal attempt.
+    """
     import urllib.parse
     traversal = urllib.parse.quote("../jobs/other", safe="")
     resp = auth_client.post(f"/v1/jobs/{traversal}/cancel", headers=auth_headers)
-    assert resp.status_code == 400
+    assert resp.status_code in (400, 404), (
+        f"path traversal must not succeed; got {resp.status_code}"
+    )
 
 
 def test_cancel_job_valid_uuid4_unknown_returns_cancel_requested_false(auth_client, auth_headers):
@@ -229,12 +242,19 @@ def test_replay_job_invalid_id_returns_400(auth_client, auth_headers):
     assert resp.status_code == 400
 
 
-def test_replay_job_path_traversal_returns_400(auth_client, auth_headers):
-    """POST /v1/jobs/<path-traversal>/replay must return 400."""
+def test_replay_job_path_traversal_returns_4xx(auth_client, auth_headers):
+    """POST /v1/jobs/<path-traversal>/replay must be rejected (400 or 404).
+
+    Starlette normalises %2F-encoded slashes in the path before routing,
+    so the handler may never be reached (404). Both 400 and 404 are valid
+    rejections — neither allows 2xx for a path traversal attempt.
+    """
     import urllib.parse
     traversal = urllib.parse.quote("../../state/jobs/other", safe="")
     resp = auth_client.post(f"/v1/jobs/{traversal}/replay", headers=auth_headers)
-    assert resp.status_code == 400
+    assert resp.status_code in (400, 404), (
+        f"path traversal must not succeed; got {resp.status_code}"
+    )
 
 
 def test_replay_job_valid_uuid4_not_found_returns_404_with_new_message(auth_client, auth_headers):

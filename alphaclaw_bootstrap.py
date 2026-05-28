@@ -77,11 +77,11 @@ WIN_MODEL  = os.getenv("WINDOWS_LMS_MODEL",
 
 def _find_npx_v22plus() -> str:
     """
-    Selects an npx executable whose bundled Node.js is version 22.5 or newer.
-    
-    Searches in this order: the npx found in PATH, nvm-installed Node versions (~/.nvm/...), and common Homebrew node@22+/node@24 locations. Returns the first npx whose associated node reports a major/minor version of at least 22.5; if none qualify, falls back to the PATH npx and prints a warning or informational message.
+    Selects an npx executable whose bundled Node.js is version 22.14.0 or newer.
+
+    Searches in this order: the npx found in PATH, nvm-installed Node versions (~/.nvm/...), and common Homebrew node@22+/node@24 locations. Returns the first npx whose associated node reports a major/minor version of at least 22.14; if none qualify, falls back to the PATH npx and prints a warning or informational message.
     Returns:
-        str: Filesystem path to an npx executable whose Node.js is >= 22.5, or the PATH npx when no qualifying binary is found.
+        str: Filesystem path to an npx executable whose Node.js is >= 22.14.0, or the PATH npx when no qualifying binary is found.
     """
     def _node_semver(npx_path: str) -> tuple[int, int]:
         """
@@ -105,10 +105,10 @@ def _find_npx_v22plus() -> str:
 
     current_npx = shutil.which("npx") or "npx"
     maj, min_ = _node_semver(current_npx)
-    if maj > 22 or (maj == 22 and min_ >= 5):
+    if maj > 22 or (maj == 22 and min_ >= 14):
         return current_npx
 
-    # nvm search — pick highest installed version >= 22.5
+    # nvm search — pick highest installed version >= 22.14
     nvm_dir = Path(os.environ.get("NVM_DIR", Path.home() / ".nvm")) / "versions" / "node"
     if nvm_dir.is_dir():
         candidates: list[tuple[int, int, str]] = []
@@ -120,14 +120,14 @@ def _find_npx_v22plus() -> str:
                 v_maj, v_min = int(parts[0]), int(parts[1])
             except (ValueError, IndexError):
                 continue
-            if v_maj > 22 or (v_maj == 22 and v_min >= 5):
+            if v_maj > 22 or (v_maj == 22 and v_min >= 14):
                 npx_cand = node_dir / "bin" / "npx"
                 if npx_cand.is_file():
                     candidates.append((v_maj, v_min, str(npx_cand)))
         if candidates:
             candidates.sort(reverse=True)
             found = candidates[0][2]
-            print(f"[alphaclaw] ℹ  Node v{maj}.{min_} in PATH is < 22.5"
+            print(f"[alphaclaw] ℹ  Node v{maj}.{min_} in PATH is < 22.14"
                   f" — using nvm node v{candidates[0][0]}.{candidates[0][1]}"
                   f" ({found})")
             return found
@@ -145,7 +145,7 @@ def _find_npx_v22plus() -> str:
 
     # Warn and fall back — the gateway will crash with a clear error
     print(
-        f"[alphaclaw] ⚠  Node.js v22.5+ is required (node:sqlite); "
+        f"[alphaclaw] ⚠  Node.js v22.14.0+ is required (node:sqlite); "
         f"current node is v{maj}.{min_}.\n"
         f"           Install: brew install node  OR  nvm install 24"
     )
@@ -483,6 +483,7 @@ def _write_openclaw_config(config_dir: Path, config_file: Path) -> dict[str, obj
     role_routing = build_role_routing(pt)
     config_dir.mkdir(parents=True, exist_ok=True)
     config_file.write_text(json.dumps(config, indent=2), encoding="utf-8")
+    config_file.chmod(0o600)  # contains API keys — restrict to owner
     coder_backend = role_routing["coder"]["backend"]
     print(
         f"[alphaclaw] \u2713 openclaw.json written \u2192 {config_file}"
@@ -689,7 +690,7 @@ async def bootstrap_alphaclaw(force: bool = False) -> dict[str, object]:
 
     # Step 1: npm check
     if not shutil.which("npm"):
-        print("[alphaclaw] \u2717 npm not found \u2014 install Node 22.5+ from https://nodejs.org/ or: nvm install 24")
+        print("[alphaclaw] \u2717 npm not found \u2014 install Node 22.14.0+ from https://nodejs.org/ or: nvm install 24")
         return asdict(
             AlphaClawBootstrapResult(
                 ok=False,
@@ -752,8 +753,9 @@ async def bootstrap_alphaclaw(force: bool = False) -> dict[str, object]:
     if not _alphaclaw_env_file.exists() or force:
         try:
             from dotenv import set_key as _set_key
-            _set_key(str(_alphaclaw_env_file), "SETUP_PASSWORD", creds["password"])
+            _set_key(str(_alphaclaw_env_file), "SETUP_PASSWORD", str(creds["password"]))
             _set_key(str(_alphaclaw_env_file), "ALPHACLAW_ROOT_DIR", str(ALPHACLAW_INSTALL_DIR))
+            _alphaclaw_env_file.chmod(0o600)  # contains SETUP_PASSWORD \u2014 restrict to owner
             print(f"[alphaclaw] \u2713 .env written \u2192 {_alphaclaw_env_file}")
         except Exception as e:
             print(f"[alphaclaw] \u26a0 .env write failed (non-fatal): {e}")
@@ -764,13 +766,13 @@ async def bootstrap_alphaclaw(force: bool = False) -> dict[str, object]:
     _log_dir = ALPHACLAW_INSTALL_DIR / "logs"
     _log_dir.mkdir(parents=True, exist_ok=True)
     try:
-        npx_bin = _find_npx_v22plus()   # node:sqlite needs >= 22.5
+        npx_bin = _find_npx_v22plus()   # node:sqlite needs >= 22.14.0
         # Log to file instead of DEVNULL so hangs are diagnosable.
         # The file handle is intentionally kept open: Popen inherits it and writes
         # gateway stdout to the log. It closes when the Popen process exits or this
         # Python process exits (whichever is first). This is the correct pattern for
         # a detached subprocess log — do not wrap in `with` (that closes it early).
-        _log_fh = open(_log_dir / "alphaclaw.log", "a")  # noqa: WPS515
+        _log_fh = open(_log_dir / "alphaclaw.log", "a")  # noqa: SIM115 — kept open intentionally; see comment above
         subprocess.Popen(
             [npx_bin, "alphaclaw", "start"],
             cwd=str(ALPHACLAW_INSTALL_DIR),

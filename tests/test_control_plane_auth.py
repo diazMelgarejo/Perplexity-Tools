@@ -2,6 +2,7 @@
 """Control-plane auth regression tests for Perpetua-Tools."""
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
 
 from orchestrator.control_plane_auth import (

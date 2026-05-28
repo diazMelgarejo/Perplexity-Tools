@@ -708,7 +708,7 @@ async def supervisor_list_jobs(status: Optional[str] = None):
     try:
         filter_status = JobStatus(status) if status else None
     except ValueError:
-        raise HTTPException(status_code=400, detail=f"Unknown status: {status}")
+        raise HTTPException(status_code=400, detail=f"Unknown status: {status}") from None
     return {"jobs": _get_supervisor().list_jobs(status=filter_status)}
 
 
@@ -779,7 +779,7 @@ async def supervisor_replay_job(job_id: str):
         new_id = await _get_supervisor().replay(job_id)
         return {"original_job_id": job_id, "new_job_id": new_id, "state": JobStatus.QUEUED.value}
     except ValueError:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="Job not found") from None
 
 
 if __name__ == "__main__":

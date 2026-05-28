@@ -232,8 +232,8 @@ class NetworkAutoConfig:
                 try:
                     if sock.connect_ex((host, port)) == 0:
                         results[svc].append(host)
-                except Exception:
-                    pass
+                except Exception as _e:
+                    log.debug("LAN scan probe %s:%d failed: %s", host, port, _e)
                 finally:
                     sock.close()
 

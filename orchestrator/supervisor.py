@@ -130,7 +130,12 @@ def _append_event(jobs_file: Path, job_id: str, event: dict) -> None:
     
     The written record combines an ISO UTC timestamp (`ts`), the provided `job_id`, and the key/value pairs from `event` (any `JobStatus` values are serialized to their `.value`). The append is performed under an exclusive file lock and flushed to stable storage to avoid interleaved lines and to make the entry durable on disk.
     """
-    import fcntl as _fcntl
+    try:
+        import fcntl as _fcntl
+    except ImportError as _exc:
+        raise RuntimeError(
+            "supervisor._append_event requires Unix (fcntl unavailable on this platform)"
+        ) from _exc
     import os as _os
     # Serialise JobStatus values to their string form
     serialisable = {
@@ -382,11 +387,12 @@ class OrchestrationSupervisor:
             # supervisor. Truncated marker lets _dispatch tests assert the cap.
             _MAX_RESULT_BYTES = 2 * 1024 * 1024  # 2 MiB
             serialized = json.dumps(result, ensure_ascii=False, indent=2)
-            if len(serialized.encode("utf-8")) > _MAX_RESULT_BYTES:
+            serialized_bytes = serialized.encode("utf-8")
+            if len(serialized_bytes) > _MAX_RESULT_BYTES:
                 truncated = {
                     "status": "truncated",
                     "reason": f"result exceeded {_MAX_RESULT_BYTES} bytes",
-                    "original_size_bytes": len(serialized.encode("utf-8")),
+                    "original_size_bytes": len(serialized_bytes),
                 }
                 serialized = json.dumps(truncated, ensure_ascii=False, indent=2)
             (job_dir / "result.json").write_text(serialized, encoding="utf-8")

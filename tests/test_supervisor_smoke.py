@@ -1274,10 +1274,12 @@ def test_append_event_serialises_jobstatus_enum(tmp_path):
     assert isinstance(events[0]["status"], str)
 
 
-def test_append_event_idempotent_on_missing_parent_directory(tmp_path):
-    """_append_event must create any missing parent directories implicitly (via open 'a')."""
-    # The file doesn't exist yet — open("a") creates it automatically.
+def test_append_event_creates_file_in_existing_parent(tmp_path):
+    """_append_event must create a missing .jsonl file when its parent directory already exists."""
+    # tmp_path always exists (pytest fixture); only the target file is absent.
+    # This verifies open("a") creates the file without requiring the parent to be missing.
     jobs_file = tmp_path / "jobs.jsonl"
+    assert jobs_file.parent.exists()
     assert not jobs_file.exists()
     _append_event(jobs_file, "new-job", {"status": "queued"})
     assert jobs_file.exists()
@@ -1371,19 +1373,21 @@ async def test_run_worker_truncated_result_still_records_succeeded(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_run_worker_result_exactly_at_cap_boundary_is_preserved(tmp_path):
-    """A result whose UTF-8 byte length equals exactly _MAX_RESULT_BYTES - 1 must not be truncated.
+async def test_run_worker_result_safely_under_cap_is_preserved(tmp_path):
+    """A result whose UTF-8 byte length is safely under _MAX_RESULT_BYTES must not be truncated.
 
-    This is a boundary condition: the cap is > not >=, so the last allowed byte must pass.
+    Uses _MAX_RESULT_BYTES - 20 as payload size (well inside the 2 MiB cap).
+    The cap is strictly > (not >=), so any under-cap result must pass through unchanged.
     """
     sup = _make_sup(tmp_path)
     spec = _echo_spec("boundary job")
 
     _MAX_RESULT_BYTES = 2 * 1024 * 1024
-    # Construct a result that, after json.dumps, is just under 2 MiB.
-    # json.dumps({"output": "x" * N}) ≈ 14 + N bytes; solve for N:
-    # 14 + N < 2_097_152  → N < 2_097_138
-    payload_size = _MAX_RESULT_BYTES - 20  # safely under
+    # Construct a result that, after json.dumps(indent=2), is safely under 2 MiB.
+    # json.dumps({"output": "a"*N, "backend": "echo"}, indent=2) has ~40 bytes overhead.
+    # Use a 200-byte margin so the serialized result is comfortably under the cap.
+    _JSON_OVERHEAD = 40
+    payload_size = _MAX_RESULT_BYTES - _JSON_OVERHEAD - 200  # serialized ≈ 2 MiB - 200 B
     small_string = "a" * payload_size
 
     async def _boundary_dispatch(s):
