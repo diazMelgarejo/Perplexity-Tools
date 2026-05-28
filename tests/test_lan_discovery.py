@@ -71,3 +71,5 @@ def test_detect_local_subnet_logs_warning_on_fallback(monkeypatch, caplog):
 
     assert subnet == "192.168.1.0/24"
     assert "Failed to auto-detect local subnet" in caplog.text
+
+
