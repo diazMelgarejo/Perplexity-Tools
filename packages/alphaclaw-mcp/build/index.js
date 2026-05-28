@@ -81,14 +81,35 @@ if (!process.env.ALPHACLAW_ROOT)
     process.env.ALPHACLAW_ROOT = PROJECT_ROOT;
 if (!process.env.PERPETUA_TOOLS_ROOT)
     process.env.PERPETUA_TOOLS_ROOT = PERPETUA_TOOLS_ROOT;
-function mcpApprovedRoots() {
-    return getApprovedRoots([PROJECT_ROOT, PERPETUA_TOOLS_ROOT]);
+// ─── Exported path-gate helpers (for testing and reuse) ──────────────────────
+/**
+ * Get MCP-approved roots for path validation.
+ * Exported for testing.
+ */
+export function getPathGateConfig() {
+    const projRoot = process.env.ALPHACLAW_ROOT || path.resolve(__dirname, "..", "..", "..", "..", "AlphaClaw");
+    const perpRoot = path.resolve(__dirname, "..", "..", "..");
+    return {
+        projectRoot: projRoot,
+        perpetuaRoot: perpRoot,
+        approvedRoots: getApprovedRoots([projRoot, perpRoot]),
+    };
 }
-function assertAllowedFixedPath(targetPath) {
-    const allowed = resolveAllowedPath(targetPath, { roots: mcpApprovedRoots(), mustExist: false });
+/**
+ * Evaluate path against approved roots.
+ * Exported for testing.
+ */
+export function evaluatePathGate(targetPath, roots) {
+    const allowed = resolveAllowedPath(targetPath, { roots, mustExist: false });
     if (!allowed.ok)
         return { ok: false, error: allowed.error || "path not allowed" };
     return { ok: true, abs: allowed.abs };
+}
+function mcpApprovedRoots() {
+    return getPathGateConfig().approvedRoots;
+}
+function assertAllowedFixedPath(targetPath) {
+    return evaluatePathGate(targetPath, mcpApprovedRoots());
 }
 // ─── Secret redactor ─────────────────────────────────────────────────────────
 // Preserves arrays (P2 fix: Object.fromEntries on an array produces numeric-keyed object)
@@ -103,9 +124,13 @@ function redact(obj) {
         REDACT_KEYS.test(k) ? "[REDACTED]" : redact(v),
     ]));
 }
-// ─── File-based tool implementations ─────────────────────────────────────────
-function readConfig() {
-    const gate = assertAllowedFixedPath(CONFIG_PATH);
+// ─── Exported file-based helpers (for testing) ────────────────────────────────
+/**
+ * Read and validate a config file with path gating and secret redaction.
+ * Exported for testing.
+ */
+export function readConfigFile(configPath, roots) {
+    const gate = evaluatePathGate(configPath, roots);
     if (!gate.ok)
         return { configured: false, error: gate.error };
     if (!fs.existsSync(gate.abs)) {
@@ -119,27 +144,15 @@ function readConfig() {
         return { configured: false, error: e.message };
     }
 }
-function listProviders() {
-    const cfg = readConfig();
-    if (!cfg.configured)
-        return cfg;
-    const providers = cfg.config?.gateway?.providers ||
-        cfg.config?.providers ||
-        {};
-    return {
-        providers: Object.entries(providers).map(([name, info]) => ({
-            name,
-            enabled: info?.enabled !== false,
-            models: info?.models || [],
-        })),
-    };
-}
-function tailLogs(lines = 50) {
+/**
+ * Read and tail a log file with path gating and secret redaction.
+ * Exported for testing.
+ */
+export function readLogTail(logPath, roots, lines = 50) {
     // P2 fix: guard against negative, NaN, or Infinity inputs
     const raw = Number(lines);
     const cap = Number.isFinite(raw) && raw > 0 ? Math.min(Math.floor(raw), 200) : 50;
-    const logPath = path.join(OPENCLAW_DIR, "hourly-sync.log");
-    const gate = assertAllowedFixedPath(logPath);
+    const gate = evaluatePathGate(logPath, roots);
     if (!gate.ok)
         return { found: false, error: gate.error };
     if (!fs.existsSync(gate.abs)) {
@@ -154,8 +167,12 @@ function tailLogs(lines = 50) {
         return { found: false, error: e.message };
     }
 }
-function checkEnv() {
-    const gate = assertAllowedFixedPath(ENV_PATH);
+/**
+ * Check .env file presence and SETUP_PASSWORD configuration with path gating.
+ * Exported for testing.
+ */
+export function readEnvVars(envPath, roots) {
+    const gate = evaluatePathGate(envPath, roots);
     if (!gate.ok)
         return { env_file: false, error: gate.error };
     const exists = fs.existsSync(gate.abs);
@@ -175,6 +192,34 @@ function checkEnv() {
             ? ".env exists and SETUP_PASSWORD is set ✓"
             : ".env exists but SETUP_PASSWORD is missing or empty",
     };
+}
+// Re-export redactLogText for testing
+export { redactLogText };
+// ─── File-based tool implementations ─────────────────────────────────────────
+function readConfig() {
+    return readConfigFile(CONFIG_PATH, mcpApprovedRoots());
+}
+function listProviders() {
+    const cfg = readConfig();
+    if (!cfg.configured)
+        return cfg;
+    const providers = cfg.config?.gateway?.providers ||
+        cfg.config?.providers ||
+        {};
+    return {
+        providers: Object.entries(providers).map(([name, info]) => ({
+            name,
+            enabled: info?.enabled !== false,
+            models: info?.models || [],
+        })),
+    };
+}
+function tailLogs(lines = 50) {
+    const logPath = path.join(OPENCLAW_DIR, "hourly-sync.log");
+    return readLogTail(logPath, mcpApprovedRoots(), lines);
+}
+function checkEnv() {
+    return readEnvVars(ENV_PATH, mcpApprovedRoots());
 }
 // ─── Process-spawning tool implementations ────────────────────────────────────
 function buildUi() {
@@ -469,13 +514,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
     }
 });
-async function run() {
+/**
+ * Start the MCP server on stdio transport.
+ * Exported for programmatic use; automatically invoked when module is run directly.
+ */
+export async function startServer() {
     const transport = new StdioServerTransport();
     await server.connect(transport);
     const visible = ALL_TOOL_DEFINITIONS.filter((t) => isToolAllowed(t.name)).length;
     console.error(`AlphaClaw MCP Server v0.9.16.9 started on stdio (${visible}/${ALL_TOOL_DEFINITIONS.length} tools — ${profileStartupSummary()})`);
 }
-run().catch((error) => {
-    console.error("Fatal error:", error);
-    process.exit(1);
-});
+// Only start the server when module is executed directly (not imported)
+const isMainModule = import.meta.url === `file://${process.argv[1]}`;
+if (isMainModule) {
+    startServer().catch((error) => {
+        console.error("Fatal error:", error);
+        process.exit(1);
+    });
+}
