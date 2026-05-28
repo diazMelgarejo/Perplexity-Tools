@@ -61,6 +61,34 @@ def test_probe_endpoint_requires_httpx(monkeypatch):
         asyncio.run(discovery._probe_endpoint("localhost", 11434))
 
 
+def test_pick_windows_lmstudio_host_prefers_configured_win_over_mac_mirror():
+    chosen = lan_discovery.pick_windows_lmstudio_host(
+        ["192.168.254.105", "192.168.254.108"],
+        local_ip="192.168.254.105",
+        preferred_win_ip="192.168.254.108",
+    )
+    assert chosen == "192.168.254.108"
+
+
+def test_pick_windows_lmstudio_host_skips_local_when_multiple_remotes():
+    chosen = lan_discovery.pick_windows_lmstudio_host(
+        ["192.168.254.105", "192.168.254.108"],
+        local_ip="192.168.254.105",
+        preferred_win_ip="",
+    )
+    assert chosen == "192.168.254.108"
+
+
+def test_pick_windows_lmstudio_host_uses_win_ip_env(monkeypatch):
+    monkeypatch.setenv("WIN_IP", "192.168.254.108")
+    chosen = lan_discovery.pick_windows_lmstudio_host(
+        ["192.168.254.105", "192.168.254.108"],
+        local_ip="192.168.254.105",
+        preferred_win_ip="",
+    )
+    assert chosen == "192.168.254.108"
+
+
 def test_detect_local_subnet_logs_warning_on_fallback(monkeypatch, caplog):
     import socket
 
