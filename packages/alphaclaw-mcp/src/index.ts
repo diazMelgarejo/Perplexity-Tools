@@ -105,14 +105,41 @@ const ENV_PATH = path.join(PROJECT_ROOT, ".env");
 if (!process.env.ALPHACLAW_ROOT) process.env.ALPHACLAW_ROOT = PROJECT_ROOT;
 if (!process.env.PERPETUA_TOOLS_ROOT) process.env.PERPETUA_TOOLS_ROOT = PERPETUA_TOOLS_ROOT;
 
+// ─── Exported path-gate helpers (for testing and reuse) ──────────────────────
+
+/**
+ * Get MCP-approved roots for path validation.
+ * Exported for testing.
+ */
+export function getPathGateConfig(): { projectRoot: string; perpetuaRoot: string; approvedRoots: string[] } {
+  const projRoot = process.env.ALPHACLAW_ROOT || path.resolve(__dirname, "..", "..", "..", "..", "AlphaClaw");
+  const perpRoot = path.resolve(__dirname, "..", "..", "..");
+  return {
+    projectRoot: projRoot,
+    perpetuaRoot: perpRoot,
+    approvedRoots: getApprovedRoots([projRoot, perpRoot]),
+  };
+}
+
+/**
+ * Evaluate path against approved roots.
+ * Exported for testing.
+ */
+export function evaluatePathGate(
+  targetPath: string,
+  roots: string[]
+): { ok: true; abs: string } | { ok: false; error: string } {
+  const allowed = resolveAllowedPath(targetPath, { roots, mustExist: false });
+  if (!allowed.ok) return { ok: false, error: allowed.error || "path not allowed" };
+  return { ok: true, abs: allowed.abs! };
+}
+
 function mcpApprovedRoots(): string[] {
-  return getApprovedRoots([PROJECT_ROOT, PERPETUA_TOOLS_ROOT]);
+  return getPathGateConfig().approvedRoots;
 }
 
 function assertAllowedFixedPath(targetPath: string): { ok: true; abs: string } | { ok: false; error: string } {
-  const allowed = resolveAllowedPath(targetPath, { roots: mcpApprovedRoots(), mustExist: false });
-  if (!allowed.ok) return { ok: false, error: allowed.error || "path not allowed" };
-  return { ok: true, abs: allowed.abs! };
+  return evaluatePathGate(targetPath, mcpApprovedRoots());
 }
 
 // ─── Secret redactor ─────────────────────────────────────────────────────────
@@ -131,10 +158,17 @@ function redact(obj: unknown): unknown {
   );
 }
 
-// ─── File-based tool implementations ─────────────────────────────────────────
+// ─── Exported file-based helpers (for testing) ────────────────────────────────
 
-function readConfig(): { configured: boolean; config?: unknown; message?: string; error?: string } {
-  const gate = assertAllowedFixedPath(CONFIG_PATH);
+/**
+ * Read and validate a config file with path gating and secret redaction.
+ * Exported for testing.
+ */
+export function readConfigFile(
+  configPath: string,
+  roots: string[]
+): { configured: boolean; config?: unknown; message?: string; error?: string } {
+  const gate = evaluatePathGate(configPath, roots);
   if (!gate.ok) return { configured: false, error: gate.error };
   if (!fs.existsSync(gate.abs)) {
     return { configured: false, message: "openclaw.json not found — run setup first." };
@@ -145,6 +179,70 @@ function readConfig(): { configured: boolean; config?: unknown; message?: string
   } catch (e: any) {
     return { configured: false, error: e.message };
   }
+}
+
+/**
+ * Read and tail a log file with path gating and secret redaction.
+ * Exported for testing.
+ */
+export function readLogTail(
+  logPath: string,
+  roots: string[],
+  lines = 50
+): { found: boolean; lines?: number; log?: string; message?: string; error?: string } {
+  // P2 fix: guard against negative, NaN, or Infinity inputs
+  const raw = Number(lines);
+  const cap = Number.isFinite(raw) && raw > 0 ? Math.min(Math.floor(raw), 200) : 50;
+  const gate = evaluatePathGate(logPath, roots);
+  if (!gate.ok) return { found: false, error: gate.error };
+  if (!fs.existsSync(gate.abs)) {
+    return { found: false, message: "Log not found under approved AlphaClaw root" };
+  }
+  try {
+    const content = fs.readFileSync(gate.abs, "utf8");
+    const tail = redactLogText(content.trim().split("\n").slice(-cap).join("\n"));
+    return { found: true, lines: cap, log: tail };
+  } catch (e: any) {
+    return { found: false, error: e.message };
+  }
+}
+
+/**
+ * Check .env file presence and SETUP_PASSWORD configuration with path gating.
+ * Exported for testing.
+ */
+export function readEnvVars(
+  envPath: string,
+  roots: string[]
+): { env_file: boolean; setup_password?: boolean; message?: string; error?: string } {
+  const gate = evaluatePathGate(envPath, roots);
+  if (!gate.ok) return { env_file: false, error: gate.error };
+  const exists = fs.existsSync(gate.abs);
+  if (!exists) {
+    return {
+      env_file: false,
+      setup_password: false,
+      message: ".env not found — create it with SETUP_PASSWORD=yourpassword",
+    };
+  }
+  const content = fs.readFileSync(gate.abs, "utf8");
+  const hasPassword = /^SETUP_PASSWORD\s*=\s*.+/m.test(content);
+  return {
+    env_file: true,
+    setup_password: hasPassword,
+    message: hasPassword
+      ? ".env exists and SETUP_PASSWORD is set ✓"
+      : ".env exists but SETUP_PASSWORD is missing or empty",
+  };
+}
+
+// Re-export redactLogText for testing
+export { redactLogText };
+
+// ─── File-based tool implementations ─────────────────────────────────────────
+
+function readConfig(): { configured: boolean; config?: unknown; message?: string; error?: string } {
+  return readConfigFile(CONFIG_PATH, mcpApprovedRoots());
 }
 
 function listProviders(): unknown {
@@ -164,44 +262,12 @@ function listProviders(): unknown {
 }
 
 function tailLogs(lines = 50): unknown {
-  // P2 fix: guard against negative, NaN, or Infinity inputs
-  const raw = Number(lines);
-  const cap = Number.isFinite(raw) && raw > 0 ? Math.min(Math.floor(raw), 200) : 50;
   const logPath = path.join(OPENCLAW_DIR, "hourly-sync.log");
-  const gate = assertAllowedFixedPath(logPath);
-  if (!gate.ok) return { found: false, error: gate.error };
-  if (!fs.existsSync(gate.abs)) {
-    return { found: false, message: "Log not found under approved AlphaClaw root" };
-  }
-  try {
-    const content = fs.readFileSync(gate.abs, "utf8");
-    const tail = redactLogText(content.trim().split("\n").slice(-cap).join("\n"));
-    return { found: true, lines: cap, log: tail };
-  } catch (e: any) {
-    return { found: false, error: e.message };
-  }
+  return readLogTail(logPath, mcpApprovedRoots(), lines);
 }
 
 function checkEnv(): unknown {
-  const gate = assertAllowedFixedPath(ENV_PATH);
-  if (!gate.ok) return { env_file: false, error: gate.error };
-  const exists = fs.existsSync(gate.abs);
-  if (!exists) {
-    return {
-      env_file: false,
-      setup_password: false,
-      message: ".env not found — create it with SETUP_PASSWORD=yourpassword",
-    };
-  }
-  const content = fs.readFileSync(gate.abs, "utf8");
-  const hasPassword = /^SETUP_PASSWORD\s*=\s*.+/m.test(content);
-  return {
-    env_file: true,
-    setup_password: hasPassword,
-    message: hasPassword
-      ? ".env exists and SETUP_PASSWORD is set ✓"
-      : ".env exists but SETUP_PASSWORD is missing or empty",
-  };
+  return readEnvVars(ENV_PATH, mcpApprovedRoots());
 }
 
 // ─── Process-spawning tool implementations ────────────────────────────────────
@@ -527,7 +593,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
-async function run() {
+/**
+ * Start the MCP server on stdio transport.
+ * Exported for programmatic use; automatically invoked when module is run directly.
+ */
+export async function startServer() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   const visible = ALL_TOOL_DEFINITIONS.filter((t) => isToolAllowed(t.name)).length;
@@ -536,7 +606,11 @@ async function run() {
   );
 }
 
-run().catch((error) => {
-  console.error("Fatal error:", error);
-  process.exit(1);
-});
+// Only start the server when module is executed directly (not imported)
+const isMainModule = import.meta.url === `file://${process.argv[1]}`;
+if (isMainModule) {
+  startServer().catch((error) => {
+    console.error("Fatal error:", error);
+    process.exit(1);
+  });
+}
