@@ -1229,3 +1229,268 @@ async def test_run_worker_calls_record_to_gossip_on_hardware_affinity_error(tmp_
     error_calls = [(et, ex) for et, _, ex in calls if et == "error"]
     assert len(error_calls) == 1
     assert error_calls[0][1].get("policy") is True
+
+
+# ── Result size cap (2026-05-28 security audit HIGH 5) ────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_result_within_2mib_written_verbatim(tmp_path):
+    """Results under the 2 MiB cap must be written as-is to result.json."""
+    from unittest.mock import patch
+
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("small result")
+
+    small_result = {"output": "a" * 1000, "backend": "echo"}
+
+    async def _small_dispatch(s):
+        return small_result
+
+    with patch.object(sup, "_dispatch", side_effect=_small_dispatch):
+        job_id = await sup.submit_job(spec)
+        task = sup._active.get(job_id)
+        assert task is not None
+        await task
+
+    result_path = tmp_path / "jobs" / job_id / "result.json"
+    assert result_path.exists()
+    data = json.loads(result_path.read_text(encoding="utf-8"))
+    assert data.get("status") != "truncated", "Small result must not be truncated"
+    assert data["output"] == "a" * 1000
+
+
+@pytest.mark.asyncio
+async def test_result_exceeding_2mib_replaced_with_truncation_marker(tmp_path):
+    """Results exceeding 2 MiB must be replaced with a truncated marker dict."""
+    from unittest.mock import patch
+
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("huge result")
+
+    # 3 MiB of ASCII data — well over the 2 MiB cap.
+    oversized_result = {"output": "x" * (3 * 1024 * 1024), "backend": "echo"}
+
+    async def _huge_dispatch(s):
+        return oversized_result
+
+    with patch.object(sup, "_dispatch", side_effect=_huge_dispatch):
+        job_id = await sup.submit_job(spec)
+        task = sup._active.get(job_id)
+        assert task is not None
+        await task
+
+    result_path = tmp_path / "jobs" / job_id / "result.json"
+    assert result_path.exists()
+    data = json.loads(result_path.read_text(encoding="utf-8"))
+
+    assert data["status"] == "truncated"
+    assert "reason" in data
+    assert "original_size_bytes" in data
+    assert data["original_size_bytes"] > 2 * 1024 * 1024
+
+
+@pytest.mark.asyncio
+async def test_truncated_result_original_size_bytes_is_accurate(tmp_path):
+    """original_size_bytes in the truncation marker must match the real serialized size."""
+    from unittest.mock import patch
+
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("size check")
+
+    big_payload = {"output": "y" * (3 * 1024 * 1024), "backend": "echo"}
+
+    async def _big_dispatch(s):
+        return big_payload
+
+    with patch.object(sup, "_dispatch", side_effect=_big_dispatch):
+        job_id = await sup.submit_job(spec)
+        task = sup._active.get(job_id)
+        assert task is not None
+        await task
+
+    result_path = tmp_path / "jobs" / job_id / "result.json"
+    data = json.loads(result_path.read_text(encoding="utf-8"))
+
+    expected_size = len(
+        json.dumps(big_payload, ensure_ascii=False, indent=2).encode("utf-8")
+    )
+    assert data["original_size_bytes"] == expected_size
+
+
+@pytest.mark.asyncio
+async def test_truncated_result_job_still_marked_succeeded(tmp_path):
+    """A truncated result must still record a SUCCEEDED event (not FAILED)."""
+    from unittest.mock import patch
+
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("truncated but succeeded")
+
+    async def _huge_dispatch(s):
+        return {"output": "z" * (3 * 1024 * 1024)}
+
+    with patch.object(sup, "_dispatch", side_effect=_huge_dispatch):
+        job_id = await sup.submit_job(spec)
+        task = sup._active.get(job_id)
+        assert task is not None
+        await task
+
+    status = await sup.get_status(job_id)
+    assert status["status"] == JobStatus.SUCCEEDED.value
+
+
+@pytest.mark.asyncio
+async def test_result_exactly_at_2mib_boundary_not_truncated(tmp_path):
+    """A result whose UTF-8 size exactly equals 2 MiB must NOT be truncated."""
+    import json as _json
+    from unittest.mock import patch
+
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("boundary test")
+
+    _MAX = 2 * 1024 * 1024
+    # Build a payload whose JSON encoding is exactly _MAX bytes.
+    # Wrap in {"output": "..."} — the overhead is fixed, so we can calculate.
+    wrapper = '{"output": ""}'
+    overhead = len(wrapper.encode("utf-8")) - 2  # subtract the two quote chars
+    # Each ASCII 'a' is 1 byte in UTF-8; craft to land exactly on the cap.
+    filler_len = _MAX - overhead
+    payload = {"output": "a" * filler_len}
+    serialized = _json.dumps(payload, ensure_ascii=False, indent=2)
+    # Adjust filler to make serialized length equal exactly _MAX.
+    actual_size = len(serialized.encode("utf-8"))
+    # If we're over, trim the output; if under, we skip this exact-boundary test.
+    if actual_size > _MAX:
+        # Trim payload.output to make it exactly _MAX bytes
+        payload["output"] = payload["output"][: _MAX - (actual_size - len(payload["output"].encode("utf-8")))]
+
+    async def _boundary_dispatch(s):
+        return payload
+
+    with patch.object(sup, "_dispatch", side_effect=_boundary_dispatch):
+        job_id = await sup.submit_job(spec)
+        task = sup._active.get(job_id)
+        assert task is not None
+        await task
+
+    result_path = tmp_path / "jobs" / job_id / "result.json"
+    data = json.loads(result_path.read_text(encoding="utf-8"))
+    assert data.get("status") != "truncated", (
+        "Result at or below the 2 MiB cap must not be replaced by truncation marker"
+    )
+
+
+@pytest.mark.asyncio
+async def test_truncation_reason_mentions_max_bytes(tmp_path):
+    """The truncation reason string must mention the byte cap for operator clarity."""
+    from unittest.mock import patch
+
+    sup = _make_sup(tmp_path)
+    spec = _echo_spec("reason check")
+
+    async def _huge(s):
+        return {"data": "w" * (3 * 1024 * 1024)}
+
+    with patch.object(sup, "_dispatch", side_effect=_huge):
+        job_id = await sup.submit_job(spec)
+        await sup._active[job_id]
+
+    data = json.loads(
+        (tmp_path / "jobs" / job_id / "result.json").read_text(encoding="utf-8")
+    )
+    assert str(2 * 1024 * 1024) in data["reason"], (
+        "Truncation reason must include the cap size in bytes"
+    )
+
+
+# ── _append_event hardening (2026-05-28 security audit) ──────────────────────
+
+
+def test_append_event_serialises_job_status_enum_to_string(tmp_path):
+    """_append_event must convert JobStatus enum values to their .value string."""
+    jobs_file = tmp_path / "jobs.jsonl"
+    _append_event(jobs_file, "j1", {"status": JobStatus.RUNNING})
+    events = _load_events(jobs_file)
+    assert len(events) == 1
+    # The persisted status must be the string value, not an enum repr.
+    assert events[0]["status"] == JobStatus.RUNNING.value
+    assert isinstance(events[0]["status"], str)
+
+
+def test_append_event_includes_ts_field(tmp_path):
+    """Every appended event must have a 'ts' ISO-8601 timestamp field."""
+    jobs_file = tmp_path / "jobs.jsonl"
+    _append_event(jobs_file, "j1", {"status": "queued"})
+    events = _load_events(jobs_file)
+    assert "ts" in events[0]
+    assert "T" in events[0]["ts"]  # minimal ISO-8601 check
+
+
+def test_append_event_includes_job_id_field(tmp_path):
+    """Every appended event must carry the job_id field."""
+    jobs_file = tmp_path / "jobs.jsonl"
+    _append_event(jobs_file, "test-job-42", {"status": "queued"})
+    events = _load_events(jobs_file)
+    assert events[0]["job_id"] == "test-job-42"
+
+
+def test_append_event_multiple_events_all_persisted(tmp_path):
+    """Multiple consecutive appends must all be readable (no overwrite)."""
+    jobs_file = tmp_path / "jobs.jsonl"
+    for i in range(5):
+        _append_event(jobs_file, f"job-{i}", {"status": "queued", "seq": i})
+    events = _load_events(jobs_file)
+    assert len(events) == 5
+    seqs = [e["seq"] for e in events]
+    assert seqs == list(range(5))
+
+
+def test_append_event_tolerates_truncated_trailing_line(tmp_path):
+    """_load_events must silently skip corrupt/truncated JSON lines."""
+    jobs_file = tmp_path / "jobs.jsonl"
+    # Write a valid event then simulate a partial write (truncated line).
+    _append_event(jobs_file, "j1", {"status": "queued"})
+    with jobs_file.open("a", encoding="utf-8") as fh:
+        fh.write('{"ts": "2026-01-01T00:00:00", "job_id": "j2", "status": "run')  # truncated
+    events = _load_events(jobs_file)
+    # The good event survives; the truncated line is silently dropped.
+    assert len(events) == 1
+    assert events[0]["job_id"] == "j1"
+
+
+def test_append_event_preserves_arbitrary_extra_fields(tmp_path):
+    """Extra fields beyond 'status' must be preserved verbatim."""
+    jobs_file = tmp_path / "jobs.jsonl"
+    _append_event(
+        jobs_file,
+        "j1",
+        {"status": "succeeded", "artifact": "/state/jobs/j1/result.json", "score": 42},
+    )
+    events = _load_events(jobs_file)
+    assert events[0]["artifact"] == "/state/jobs/j1/result.json"
+    assert events[0]["score"] == 42
+
+
+def test_append_event_concurrent_writes_all_readable(tmp_path):
+    """Multiple threads appending to the same file must not corrupt it."""
+    import threading
+
+    jobs_file = tmp_path / "jobs.jsonl"
+    n = 20
+    errors: list[Exception] = []
+
+    def _write(i: int) -> None:
+        try:
+            _append_event(jobs_file, f"job-{i}", {"status": "queued", "idx": i})
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [threading.Thread(target=_write, args=(i,)) for i in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert not errors, f"Threads raised: {errors}"
+    events = _load_events(jobs_file)
+    assert len(events) == n, f"Expected {n} events, got {len(events)}"

@@ -205,6 +205,106 @@ def test_auth_enforced_matrix(monkeypatch):
     assert auth_enforced() is True
 
 
+def test_auth_enforced_insecure_dev_true_alias(monkeypatch):
+    """ORAMA_INSECURE_DEV='true' (word form) must also disable auth enforcement."""
+    monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "true")
+    assert auth_enforced() is False
+
+
+def test_auth_enforced_insecure_dev_yes_alias(monkeypatch):
+    """ORAMA_INSECURE_DEV='yes' must also disable auth enforcement."""
+    monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "yes")
+    assert auth_enforced() is False
+
+
+def test_auth_enforced_insecure_dev_true_uppercase(monkeypatch):
+    """ORAMA_INSECURE_DEV value is case-insensitive — 'TRUE' must disable auth."""
+    monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "TRUE")
+    assert auth_enforced() is False
+
+
+def test_auth_enforced_insecure_dev_yes_uppercase(monkeypatch):
+    """ORAMA_INSECURE_DEV='YES' must disable auth (case-insensitive)."""
+    monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "YES")
+    assert auth_enforced() is False
+
+
+def test_auth_enforced_insecure_dev_false_alias(monkeypatch):
+    """ORAMA_INSECURE_DEV='false' → production mode → auth ENFORCED."""
+    monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "false")
+    assert auth_enforced() is True
+
+
+def test_auth_enforced_insecure_dev_no_alias(monkeypatch):
+    """ORAMA_INSECURE_DEV='no' → production mode → auth ENFORCED."""
+    monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "no")
+    assert auth_enforced() is True
+
+
+def test_auth_enforced_insecure_dev_with_whitespace(monkeypatch):
+    """ORAMA_INSECURE_DEV=' 1 ' (padded) must disable auth (strip() applied)."""
+    monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", " 1 ")
+    assert auth_enforced() is False
+
+
+def test_auth_enforced_insecure_wins_over_token_env_var(monkeypatch):
+    """ORAMA_INSECURE_DEV=1 takes precedence over ORAMA_CONTROL_PLANE_TOKEN in env."""
+    monkeypatch.setenv("ORAMA_CONTROL_PLANE_TOKEN", "super-secret-token")
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "1")
+    assert auth_enforced() is False
+
+
+def test_auth_enforced_order_insecure_checked_before_token(monkeypatch):
+    """Priority: ORAMA_INSECURE_DEV is evaluated before control_plane_token().
+
+    This test documents and guards the evaluation order introduced in the
+    2026-05-28 audit: insecure flag is checked first so that ops can always
+    disable enforcement on a box that already has a persisted token.
+    """
+    monkeypatch.setenv("ORAMA_CONTROL_PLANE_TOKEN", "any-token")
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "yes")
+    # Insecure takes priority — auth must be disabled despite token being set.
+    assert auth_enforced() is False
+
+
+def test_auth_enforced_unknown_insecure_value_defaults_to_enforce(monkeypatch):
+    """An unrecognised ORAMA_INSECURE_DEV value (e.g. 'maybe') → ENFORCE (secure default)."""
+    monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "maybe")
+    # Falls through both 'if insecure in (...)' branches; reaches default True.
+    assert auth_enforced() is True
+
+
+def test_default_no_env_returns_503_when_no_token_configured(monkeypatch, tmp_path):
+    """Without ORAMA_INSECURE_DEV and with no persisted token, a request must
+    get 503 (token not configured) rather than silently 200.
+
+    This is the new secure-by-default behaviour; prior behaviour returned 200.
+    """
+    monkeypatch.setattr(
+        "orchestrator.control_plane_auth.DEFAULT_TOKEN_PATH",
+        tmp_path / "no_token_here",
+    )
+    monkeypatch.delenv("ORAMA_INSECURE_DEV", raising=False)
+    monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        resp = client.get("/agents")
+
+    # Auth is enforced; token not configured → 503 or 401 (depends on
+    # ensure_control_plane_token() auto-generation; either is not 200).
+    assert resp.status_code in (401, 503), (
+        f"Expected 401 or 503 for unauthenticated request, got {resp.status_code}"
+    )
+
+
 def test_redact_runtime_payload_preserves_routing_summary():
     payload = {
         "credentials": {"has_api_key": True},
