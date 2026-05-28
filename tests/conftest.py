@@ -40,6 +40,14 @@ def disable_ecc_sync_for_tests():
 
 
 @pytest.fixture(autouse=True)
-def _orama_insecure_dev_for_tests(monkeypatch):
+def _orama_insecure_dev_for_tests(monkeypatch, tmp_path):
     monkeypatch.setenv("ORAMA_INSECURE_DEV", "1")
     monkeypatch.delenv("ORAMA_CONTROL_PLANE_TOKEN", raising=False)
+    # Redirect the persisted-token path to a fresh tmp dir so that
+    # ensure_control_plane_token() cannot read a token written by a previous
+    # test and load it back into os.environ — which would make auth_enforced()
+    # return True and cause spurious 401s even when ORAMA_INSECURE_DEV=1.
+    monkeypatch.setattr(
+        "orchestrator.control_plane_auth.DEFAULT_TOKEN_PATH",
+        tmp_path / "control_plane_token",
+    )
