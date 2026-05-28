@@ -734,7 +734,7 @@ async def supervisor_replay_job(job_id: str):
         new_id = await _get_supervisor().replay(job_id)
         return {"original_job_id": job_id, "new_job_id": new_id, "state": JobStatus.QUEUED.value}
     except ValueError:
-        raise HTTPException(status_code=404, detail="Job not found")
+        raise HTTPException(status_code=404, detail="Job not found") from None
 
 
 if __name__ == "__main__":

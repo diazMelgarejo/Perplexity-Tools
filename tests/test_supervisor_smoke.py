@@ -1450,8 +1450,14 @@ def test_append_event_tolerates_truncated_trailing_line(tmp_path):
     jobs_file = tmp_path / "jobs.jsonl"
     # Write a valid event then simulate a partial write (truncated line).
     _append_event(jobs_file, "j1", {"status": "queued"})
-    with jobs_file.open("a", encoding="utf-8") as fh:
-        fh.write('{"ts": "2026-01-01T00:00:00", "job_id": "j2", "status": "run')  # truncated
+    bad_event = {
+        "ts": "2026-01-01T00:00:00",
+        "job_id": "j2",
+        "status": "running",
+    }
+    encoded = json.dumps(bad_event, ensure_ascii=False).encode("utf-8")
+    with jobs_file.open("ab") as fh:
+        fh.write(encoded[:-5])  # intentionally truncated
     events = _load_events(jobs_file)
     # The good event survives; the truncated line is silently dropped.
     assert len(events) == 1
