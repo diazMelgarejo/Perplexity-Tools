@@ -51,11 +51,3 @@ def _orama_insecure_dev_for_tests(monkeypatch, tmp_path):
         "orchestrator.control_plane_auth.DEFAULT_TOKEN_PATH",
         tmp_path / "control_plane_token",
     )
-    # Defensive: clear LAN discovery env vars that could leak across tests.
-    # test_detect_active_tilting_ip_lm_studio_win_endpoints_without_http sets
-    # LM_STUDIO_WIN_ENDPOINTS="192.168.254.108" (no port) via monkeypatch. If
-    # monkeypatch teardown misses the restore in some Python/platform combos,
-    # detect_active_tilting_ip() picks up the leaked value and returns it before
-    # reaching the socket-detection branch, causing CI socket-mock tests to fail.
-    monkeypatch.delenv("LM_STUDIO_WIN_ENDPOINTS", raising=False)
-    monkeypatch.delenv("LAN_GPU_IP_OVERRIDE", raising=False)

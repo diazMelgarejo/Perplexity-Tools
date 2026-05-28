@@ -644,10 +644,14 @@ _UUID4_RE = _re.compile(
 
 
 def _validate_job_id(job_id: str) -> str:
-    """Return job_id if it matches uuid4 format; else raise HTTP 400.
-
-    Hard requirement — never relax to accept user-supplied / model-supplied IDs.
-    Job IDs are server-issued only (via _new_id()); any deviation is suspect.
+    """
+    Validate that job_id is a server-issued UUIDv4.
+    
+    Raises:
+        HTTPException: 400 with a fixed detail message if `job_id` does not match the strict UUIDv4 pattern.
+    
+    Returns:
+        str: The validated `job_id` unchanged.
     """
     if not _UUID4_RE.match(job_id):
         raise HTTPException(
@@ -704,13 +708,25 @@ async def supervisor_list_jobs(status: Optional[str] = None):
     try:
         filter_status = JobStatus(status) if status else None
     except ValueError:
-        raise HTTPException(status_code=400, detail=f"Unknown status: {status}")
+        raise HTTPException(status_code=400, detail=f"Unknown status: {status}") from None
     return {"jobs": _get_supervisor().list_jobs(status=filter_status)}
 
 
 @app.get("/v1/jobs/{job_id}", tags=["supervisor"])
 async def supervisor_get_job(job_id: str):
-    """Get the last-known state of a job."""
+    """
+    Retrieve the last-known state for the specified supervisor job.
+    
+    Parameters:
+        job_id (str): Job identifier (must be a UUIDv4).
+    
+    Returns:
+        dict: The job's last-known status as returned by the supervisor.
+    
+    Raises:
+        HTTPException: 400 if `job_id` fails UUIDv4 validation.
+        HTTPException: 404 if no job with `job_id` exists.
+    """
     _validate_job_id(job_id)
     result = await _get_supervisor().get_status(job_id)
     if result is None:
@@ -720,7 +736,18 @@ async def supervisor_get_job(job_id: str):
 
 @app.post("/v1/jobs/{job_id}/cancel", tags=["supervisor"])
 async def supervisor_cancel_job(job_id: str):
-    """Request cancellation of a running job."""
+    """
+    Request cancellation of a running job identified by its job ID.
+    
+    Parameters:
+        job_id (str): UUIDv4 job identifier. Must match the server's UUIDv4 format; otherwise an HTTPException(400) is raised.
+    
+    Returns:
+        dict: {
+            "job_id": job_id,
+            "cancel_requested": bool
+        } where `cancel_requested` is `True` if a cancellation was requested, `False` otherwise.
+    """
     _validate_job_id(job_id)
     cancelled = await _get_supervisor().cancel(job_id)
     return {"job_id": job_id, "cancel_requested": cancelled}
@@ -728,7 +755,25 @@ async def supervisor_cancel_job(job_id: str):
 
 @app.post("/v1/jobs/{job_id}/replay", tags=["supervisor"])
 async def supervisor_replay_job(job_id: str):
-    """Re-run a failed or cancelled job under a new job_id."""
+    """
+    Replay a completed, failed, or cancelled job by creating a new job with a fresh job_id.
+    
+    Validates that `job_id` is a UUIDv4; on success requests the supervisor to replay the job and returns the new job's id and queued state.
+    
+    Parameters:
+        job_id (str): The UUIDv4 identifier of the existing job to replay.
+    
+    Returns:
+        dict: {
+            "original_job_id": <original id>,
+            "new_job_id": <newly issued job id>,
+            "state": JobStatus.QUEUED.value
+        }
+    
+    Raises:
+        HTTPException: 400 if `job_id` is not a valid UUIDv4.
+        HTTPException: 404 if the original job cannot be found or replay is not possible.
+    """
     _validate_job_id(job_id)
     try:
         new_id = await _get_supervisor().replay(job_id)
