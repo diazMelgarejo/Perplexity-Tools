@@ -1163,3 +1163,15 @@ symbols. Caused by PgBouncer transaction-mode prepared-statement errors.
 
 **Fix:** `gbrain put "orama-system/lessons" < docs/LESSONS.md` (idempotent,
 run once per major update). Now makes `gbrain search "HITL"` work cross-session.
+
+## [2026-05-28] Stop source-archaeology when hardware topology changes
+
+**Anti-pattern discovered:** 30+ tool calls tracing `lan_discovery.py` ancestry to find why CI returned `192.168.254.108` instead of `.103`, checking git logs, commit diffs, installed packages, and shadow modules — all because tests were written against a hardcoded `.103` fallback that was already wrong.
+
+**Root cause (trivially obvious in hindsight):** The Windows GPU machine IP changed from `.103` → `.108`. Cursor had already created PRs #58/#59/#60 fixing this. The old CodeRabbit-added tests were stale.
+
+**Rule:** When a test fails with an unexpected IP/hostname, **check hardware topology first** (`discover.py` or the memory file `project_lan_topology.md`) before any code archaeology. Cost: 1 tool call. Saves 30+.
+
+**Pattern:** `assert result == "http://192.168.254.103"` FAILING with `http://192.168.254.108` → the hardware changed, not the code.
+
+**Corollary:** When Cursor/CodeRabbit have created new branches since your last session, `git fetch --all` and READ THOSE BRANCHES before diagnosing anything. They likely already fixed it.
