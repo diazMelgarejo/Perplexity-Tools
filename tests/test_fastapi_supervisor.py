@@ -193,9 +193,15 @@ class TestGetJobEndpointValidation:
         assert resp.status_code == 400
 
     def test_path_traversal_returns_400(self):
+        # Starlette normalises `../` segments before routing, so traversal
+        # URLs like `/v1/jobs/../../etc/passwd` become `/etc/passwd` and reach
+        # no registered route → 404.  Either status proves the traversal is
+        # rejected without returning job data.
         with TestClient(app, raise_server_exceptions=False) as client:
             resp = client.get("/v1/jobs/../../etc/passwd")
-        assert resp.status_code == 400
+        assert resp.status_code in (400, 404), (
+            f"path traversal must not succeed; got {resp.status_code}"
+        )
 
     def test_valid_unknown_uuid4_returns_404(self):
         """Valid UUID4 format but no matching job → 404 (not 400)."""
@@ -230,9 +236,14 @@ class TestCancelJobEndpointValidation:
         assert resp.status_code == 400
 
     def test_path_traversal_returns_400(self):
+        # Starlette normalises `../` before routing; `/v1/jobs/../admin/cancel`
+        # becomes `/admin/cancel` → no route → 404.  Both 400 and 404 confirm
+        # the traversal is blocked.
         with TestClient(app, raise_server_exceptions=False) as client:
             resp = client.post("/v1/jobs/../admin/cancel")
-        assert resp.status_code == 400
+        assert resp.status_code in (400, 404), (
+            f"path traversal must not succeed; got {resp.status_code}"
+        )
 
     def test_valid_uuid4_returns_200_cancel_false(self):
         """Valid UUID4 for a non-existent job → 200 with cancel_requested=False."""
@@ -259,9 +270,14 @@ class TestReplayJobEndpointValidation:
         assert resp.status_code == 400
 
     def test_path_traversal_returns_400(self):
+        # Starlette normalises `../` before routing; `/v1/jobs/../../secret/replay`
+        # becomes `/secret/replay` → no route → 404.  Both 400 and 404 confirm
+        # the traversal is blocked without returning job data.
         with TestClient(app, raise_server_exceptions=False) as client:
             resp = client.post("/v1/jobs/../../secret/replay")
-        assert resp.status_code == 400
+        assert resp.status_code in (400, 404), (
+            f"path traversal must not succeed; got {resp.status_code}"
+        )
 
     def test_valid_unknown_uuid4_returns_404(self):
         """Valid UUID4 format but no matching job → 404."""
