@@ -629,7 +629,33 @@ def autoresearch_gpu_status() -> Dict[str, Any]:
 # Brainstorm ref: orama-system/docs/2026-05-08-v1-supervisor-brainstorm.md §5
 # Legacy /orchestrate route (orchestrator.py) stays intact — backwards compatible.
 
+import re as _re
+
 from orchestrator.supervisor import JobSpec, JobStatus, OrchestrationSupervisor, _new_id
+
+# Security: job_id flows into filesystem paths (.state/jobs/<id>/result.json)
+# via OrchestrationSupervisor. Validate the format at the HTTP boundary so a
+# path-traversal payload (e.g. ".." or absolute paths) never reaches disk I/O.
+# _new_id() generates uuid.uuid4() — accept only that exact shape.
+_UUID4_RE = _re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    _re.IGNORECASE,
+)
+
+
+def _validate_job_id(job_id: str) -> str:
+    """Return job_id if it matches uuid4 format; else raise HTTP 400.
+
+    Hard requirement — never relax to accept user-supplied / model-supplied IDs.
+    Job IDs are server-issued only (via _new_id()); any deviation is suspect.
+    """
+    if not _UUID4_RE.match(job_id):
+        raise HTTPException(
+            status_code=400,
+            detail="job_id must be a uuid4-formatted server-issued identifier",
+        )
+    return job_id
+
 
 _supervisor: OrchestrationSupervisor | None = None
 
@@ -685,15 +711,17 @@ async def supervisor_list_jobs(status: Optional[str] = None):
 @app.get("/v1/jobs/{job_id}", tags=["supervisor"])
 async def supervisor_get_job(job_id: str):
     """Get the last-known state of a job."""
+    _validate_job_id(job_id)
     result = await _get_supervisor().get_status(job_id)
     if result is None:
-        raise HTTPException(status_code=404, detail=f"Job {job_id} not found")
+        raise HTTPException(status_code=404, detail="Job not found")
     return result
 
 
 @app.post("/v1/jobs/{job_id}/cancel", tags=["supervisor"])
 async def supervisor_cancel_job(job_id: str):
     """Request cancellation of a running job."""
+    _validate_job_id(job_id)
     cancelled = await _get_supervisor().cancel(job_id)
     return {"job_id": job_id, "cancel_requested": cancelled}
 
@@ -701,11 +729,12 @@ async def supervisor_cancel_job(job_id: str):
 @app.post("/v1/jobs/{job_id}/replay", tags=["supervisor"])
 async def supervisor_replay_job(job_id: str):
     """Re-run a failed or cancelled job under a new job_id."""
+    _validate_job_id(job_id)
     try:
         new_id = await _get_supervisor().replay(job_id)
         return {"original_job_id": job_id, "new_job_id": new_id, "state": JobStatus.QUEUED.value}
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Job not found") from None
 
 
 if __name__ == "__main__":
