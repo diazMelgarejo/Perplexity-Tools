@@ -42,4 +42,18 @@ describe("isDirectExecution", () => {
   it("returns false for unrelated entry paths", () => {
     assert.equal(isDirectExecution(indexUrl, path.join(os.tmpdir(), "other.js")), false);
   });
+
+  it("returns false for empty string entryArgv", () => {
+    // path.resolve("") resolves to cwd, not the module path
+    assert.equal(isDirectExecution(indexUrl, ""), false);
+  });
+
+  it("returns false for null entryArgv", () => {
+    assert.equal(isDirectExecution(indexUrl, null), false);
+  });
+
+  it("returns false when importMetaUrl differs only in extension", () => {
+    const tsUrl = indexUrl.replace(/\.js$/, ".ts");
+    assert.equal(isDirectExecution(tsUrl, indexAbs), false);
+  });
 });
