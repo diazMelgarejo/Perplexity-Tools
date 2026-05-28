@@ -80,20 +80,29 @@ def auth_headers() -> dict[str, str]:
 
 
 def auth_enforced() -> bool:
-    """
-    Determine whether control-plane bearer authentication must be enforced.
-    
-    Enforcement rules:
-    - Enforce when an explicit control-plane token is configured via environment or persisted file.
-    - Do not enforce when `ORAMA_INSECURE_DEV` is set to `1`, `true`, or `yes` (case-insensitive).
-    - Otherwise enforce by default (the system will auto-generate and persist a token).
-    
-    Returns:
-        bool: `True` if authentication must be enforced, `False` otherwise.
+    """Return True when control-plane bearer auth must be checked.
+
+    Precedence (top wins — INSECURE_DEV is always evaluated first):
+
+    1. ORAMA_INSECURE_DEV={1,true,yes} → DO NOT enforce (explicit dev opt-out)
+    2. Token configured (env or persisted file) → ENFORCE
+    3. ORAMA_INSECURE_DEV={0,false,no} → ENFORCE (explicit prod lock-in)
+    4. Default → ENFORCE (secure-by-default; ensure_control_plane_token()
+       auto-generates a token on first startup)
+
+    Prior behaviour silently left a fresh deployment with no token AND no env
+    var configured fully unauthenticated. That default is reversed as of the
+    v1 security audit (2026-05-28). Existing local stacks that relied on the
+    insecure default must either set ORAMA_INSECURE_DEV=1 explicitly OR read
+    the auto-generated token from .state/control_plane_token.
     """
     insecure = os.getenv(ENV_INSECURE, "").strip().lower()
     if insecure in ("1", "true", "yes"):
         return False
+    if control_plane_token():
+        return True
+    if insecure in ("0", "false", "no"):
+        return True
     # Default: enforce. ensure_control_plane_token() will auto-generate.
     return True
 
