@@ -56,4 +56,24 @@ describe("isDirectExecution", () => {
     const tsUrl = indexUrl.replace(/\.js$/, ".ts");
     assert.equal(isDirectExecution(tsUrl, indexAbs), false);
   });
+
+  it("returns false for undefined entryArgv", () => {
+    // undefined is falsy — same early-exit path as null/missing
+    assert.equal(isDirectExecution(indexUrl, undefined), false);
+  });
+
+  it("returns false for numeric 0 as entryArgv", () => {
+    // 0 is falsy — guarded by !entryArgv
+    assert.equal(isDirectExecution(indexUrl, 0), false);
+  });
+
+  it("returns false for boolean false as entryArgv", () => {
+    // false is falsy — guarded by !entryArgv
+    assert.equal(isDirectExecution(indexUrl, false), false);
+  });
+
+  it("returns false when argv path has trailing slash separator variant", () => {
+    // Adding a trailing slash changes path.resolve output, breaking equality
+    assert.equal(isDirectExecution(indexUrl, indexAbs + path.sep), false);
+  });
 });

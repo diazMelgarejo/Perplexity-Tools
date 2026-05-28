@@ -270,3 +270,115 @@ def test_detect_active_tilting_ip_result_has_no_port_or_path(monkeypatch):
     # Must not contain a port number or path segment
     assert result.count(":") == 1  # only the "http:" colon
     assert result.endswith(".103")
+
+
+def test_detect_active_tilting_ip_https_env_var_passed_through(monkeypatch):
+    """https:// prefix starts with 'http' so is returned as-is (no double-prefix)."""
+    monkeypatch.setenv("LAN_GPU_IP_OVERRIDE", "https://secure.example.com")
+    monkeypatch.delenv("LM_STUDIO_WIN_ENDPOINTS", raising=False)
+    result = lan_discovery.detect_active_tilting_ip()
+    assert result == "https://secure.example.com"
+
+
+def test_detect_active_tilting_ip_connect_raises_falls_back(monkeypatch):
+    """If s.connect() raises (not socket()), the fallback URL is returned."""
+    import socket as _socket
+
+    monkeypatch.delenv("LAN_GPU_IP_OVERRIDE", raising=False)
+    monkeypatch.delenv("LM_STUDIO_WIN_ENDPOINTS", raising=False)
+
+    class _ConnectRaisesSocket:
+        def connect(self, addr):
+            raise OSError("Network is unreachable")
+
+        def getsockname(self):
+            # Should never be called
+            raise AssertionError("getsockname should not be called after connect raises")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setattr(_socket, "socket", lambda *a, **kw: _ConnectRaisesSocket())
+    result = lan_discovery.detect_active_tilting_ip()
+    assert result == "http://192.168.254.103"
+
+
+def test_detect_active_tilting_ip_getsockname_raises_falls_back(monkeypatch):
+    """If getsockname() raises after successful connect(), fallback is returned."""
+    import socket as _socket
+
+    monkeypatch.delenv("LAN_GPU_IP_OVERRIDE", raising=False)
+    monkeypatch.delenv("LM_STUDIO_WIN_ENDPOINTS", raising=False)
+
+    class _GetSocknameRaisesSocket:
+        def connect(self, addr):
+            pass
+
+        def getsockname(self):
+            raise OSError("socket error")
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setattr(_socket, "socket", lambda *a, **kw: _GetSocknameRaisesSocket())
+    result = lan_discovery.detect_active_tilting_ip()
+    assert result == "http://192.168.254.103"
+
+
+def test_detect_active_tilting_ip_result_starts_with_http_scheme(monkeypatch):
+    """The returned URL always starts with 'http://' when using socket detection."""
+    import socket as _socket
+
+    monkeypatch.delenv("LAN_GPU_IP_OVERRIDE", raising=False)
+    monkeypatch.delenv("LM_STUDIO_WIN_ENDPOINTS", raising=False)
+
+    class _FakeSocket:
+        def connect(self, addr):
+            pass
+
+        def getsockname(self):
+            return ("10.0.0.1", 0)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setattr(_socket, "socket", lambda *a, **kw: _FakeSocket())
+    result = lan_discovery.detect_active_tilting_ip()
+    assert result.startswith("http://")
+
+
+def test_detect_active_tilting_ip_only_first_three_octets_used(monkeypatch):
+    """Only the first three octets of the detected IP are used for the subnet."""
+    import socket as _socket
+
+    monkeypatch.delenv("LAN_GPU_IP_OVERRIDE", raising=False)
+    monkeypatch.delenv("LM_STUDIO_WIN_ENDPOINTS", raising=False)
+
+    class _FakeSocket:
+        def connect(self, addr):
+            pass
+
+        def getsockname(self):
+            # Host octet is 200, but Windows should always be .103
+            return ("192.168.254.200", 0)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+    monkeypatch.setattr(_socket, "socket", lambda *a, **kw: _FakeSocket())
+    result = lan_discovery.detect_active_tilting_ip()
+    # Must use .103 regardless of the Mac's host octet
+    assert result == "http://192.168.254.103"
+    assert "200" not in result
