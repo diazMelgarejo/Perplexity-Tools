@@ -193,13 +193,33 @@ async def _resolve_lmstudio_model(endpoint: str, preferred: str) -> str | None:
 
 # ── researcher coroutine ──────────────────────────────────────────────────────
 
+def _extract_user_input_message(payload: object) -> str | None:
+    """Normalize /user-input/next JSON to a task string (handles legacy nested shape)."""
+    if payload is None:
+        return None
+    if isinstance(payload, str):
+        text = payload.strip()
+        return text or None
+    if isinstance(payload, dict):
+        inner = payload.get("message")
+        if isinstance(inner, str):
+            text = inner.strip()
+            return text or None
+        if isinstance(inner, dict):
+            nested = inner.get("message")
+            if isinstance(nested, str):
+                text = nested.strip()
+                return text or None
+    return None
+
+
 async def _poll_user_input() -> str | None:
     """Poll PT for a queued user task. Returns message string or None."""
     try:
         async with httpx.AsyncClient(timeout=3.0, headers=auth_headers()) as client:
             r = await client.get(f"{PT_ENDPOINT}/user-input/next")
             r.raise_for_status()
-            return r.json().get("message") or None
+            return _extract_user_input_message(r.json().get("message"))
     except Exception:
         return None
 
