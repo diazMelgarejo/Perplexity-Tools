@@ -31,7 +31,7 @@ def test_user_input_next_requires_token_when_enforced(monkeypatch):
 
     assert denied.status_code == 401
     assert allowed.status_code == 200
-    assert allowed.json().get("message", {}).get("message") == "steal-me"
+    assert allowed.json().get("message") == "steal-me"
 
 
 def test_user_input_requires_token_when_enforced(monkeypatch):
