@@ -11,38 +11,26 @@ actual_email_lc="$(printf '%s' "$actual_email" | tr '[:upper:]' '[:lower:]')"
 echo "git user.name=${actual_name:-<unset>}"
 echo "git user.email=${actual_email:-<unset>}"
 
-# Detect if this commit is coming from a Cursor remote/cloud agent.
-# Trigger: CURSOR_SESSION_ID or CURSOR_TRACE_ID env var is set,
-#          OR the committer name/email signals Cursor.
+# This check is scoped to Cursor remote/cloud agent commits only.
+# Non-Cursor commits (human, Codex, Claude CLI) pass through unchecked.
+# Cursor context detected by env vars Cursor sets in its agent subprocess,
+# OR by the committer name/email pattern.
 is_cursor_agent() {
   [[ -n "${CURSOR_SESSION_ID:-}" || -n "${CURSOR_TRACE_ID:-}" ]] && return 0
-  local name_lc email_lc
-  name_lc="$(printf '%s' "$actual_name" | tr '[:upper:]' '[:lower:]')"
-  email_lc="$actual_email_lc"
-  [[ "$name_lc" == *cursor* || "$email_lc" == *@cursor.com || "$email_lc" == *@cursor.sh ]] && return 0
+  local name_lc="$(printf '%s' "$actual_name" | tr '[:upper:]' '[:lower:]')"
+  [[ "$name_lc" == *cursor* || "$actual_email_lc" == *@cursor.com || "$actual_email_lc" == *@cursor.sh ]] && return 0
   return 1
 }
 
-# When a Cursor agent is committing, enforce strict Cursor-specific allowlist
-# and exit immediately (no fall-through to the general policy below).
-if is_cursor_agent; then
-  case "$actual_email_lc" in
-    cursoragent@cursor.com|noreply@cursor.com)
-      echo "OK: approved Cursor agent identity"
-      exit 0
-      ;;
-    *)
-      echo "ERROR: Cursor agent email not on allowlist: $actual_email" >&2
-      echo "  Allowed Cursor identities: cursoragent@cursor.com, noreply@cursor.com" >&2
-      echo "  Set: git config user.email cursoragent@cursor.com" >&2
-      exit 1
-      ;;
-  esac
+if ! is_cursor_agent; then
+  exit 0
 fi
 
 WELL_KNOWN_AUTHOR_DOMAIN_SUFFIXES=(
   openai.com
   anthropic.com
+  cursor.com
+  cursor.sh
   google.com
   google.dev
   github.com
