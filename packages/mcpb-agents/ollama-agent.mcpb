@@ -2,13 +2,18 @@
   "ollama-agent": {
     "command": "node",
     "args": [
-      "../../local-agents/src/orchestrator.js",
+      "../local-agents/src/mcp-stdio.mjs",
       "--backend",
       "ollama"
     ],
-    "description": "MCP process for Ollama (Old-way adapter via .mcpb config)",
+    "description": "MCP stdio server for Ollama (packages/local-agents, canonical path)",
     "capabilities": {
-      "tools": {}
+      "tools": {
+        "local_agent_health": {},
+        "local_agent_list_models": {},
+        "local_agent_ask_about_code": {},
+        "local_agent_propose_edit": {}
+      }
     }
   }
 }

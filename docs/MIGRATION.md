@@ -3,6 +3,7 @@
 **Status:** Living document — PT is the canonical migration repo from 2026-04-20 forward
 
 > **Execution anchor (2026-05-31):** This file is the **gate ladder** (what exists per milestone).
+> **Gate 2 code plan:** [`docs/plans/2026-05-31-gate2-implementation-plan.md`](plans/2026-05-31-gate2-implementation-plan.md) (#4 stopServer, #6 mcpb, #7 openclaw_config).
 > Sequenced work items, locked decisions **D1–D5**, SSEA rationale, mandatory preflight,
 > Phase G2 order, and code-verified config/agent paths are in the companion doc:
 > **[`docs/2026-05-31-tri-repo-alignment-completion-plan.md`](2026-05-31-tri-repo-alignment-completion-plan.md)**

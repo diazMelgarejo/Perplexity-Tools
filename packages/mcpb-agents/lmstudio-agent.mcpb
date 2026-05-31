@@ -2,13 +2,18 @@
   "lmstudio-agent": {
     "command": "node",
     "args": [
-      "../../local-agents/src/orchestrator.js",
+      "../local-agents/src/mcp-stdio.mjs",
       "--backend",
       "lmstudio"
     ],
-    "description": "MCP process for LM Studio (Old-way adapter via .mcpb config)",
+    "description": "MCP stdio server for LM Studio (packages/local-agents, canonical path)",
     "capabilities": {
-      "tools": {}
+      "tools": {
+        "local_agent_health": {},
+        "local_agent_list_models": {},
+        "local_agent_ask_about_code": {},
+        "local_agent_propose_edit": {}
+      }
     }
   }
 }
