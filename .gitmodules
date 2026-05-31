@@ -7,3 +7,6 @@
 	path = vendor/ecc-tools
 	url = https://github.com/affaan-m/everything-claude-code.git
 	ignore = dirty
+[submodule "vendor/Claude-Desktop-LLM"]
+	path = vendor/Claude-Desktop-LLM
+	url = https://github.com/yayoboy/Claude-Desktop-LLM.git
