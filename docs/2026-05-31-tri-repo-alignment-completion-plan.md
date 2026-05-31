@@ -270,4 +270,5 @@ This is a Gate-3 / v2.0 **orchestration** concern, distinct from Gate-2 runtime 
 |------|--------|
 | 2026-05-31 | Initial plan (variant A — Codex-folded revision) |
 | 2026-05-31 | Locked D1–D5; code-verified D2 agent paths + `apply_runtime_payload` gap; D3 `b540eca1`; reordered G2 (variant B / PR #67) |
-| 2026-05-31 | **Combined A+B:** B's D1–D5 / SSEA / code-verified structure + A's full "single yardstick" goal, detailed resume instructions, and full v2.0 section. One canonical conflict-free plan. |
+| 2026-05-31 | **Combined A+B:** B's D1–D5 / SSEA / code-verified structure + A's full "single yardstick" goal, detailed resume instructions, and full v2.0 section. One canonical conflict-free plan ([`a261d70`](https://github.com/diazMelgarejo/Perpetua-Tools/commit/a261d70e41e1825353654b7f3d9703270a33fa00)). |
+| 2026-05-31 | Companion cross-links: [`MIGRATION.md`](MIGRATION.md) + [`LESSONS.md`](LESSONS.md) enriched to point at this doc (gate ladder vs execution anchor). |

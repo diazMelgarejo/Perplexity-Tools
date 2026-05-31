@@ -1180,18 +1180,34 @@ run once per major update). Now makes `gbrain search "HITL"` work cross-session.
 
 ## 2026-05-31 — Claude (Opus 4.8) — Tri-repo migration audit, dedup, alignment plan
 
+> **Doc trio (use together):**
+> - **Execution + decisions:** [`docs/2026-05-31-tri-repo-alignment-completion-plan.md`](2026-05-31-tri-repo-alignment-completion-plan.md) — canonical combined plan [`a261d70`](https://github.com/diazMelgarejo/Perpetua-Tools/commit/a261d70e41e1825353654b7f3d9703270a33fa00)
+> - **Gate ladder:** [`docs/MIGRATION.md`](MIGRATION.md) — milestone checklists; cross-links completion plan
+> - **Session log:** this file
+
 ### What was done
 - **Migration audit (3 parallel code-explorers):** mapped every AlphaClaw feature capability → PT counterpart. Verdict: overarching goal (PT controls all AlphaClaw+OpenClaw) is **Gate-2 partial**, **8 gaps** open. `lib/mcp`(11 JS tools)+`lib/agents` are **superseded** by `packages/alphaclaw-mcp`(14)+`packages/local-agents`, but retirement is **held until Gate 2 green**.
-- **Master plan written** → [`docs/2026-05-31-tri-repo-alignment-completion-plan.md`](2026-05-31-tri-repo-alignment-completion-plan.md). **Read it first next session.**
+- **Master plan** → [`docs/2026-05-31-tri-repo-alignment-completion-plan.md`](2026-05-31-tri-repo-alignment-completion-plan.md). **Read it first next session.** Combined A+B variant on `main` at [`a261d70`](https://github.com/diazMelgarejo/Perpetua-Tools/commit/a261d70e41e1825353654b7f3d9703270a33fa00).
 - **orchestrator.py LM Studio bug fixed** (`bd6aeda`): `/api/v1/chat` (nonexistent) → `/v1/chat/completions`.
 - **PR #2** merged `-s ours` (records 2026-04-22 salvage, zero regression); **PR #3** retargeted main→feature + merged (ECC bundle, model bumped `gpt-5.4`→`gpt-5.5`).
 
 ### Key learnings
-- **gbrain broke on `prepare:true` against the Supabase pooler.** Fix: `prepare:false` in `~/.gbrain/config.json`; DB URL is in `~/.gbrain/.env` (source it for CLI). CRG registry empty (build per repo).
-- **macOS dup ` 2` files: NOT OneDrive/iCloud** (both audited + cleared). Historical Finder/IDE keep-both, dormant (newest May 28). 31 identical deleted, 209 files/23 dirs quarantined → `~/dup-quarantine-2026-05-31` (all unique content was stale).
+- **gbrain broke on `prepare:true` against the Supabase pooler.** Fix: `prepare:false` in `~/.gbrain/.env` (source it for CLI). CRG registry empty (build per repo).
+- **macOS dup `* 2` and `* 3` files: NOT OneDrive/iCloud** (both audited + cleared). Historical Finder/IDE keep-both, dormant (newest May 28). 31 identical deleted, 209 files/23 dirs quarantined → `~/dup-quarantine-2026-05-31` (all unique content was stale).
 - **Subagent Bash is sandboxed** (git/npm/node denied) — run live-server/build/git in the MAIN session.
+- **Two “agent” registries:** OpenClaw `agents.list` in `openclaw.json` (PT `alphaclaw_bootstrap`) ≠ orama `bin/config/agent_registry.json` (ultrathink stages). See completion plan § Config & agent creation (**D2**).
 
-### Open questions
-- The 8 Gate-2/3 gaps (master plan). The live authenticated 14-tool smoke-test (needs the user's `~/.alphaclaw` SETUP_PASSWORD — never hardcode) gates retiring `lib/mcp`.
+### Resolved decisions (2026-05-31, code-verified — details in completion plan)
+
+| ID | Choice |
+|----|--------|
+| **D1** | Gate 4 → `0.9.9.9`; MCP → `0.9.16.9` |
+| **D2** | Bootstrap + orama `apply_runtime_payload`; gap: `reconcile_gateway` lacks `openclaw_config` |
+| **D3** | AlphaClaw `feature/MacOS-post-install` @ `b540eca1`; `lib/mcp` present on remote |
+| **D4** | `SETUP_PASSWORD` order env → `ALPHACLAW_ROOT/.env` → `~/.alphaclaw/.env` → ask; fail-closed **no** |
+| **D5** | `orchestrator.py` CLI + `fastapi_app` supervisor HTTP |
+
+### Still open (implementation, not policy)
+- Work items #1–#8 in completion plan (`stopServer`, vitest, mcpb paths, live smoke, `lib/mcp` retirement, Gate 3 bridge, version file alignment).
 
 **Cross-repo:** [orama LESSONS](../../orama-system/docs/LESSONS.md) · [AlphaClaw Lessons](../../AlphaClaw/docs/Lessons.MD)
