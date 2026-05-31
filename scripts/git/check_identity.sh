@@ -11,6 +11,21 @@ actual_email_lc="$(printf '%s' "$actual_email" | tr '[:upper:]' '[:lower:]')"
 echo "git user.name=${actual_name:-<unset>}"
 echo "git user.email=${actual_email:-<unset>}"
 
+# This check is scoped to Cursor remote/cloud agent commits only.
+# Non-Cursor commits (human, Codex, Claude CLI) pass through unchecked.
+# Cursor context detected by env vars Cursor sets in its agent subprocess,
+# OR by the committer name/email pattern.
+is_cursor_agent() {
+  [[ -n "${CURSOR_SESSION_ID:-}" || -n "${CURSOR_TRACE_ID:-}" ]] && return 0
+  local name_lc="$(printf '%s' "$actual_name" | tr '[:upper:]' '[:lower:]')"
+  [[ "$name_lc" == *cursor* || "$actual_email_lc" == *@cursor.com || "$actual_email_lc" == *@cursor.sh ]] && return 0
+  return 1
+}
+
+if ! is_cursor_agent; then
+  exit 0
+fi
+
 WELL_KNOWN_AUTHOR_DOMAIN_SUFFIXES=(
   openai.com
   anthropic.com

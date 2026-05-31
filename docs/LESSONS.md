@@ -1175,3 +1175,23 @@ run once per major update). Now makes `gbrain search "HITL"` work cross-session.
 **Pattern:** `assert result == "http://192.168.254.103"` FAILING with `http://192.168.254.108` → the hardware changed, not the code.
 
 **Corollary:** When Cursor/CodeRabbit have created new branches since your last session, `git fetch --all` and READ THOSE BRANCHES before diagnosing anything. They likely already fixed it.
+
+---
+
+## 2026-05-31 — Claude (Opus 4.8) — Tri-repo migration audit, dedup, alignment plan
+
+### What was done
+- **Migration audit (3 parallel code-explorers):** mapped every AlphaClaw feature capability → PT counterpart. Verdict: overarching goal (PT controls all AlphaClaw+OpenClaw) is **Gate-2 partial**, **8 gaps** open. `lib/mcp`(11 JS tools)+`lib/agents` are **superseded** by `packages/alphaclaw-mcp`(14)+`packages/local-agents`, but retirement is **held until Gate 2 green**.
+- **Master plan written** → [`docs/2026-05-31-tri-repo-alignment-completion-plan.md`](2026-05-31-tri-repo-alignment-completion-plan.md). **Read it first next session.**
+- **orchestrator.py LM Studio bug fixed** (`bd6aeda`): `/api/v1/chat` (nonexistent) → `/v1/chat/completions`.
+- **PR #2** merged `-s ours` (records 2026-04-22 salvage, zero regression); **PR #3** retargeted main→feature + merged (ECC bundle, model bumped `gpt-5.4`→`gpt-5.5`).
+
+### Key learnings
+- **gbrain broke on `prepare:true` against the Supabase pooler.** Fix: `prepare:false` in `~/.gbrain/config.json`; DB URL is in `~/.gbrain/.env` (source it for CLI). CRG registry empty (build per repo).
+- **macOS dup ` 2` files: NOT OneDrive/iCloud** (both audited + cleared). Historical Finder/IDE keep-both, dormant (newest May 28). 31 identical deleted, 209 files/23 dirs quarantined → `~/dup-quarantine-2026-05-31` (all unique content was stale).
+- **Subagent Bash is sandboxed** (git/npm/node denied) — run live-server/build/git in the MAIN session.
+
+### Open questions
+- The 8 Gate-2/3 gaps (master plan). The live authenticated 14-tool smoke-test (needs the user's `~/.alphaclaw` SETUP_PASSWORD — never hardcode) gates retiring `lib/mcp`.
+
+**Cross-repo:** [orama LESSONS](../../orama-system/docs/LESSONS.md) · [AlphaClaw Lessons](../../AlphaClaw/docs/Lessons.MD)
