@@ -257,25 +257,33 @@ async def call_perplexity(prompt: str, model: str = "claude-3-5-sonnet-thinking"
 
 
 async def call_lmstudio(prompt: str, endpoint: str = "", model: str = "") -> Optional[str]:
-    """POST to LM Studio /api/v1/chat; extract first message-type content."""
+    """POST to LM Studio's OpenAI-compatible /v1/chat/completions; return the reply content.
+
+    Matches the convention used by packages/local-agents/src/client.js. The previous
+    implementation hit a nonexistent /api/v1/chat with a Responses-API payload shape,
+    so it always errored out.
+    """
     ep = endpoint or (LMS_WIN_ENDPOINTS[0] if LMS_WIN_ENDPOINTS else LMS_MAC_ENDPOINT)
     mdl = model or LMS_WIN_MODEL
     headers: Dict[str, str] = {"Content-Type": "application/json"}
     if LMS_API_TOKEN:
         headers["Authorization"] = f"Bearer {LMS_API_TOKEN}"
-    payload = {"model": mdl, "input": prompt, "context_length": 8192}
+    payload = {
+        "model": mdl,
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 8192,
+    }
     async with aiohttp.ClientSession() as session:
         try:
             async with session.post(
-                f"{ep}/api/v1/chat", json=payload, headers=headers,
+                f"{ep}/v1/chat/completions", json=payload, headers=headers,
                 timeout=aiohttp.ClientTimeout(total=LMS_TIMEOUT),
             ) as resp:
                 data = await resp.json()
-                output = data.get("output", [])
-                for item in output:
-                    if item.get("type") == "message":
-                        return item.get("content")
-                return " ".join(item.get("content", "") for item in output if item.get("content")) or None
+                choices = data.get("choices", [])
+                if choices:
+                    return choices[0].get("message", {}).get("content")
+                return None
         except Exception as e:
             logger.error(f"LM Studio error ({ep}): {e}")
             return None
