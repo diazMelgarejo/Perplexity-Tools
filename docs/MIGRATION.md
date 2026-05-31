@@ -1,7 +1,15 @@
 # Perpetua-Tools — Unified Migration Guide
 
 **Status:** Living document — PT is the canonical migration repo from 2026-04-20 forward
-**Version target:** `0.9.9.8` across all three packages simultaneously
+
+> **Execution anchor (2026-05-31):** This file is the **gate ladder** (what exists per milestone).
+> Sequenced work items, locked decisions **D1–D5**, SSEA rationale, mandatory preflight,
+> Phase G2 order, and code-verified config/agent paths are in the companion doc:
+> **[`docs/2026-05-31-tri-repo-alignment-completion-plan.md`](2026-05-31-tri-repo-alignment-completion-plan.md)**
+> (canonical combined plan: [`a261d70`](https://github.com/diazMelgarejo/Perpetua-Tools/commit/a261d70e41e1825353654b7f3d9703270a33fa00)).
+> **Read the completion plan before closing Gate 2–4 checkboxes below.**
+
+**Version target:** `0.9.9.9` for PT-owned surfaces (**D1** in completion plan); `packages/alphaclaw-mcp` stays `0.9.16.9`
 **Gate 0:** ✅ Complete (2026-04-20)
 **Gate 1:** ✅ Complete (2026-04-20) — adapter HTTP client, alphaclaw_manager.py, thinned start.sh
 **Sources merged:**
@@ -105,6 +113,9 @@ Current state: `lib/mcp/alphaclaw-mcp.js`, `lib/agents/local-agent-client.js`, `
 
 ## Migration Sequence (Milestone Gates)
 
+Gate checklists below are summaries. For **acceptance tests, blockers, and execution order**, see the
+[completion plan § Verified current state & work items](2026-05-31-tri-repo-alignment-completion-plan.md#verified-current-state).
+
 ### Gate 0 — Foundations ✅ IN PROGRESS
 
 - [x] GitHub repos renamed: `Perpetua-Tools`, `orama-system`
@@ -135,6 +146,8 @@ Current state: `lib/mcp/alphaclaw-mcp.js`, `lib/agents/local-agent-client.js`, `
 
 ### Gate 2 — MCP Toolpack + Local Agents Fully Operational
 
+> **Sequence (**EFF**):** completion plan Phase G2 — `stopServer` + package tests **before** AlphaClaw `lib/mcp` retirement (**D3:** `feature/MacOS-post-install` @ `b540eca1`).
+
 - [x] `packages/alphaclaw-mcp/src/index.ts` — **canonical MCP server v0.9.16.9, 14 tools** — Gate 0 JS (11 tools) fully absorbed + deleted; 2 P2 bugs fixed (array redaction, tailLogs bounds). Build: `cd packages/alphaclaw-mcp && npm run build`. Register: `claude mcp add --transport stdio alphaclaw -- node packages/alphaclaw-mcp/build/index.js`
   - Gate 0 JS tools ported (all 11): `alphaclaw_status`, `alphaclaw_read_config`, `alphaclaw_list_providers`, `alphaclaw_tail_logs`, `alphaclaw_check_env`, `alphaclaw_build_ui`, `alphaclaw_run_tests`, `local_agent_health`, `local_agent_list_models`, `local_agent_ask_about_code`, `local_agent_propose_edit`
   - TS-only additions (3): `alphaclaw_health`, `alphaclaw_login`, `alphaclaw_watchdog_logs`
@@ -144,24 +157,25 @@ Current state: `lib/mcp/alphaclaw-mcp.js`, `lib/agents/local-agent-client.js`, `
 - [ ] Gate 2 TypeScript MCP smoke-tested against live AlphaClaw (verify all 14 tools respond)
 - [ ] `packages/local-agents/`: Ollama (127.0.0.1:11435, qwen3.5-local:latest) + LM Studio (Win GPU LAN IP, read from `~/.openclaw/openclaw.json`) integration tests pass on Mac
 - [ ] `packages/mcpb-agents/`: `ollama-agent.mcpb`, `lmstudio-agent.mcpb` scaffolded
-- [ ] PT's `orchestrator.py` wired as idempotent lifecycle entrypoint (old contract requirement)
+- [ ] PT entrypoints documented + `openclaw_config` in runtime payload (**D5=C**, work item #7 in completion plan)
 - [ ] LM Studio multi-model + AlphaClaw role-routing config workflow implemented
 - [ ] `orchestrator/autoresearch_bridge.py` gets staged progress hooks
 - [ ] Xcode integration scripts (`fix-xcode-claude.sh`) moved from AlphaClaw to PT — verified working
-- [ ] `lib/mcp/` and `lib/agents/` removed from AlphaClaw `feature/MacOS-post-install` (after Gate 2 green — separate AlphaClaw branch)
+- [ ] `lib/mcp/` and `lib/agents/` removed from AlphaClaw **`feature/MacOS-post-install`** @ **`b540eca1`** (after Gate 2 green — see completion plan § AlphaClaw retirement)
 
 ### Gate 3 — orama First Flow
 
 - [ ] `bin/agents/orchestrator/orchestrator_logic.py` baseline implemented
-- [ ] orama `openclaw_bridge.py` routes through PT adapter (not direct AlphaClaw calls)
+- [ ] orama `openclaw_bridge.py` routes through PT adapter (not direct OpenClaw gateway from L3 — completion plan § Gate 3)
 - [ ] First E2E flow: `build-verify` — PT triggers `npm run build:ui`, asserts exit 0, orama reports result
 - [ ] OTel emitter wraps AlphaClaw stdout → Tempo traces
 - [ ] All AlphaClaw + PT + orama test suites green
-- [ ] `~/.openclaw/openclaw.json` written from PT-resolved values, passed to orama
+- [ ] `~/.openclaw/openclaw.json` applied via PT payload + orama `apply_runtime_payload` (**D2** — completion plan § Config & agent creation)
 
-### Gate 4 — RC Release 0.9.9.8
+### Gate 4 — RC Release 0.9.9.9
 
-- [ ] All three packages at `0.9.9.8`
+- [ ] PT + orama at `0.9.9.9` (**D1**); align `orchestrator/*` and configs still on `0.9.9.7`/`0.9.9.8`
+- [ ] `packages/alphaclaw-mcp` remains `0.9.16.9`
 - [ ] `npm pack --dry-run` passes for PT and AlphaClaw
 - [ ] E2E suite green: code-review flow, build-verify flow, xcode-sync flow
 - [ ] `/ship` gstack checklist passed
@@ -232,7 +246,8 @@ packages/local-agents/src/client.js           ← RECEIVED from AlphaClaw
 packages/local-agents/src/orchestrator.js     ← RECEIVED from AlphaClaw
 packages/local-agents/tests/client.test.js    ← RECEIVED from AlphaClaw
 docs/adapter-interface-contract.md            ← NEW — living contract
-docs/MIGRATION.md                             ← THIS FILE — canonical migration guide
+docs/MIGRATION.md                             ← THIS FILE — gate ladder (milestones)
+docs/2026-05-31-tri-repo-alignment-completion-plan.md  ← execution anchor (D1–D5, SSEA, order)
 docs/system-design-three-repo-architecture.md ← COPIED from AlphaClaw
 docs/plan-review-migration-plan-3.md          ← COPIED from AlphaClaw
 orchestrator/                                 ← EXISTING Python control plane
@@ -253,6 +268,8 @@ setup_macos.py                                 ← OS patch layer — stays as-i
 
 ## Reference Links
 
+- **Tri-repo execution plan (read first for active work):** [`docs/2026-05-31-tri-repo-alignment-completion-plan.md`](2026-05-31-tri-repo-alignment-completion-plan.md) · canonical commit [`a261d70`](https://github.com/diazMelgarejo/Perpetua-Tools/commit/a261d70e41e1825353654b7f3d9703270a33fa00)
+- Session log (D1–D5 + code verification): [`docs/LESSONS.md` § 2026-05-31](LESSONS.md#2026-05-31--claude-opus-48--tri-repo-migration-audit-dedup-alignment-plan)
 - System design: `docs/system-design-three-repo-architecture.md`
 - Adapter contract: `docs/adapter-interface-contract.md`
 - AlphaClaw HTTP endpoints: `docs/adapter-interface-contract.md §3`
