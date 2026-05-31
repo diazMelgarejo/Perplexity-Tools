@@ -54,6 +54,30 @@ Layering is immutable: **L1 AlphaClaw ← L2 Perpetua-Tools ← L3 orama-system*
 - **Repos / branches:** AlphaClaw `feature/MacOS-post-install` (`5972f7b6`+), Perpetua-Tools `main`, orama-system `main`. All pushed to GitHub (`diazMelgarejo/*`). orama-system local checkout is volatile — re-clone if absent.
 - **Stale LM Studio IP:** discovery self-corrects `config/devices.yml` to the live IP (win `.104:1234`). Don't hardcode; the `.101`/`.108` references are stale.
 
+## v2.0 requirement — multi-agent WRITE orchestration (added 2026-05-31)
+
+The deepest gap surfaced this session: multiple AI agents (Claude Code, Cursor cloud
+agents, Codex) write to the same three repos with **no write-coordination**. Failures
+*this session alone*:
+
+- PT was silently checked out on a Cursor agent's branch (`cursor/critical-bug-investigation-96b5`); a routine docs commit collided with it and a Cursor WIP commit (`fc9f5ee fix(user-input)`) got promoted to `main` while untangling a rejected push.
+- `orama-system` vanished from disk **twice** (not OneDrive/iCloud — likely an agent/IDE op).
+- Earlier: a Cursor agent **rewrote git history** (forcing a full gbrain resync); ~1,100 macOS keep-both dup files accrued from agents/IDEs copying tracked files.
+
+**Root issue:** the migration makes PT the control plane for the *runtime*
+(AlphaClaw/OpenClaw) but there is **no orchestration of agent writes to the repos** —
+no branch-ownership registry, no per-repo/branch locks, no "who is working where" state.
+Runtime control (Gate 1-2) does not extend to the dev swarm.
+
+**v2.0 fix direction (extends "single control plane" to the agent swarm):**
+1. **Enforce worktree-per-agent** — the mechanism exists (orama `scripts/worktree-bootstrap.sh` + `docs/v2/22-worktree-parallel-agents.md`) but isn't *enforced*; no two agents should share a working tree / branch checkout.
+2. **PT-owned branch-ownership + activity registry** — which agent owns which branch; reject commits to a branch another active agent owns.
+3. **Per-repo/branch write locks** with stale-takeover (model: the gbrain sync lock).
+4. **Pre-push gate** refusing to promote another agent's WIP commit to `main` (the `fc9f5ee` incident).
+5. Treat the human + each agent as participants the orchestrator **schedules** — not free-for-all writers.
+
+This is a Gate-3 / v2.0 **orchestration** concern, distinct from Gate-2 runtime control, and arguably the highest-leverage fix for stability.
+
 ## Cross-links
 
 - Gate ladder: [`MIGRATION.md`](MIGRATION.md)
