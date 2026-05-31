@@ -2,6 +2,8 @@
 """Control-plane auth regression tests for Perpetua-Tools."""
 from __future__ import annotations
 
+import collections
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -10,12 +12,16 @@ from orchestrator.control_plane_auth import (
     control_plane_auth_failure,
     redact_runtime_payload,
 )
+import orchestrator.fastapi_app as _fapp
 from orchestrator.fastapi_app import app
 
 
 def test_user_input_next_requires_token_when_enforced(monkeypatch):
     monkeypatch.setenv("ORAMA_INSECURE_DEV", "0")
     monkeypatch.setenv("ORAMA_CONTROL_PLANE_TOKEN", "pt-test-token")
+    # Isolate _USER_INPUT_QUEUE so leaked state from other tests can't cause
+    # the allowed GET to pop a stale entry instead of "steal-me".
+    monkeypatch.setattr(_fapp, "_USER_INPUT_QUEUE", collections.deque(maxlen=50))
 
     with TestClient(app, raise_server_exceptions=False) as client:
         client.post(
