@@ -49,6 +49,37 @@ let _host = DEFAULT_HOST;
 /** PID of the server child process started by startServer() */
 let _serverPid = null;
 
+function defaultPidFile(alphaclawRoot) {
+  const root = alphaclawRoot || ALPHACLAW_ROOT;
+  return (
+    process.env.ALPHACLAW_PID_FILE ||
+    path.join(root, "alphaclaw-server.pid")
+  );
+}
+
+function readPidFile(pidFile) {
+  try {
+    const raw = fs.readFileSync(pidFile, "utf8").trim();
+    const pid = parseInt(raw, 10);
+    return Number.isFinite(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePidFile(pidFile, pid) {
+  fs.mkdirSync(path.dirname(pidFile), { recursive: true });
+  fs.writeFileSync(pidFile, String(pid), "utf8");
+}
+
+function clearPidFile(pidFile) {
+  try {
+    fs.unlinkSync(pidFile);
+  } catch {
+    /* already gone */
+  }
+}
+
 // ─── Configuration ────────────────────────────────────────────────────────────
 
 /**
@@ -504,10 +535,77 @@ async function startServer({ port, alphaclawRoot, logFile } = {}) {
     });
     child.unref(); // allow parent to exit independently
     _serverPid = child.pid;
-    return { ok: true, pid: child.pid, port: p };
+    const pidFile = opts.pidFile || defaultPidFile(root);
+    writePidFile(pidFile, child.pid);
+    return { ok: true, pid: child.pid, port: p, pidFile };
   } catch (e) {
     return { ok: false, error: e.message, port: p };
   }
+}
+
+/**
+ * Stop a detached AlphaClaw server started by startServer().
+ * Uses PID file written at start time; falls back to in-memory _serverPid.
+ *
+ * @param {object} opts
+ * @param {string} opts.alphaclawRoot
+ * @param {string} opts.pidFile
+ * @param {number} opts.signal — default SIGTERM
+ * @param {number} opts.graceMs — wait before SIGKILL (default 5000)
+ */
+async function stopServer({
+  alphaclawRoot,
+  pidFile,
+  signal = "SIGTERM",
+  graceMs = 5000,
+} = {}) {
+  const root = alphaclawRoot || ALPHACLAW_ROOT;
+  const file = pidFile || defaultPidFile(root);
+  let pid = readPidFile(file) || _serverPid;
+
+  if (!pid) {
+    const h = await health();
+    if (h.ok) {
+      return {
+        ok: false,
+        error: "AlphaClaw is running but no PID file — commandeered instance",
+        port: _port,
+      };
+    }
+    return { ok: true, already: true, port: _port };
+  }
+
+  try {
+    process.kill(pid, signal);
+  } catch (e) {
+    if (e.code === "ESRCH") {
+      clearPidFile(file);
+      _serverPid = null;
+      return { ok: true, already: true, port: _port, pid };
+    }
+    return { ok: false, error: e.message, port: _port, pid };
+  }
+
+  const deadline = Date.now() + graceMs;
+  while (Date.now() < deadline) {
+    try {
+      process.kill(pid, 0);
+      await new Promise((r) => setTimeout(r, 200));
+    } catch {
+      clearPidFile(file);
+      _serverPid = null;
+      return { ok: true, stopped: true, port: _port, pid };
+    }
+  }
+
+  try {
+    process.kill(pid, "SIGKILL");
+  } catch {
+    /* process may have exited */
+  }
+  clearPidFile(file);
+  _serverPid = null;
+  return { ok: true, stopped: true, forced: true, port: _port, pid };
 }
 
 /**
@@ -606,6 +704,8 @@ module.exports = {
   // Port discovery + lifecycle
   discoverPort,
   startServer,
+  stopServer,
   waitForReady,
   ensureRunning,
+  defaultPidFile,
 };

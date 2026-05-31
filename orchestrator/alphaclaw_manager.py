@@ -76,6 +76,30 @@ class AlphaClawState:
     commandeered: bool = False
     started: bool = False
     error: str = ""
+    gateway_url: str = ""
+    openclaw_config: dict | None = None
+    role_routing: dict | None = None
+
+
+def _port_from_gateway_url(url: str) -> int:
+    if not url:
+        return 0
+    try:
+        return int(str(url).rsplit(":", 1)[-1].rstrip("/"))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _parse_bootstrap_json(stdout: str) -> dict:
+    """Parse alphaclaw_bootstrap --json stdout; return {} on failure."""
+    text = (stdout or "").strip()
+    if not text:
+        return {}
+    try:
+        data = json.loads(text)
+        return data if isinstance(data, dict) else {}
+    except json.JSONDecodeError:
+        return {}
 
 
 @dataclass
@@ -290,16 +314,31 @@ def bootstrap_alphaclaw(mac_ip: str = "", win_ip: str = "") -> AlphaClawState:
 
     try:
         result = subprocess.run(
-            [sys.executable, str(bootstrap), "--bootstrap"],
-            capture_output=False,   # stream output to caller's terminal
+            [sys.executable, str(bootstrap), "--bootstrap", "--json"],
+            capture_output=True,
             text=True,
             env=env,
             timeout=120,
             cwd=str(SCRIPT_DIR),
             stdin=subprocess.DEVNULL,
         )
+        if result.stderr:
+            print(result.stderr, file=sys.stderr, end="")
         if result.returncode == 0:
-            return _read_alphaclaw_state()
+            payload = _parse_bootstrap_json(result.stdout)
+            state = _read_alphaclaw_state()
+            gateway_url = str(payload.get("gateway_url") or state.gateway_url or "")
+            port = _port_from_gateway_url(gateway_url) or state.port
+            return AlphaClawState(
+                running=bool(payload.get("gateway_ready", state.running)),
+                port=port,
+                commandeered=bool(payload.get("commandeered", state.commandeered)),
+                started=bool(payload.get("gateway_ready", state.started)),
+                error=str(payload.get("error") or state.error or ""),
+                gateway_url=gateway_url,
+                openclaw_config=payload.get("openclaw_config"),
+                role_routing=payload.get("role_routing"),
+            )
         return AlphaClawState(error=f"bootstrap exited {result.returncode}")
     except subprocess.TimeoutExpired:
         return AlphaClawState(error="alphaclaw_bootstrap.py timed out after 120s")

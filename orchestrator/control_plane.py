@@ -58,15 +58,22 @@ async def reconcile_gateway(force: bool = False) -> dict[str, Any]:
 
     state = bootstrap_alphaclaw()
     ok = not bool(state.error)
-    gateway_ready = bool(state.running and state.port)
-    gateway_url = f"http://localhost:{state.port}" if state.port else ""
+    gateway_url = state.gateway_url or (
+        f"http://localhost:{state.port}" if state.port else ""
+    )
+    gateway_ready = bool(state.running and (state.port or gateway_url))
+    role_routing = state.role_routing if isinstance(state.role_routing, dict) else {}
+    openclaw_config = (
+        state.openclaw_config if isinstance(state.openclaw_config, dict) else None
+    )
     return {
         "ok": ok,
         "error": state.error,
         "gateway_ready": gateway_ready,
         "gateway_url": gateway_url,
         "commandeered": bool(state.commandeered),
-        "role_routing": {},
+        "role_routing": role_routing,
+        "openclaw_config": openclaw_config,
         "running": bool(state.running),
         "port": int(state.port or 0),
         "started": bool(state.started),

@@ -95,6 +95,8 @@ def test_bootstrap_runtime_writes_resolved_payload(monkeypatch, tmp_path):
     saved = json.loads(runtime_path.read_text(encoding="utf-8"))
     assert payload["paths"]["runtime_state"] == str(runtime_path.resolve())
     assert saved["gateway"]["gateway_url"] == "http://localhost:18789"
+    assert saved["gateway"]["openclaw_config"] == {"gateway": {"port": 18789}}
+    assert saved["gateway"]["role_routing"]["topology"] == "manager-local_researcher-remote"
     assert saved["routing"]["distributed"] is True
     assert [stage["name"] for stage in saved["stages"]] == [
         "perplexity_credentials",

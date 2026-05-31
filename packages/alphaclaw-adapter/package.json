@@ -4,7 +4,7 @@
   "description": "AlphaClaw HTTP+CLI adapter for Perpetua-Tools (MCP server → packages/alphaclaw-mcp)",
   "main": "src/index.js",
   "scripts": {
-    "test": "node --experimental-vm-modules ../../node_modules/.bin/vitest run"
+    "test": "node --test tests/stop-server.test.cjs"
   },
   "keywords": ["alphaclaw", "adapter"],
   "license": "MIT",
