@@ -2,12 +2,14 @@
 """User-input queue behaviour (portal / researcher polling)."""
 from __future__ import annotations
 
+import collections
 import importlib.util
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
+import orchestrator.fastapi_app as _fapp
 from orchestrator.fastapi_app import app
 
 _LAUNCH_RESEARCHERS = Path(__file__).resolve().parents[1] / "scripts" / "launch_researchers.py"
@@ -29,6 +31,11 @@ def test_extract_user_input_message_legacy_nested_entry():
 
 def test_user_input_next_returns_task_string_not_nested_entry(monkeypatch):
     monkeypatch.setenv("ORAMA_INSECURE_DEV", "1")
+    # Isolate from state leaked by prior tests: _USER_INPUT_QUEUE is module-level.
+    # test_user_input_requires_token_when_enforced queues "hello" (auth test) and
+    # never drains it. appendleft/pop FIFO means "hello" gets popped before
+    # "portal-task". monkeypatch auto-restores after the test.
+    monkeypatch.setattr(_fapp, "_USER_INPUT_QUEUE", collections.deque(maxlen=50))
 
     with TestClient(app, raise_server_exceptions=False) as client:
         client.post("/user-input", json={"message": "portal-task", "source": "portal"})
