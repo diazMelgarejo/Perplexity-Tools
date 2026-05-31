@@ -192,6 +192,101 @@ info_install_manual() {
   echo ""
 }
 
+# probe_required_endpoints performs startup health checks for required model backends before installing extensions.
+# On macOS: verifies Ollama at localhost:11434 and checks for qwen3.5:9b-nvfp4 and bge-m3 models.
+# On Windows: checks LM_STUDIO_WIN_ENDPOINTS environment variable and verifies connectivity.
+# Exits with status 1 if probes fail. Skips probes on Linux, in CI, or when --skip-desktop is set.
+probe_required_endpoints() {
+  if [[ "$SKIP_DESKTOP" -eq 1 ]]; then
+    return 0
+  fi
+  if [[ "$(uname -s)" == "Linux" ]]; then
+    return 0
+  fi
+  if [[ "${CI:-}" == "true" ]]; then
+    return 0
+  fi
+
+  local os="$(uname -s)"
+
+  if [[ "$os" == "Darwin" ]]; then
+    # macOS: probe Ollama
+    log "Probing Ollama at http://localhost:11434 (Mac hard requirement)..."
+    if ! command -v curl &>/dev/null; then
+      err "curl required for Ollama health probe"
+      exit 1
+    fi
+
+    # Check Ollama service
+    if ! curl -sf http://localhost:11434/api/tags &>/dev/null; then
+      err "Ollama not reachable at http://localhost:11434"
+      err "Mac requires Ollama with qwen3.5:9b-nvfp4 and bge-m3 models"
+      err "Install: https://ollama.ai/ then run: ollama pull qwen3.5:9b-nvfp4 && ollama pull bge-m3"
+      exit 1
+    fi
+
+    # Check for required models
+    local models_json
+    models_json=$(curl -sf http://localhost:11434/api/tags 2>/dev/null || echo '{"models":[]}')
+    local has_qwen=false
+    local has_bge=false
+
+    if echo "$models_json" | grep -q "qwen3.5:9b-nvfp4"; then
+      has_qwen=true
+    fi
+    if echo "$models_json" | grep -q "bge-m3"; then
+      has_bge=true
+    fi
+
+    if [[ "$has_qwen" == false ]] || [[ "$has_bge" == false ]]; then
+      err "Required Ollama models missing:"
+      [[ "$has_qwen" == false ]] && err "  - qwen3.5:9b-nvfp4"
+      [[ "$has_bge" == false ]] && err "  - bge-m3"
+      err "Install with: ollama pull qwen3.5:9b-nvfp4 && ollama pull bge-m3"
+      exit 1
+    fi
+
+    ok "Ollama healthy with required models (qwen3.5:9b-nvfp4, bge-m3)"
+
+  elif [[ "$os" == "MINGW"* ]] || [[ "$os" == "MSYS"* ]] || [[ "$os" == "CYGWIN"* ]]; then
+    # Windows: probe LM Studio
+    log "Probing LM Studio endpoints (Windows hard requirement)..."
+    if [[ -z "${LM_STUDIO_WIN_ENDPOINTS:-}" ]]; then
+      err "LM_STUDIO_WIN_ENDPOINTS not set"
+      err "Windows requires LM Studio endpoints to be configured"
+      err "Set in .env: LM_STUDIO_WIN_ENDPOINTS=http://192.168.x.x:1234,..."
+      exit 1
+    fi
+
+    if ! command -v curl &>/dev/null; then
+      err "curl required for LM Studio health probe"
+      exit 1
+    fi
+
+    # Split comma-separated endpoints and probe each
+    local IFS=','
+    local endpoints=($LM_STUDIO_WIN_ENDPOINTS)
+    local any_reachable=false
+
+    for endpoint in "${endpoints[@]}"; do
+      # Trim whitespace
+      endpoint=$(echo "$endpoint" | xargs)
+      if curl -sf --max-time 5 "$endpoint/v1/models" &>/dev/null; then
+        ok "LM Studio reachable at $endpoint"
+        any_reachable=true
+      else
+        warn "LM Studio unreachable at $endpoint"
+      fi
+    done
+
+    if [[ "$any_reachable" == false ]]; then
+      err "No LM Studio endpoints reachable from LM_STUDIO_WIN_ENDPOINTS"
+      err "Ensure LM Studio is running and configured in .env"
+      exit 1
+    fi
+  fi
+}
+
 echo ""
 echo "  ╔═══════════════════════════════════════════════════╗"
 echo "  ║  Perpetua-Tools — Claude Desktop LLM (MCPB)    ║"
@@ -204,6 +299,7 @@ build_extensions
 stage_bundles
 write_stack_env_hint
 validate_bundles
+probe_required_endpoints
 open_in_claude_desktop
 
 ok "Claude-Desktop-LLM MCPB install complete"
