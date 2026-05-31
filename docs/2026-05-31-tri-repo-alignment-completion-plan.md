@@ -21,28 +21,34 @@ Layering is immutable: **L1 AlphaClaw ← L2 Perpetua-Tools ← L3 orama-system*
 | Gate 1 — AlphaClaw adapter | ✅ | `packages/alphaclaw-adapter` (25 methods) + `orchestrator/alphaclaw_manager.py` |
 | Gate 2 — MCP toolpack + local agents | 🟡 **partial** | `packages/alphaclaw-mcp` (14 tools) canonical; gaps below |
 | Gate 3 — orama first flow | ❌ | `openclaw_bridge.py` still calls AlphaClaw directly |
-| Gate 4 — RC 0.9.9.8 | ❌ | not started |
+| Gate 4 — RC (version-align) | ❌ | target **0.9.9.9** for all PT-owned (MCP stays `0.9.16.9`); see §Codex review |
 
-- **PT → AlphaClaw control: COMPLETE** (lifecycle + config + watchdog + logs). Caveat: no `stopServer()` (PID-only, in-memory).
-- **PT → OpenClaw: via AlphaClaw by design** (AlphaClaw owns the gateway child process; PT drives it through `/api/gateway/*` + writes `openclaw.json`).
-- **`lib/mcp` (11 JS tools) + `lib/agents` are SUPERSEDED** by `packages/alphaclaw-mcp` (14 tools ⊇ 11) + `packages/local-agents`. **Not yet retired** — held until Gate 2 is green.
+- **PT → AlphaClaw control: COMPLETE** (lifecycle + config + watchdog + logs). Caveat: no `stopServer()` (PID-only, in-memory) — "can start" ≠ control-plane completeness.
+- **PT → OpenClaw: via AlphaClaw by design.** PT manages OpenClaw configuration **only through AlphaClaw's public HTTP/MCP surface** (`/api/gateway/*`, `/api/models/config`, MCP redacted read-config) — *not* by writing `openclaw.json` directly (that would violate the L1/L2 boundary; AlphaClaw owns `openclaw.json`). Any direct-write recovery path must be separately documented as emergency-only.
+- **`lib/mcp` (11 JS tools) + `lib/agents` are SUPERSEDED** by `packages/alphaclaw-mcp` (14 tools ⊇ 11) + `packages/local-agents`. **Not yet retired** — held until Gate 2 is green **and `stopServer()` exists**.
 
 ## The 8 gaps blocking the goal (work items)
 
-1. **Gate 2 verification** — run the live authenticated 14-tool smoke-test; confirm `packages/local-agents` Vitest passes.
-2. **Retire `lib/mcp` + `lib/agents`** in AlphaClaw (after #1): `git rm` the 3 JS files + orphan test `tests/server/local-agent-client.test.js`, repoint/remove the `.mcp.json` entry. See the steelman doc.
-3. **orama `openclaw_bridge.py` → route through PT adapter** (Gate 3), not direct AlphaClaw calls.
-4. **Add PT `stopServer()`** + a PID file so AlphaClaw can be stopped cross-process.
+1. **`packages/local-agents` test path is broken (HARD BLOCKER).** Its script references `../../node_modules/.bin/vitest`, but there's no root `node_modules`/`package.json` — the gate is unrunnable as written. Fix: give the package its own `vitest` devDep + lock, OR add a root workspace `package.json`, OR document the exact install command. *(Codex verified the failure.)*
+2. **`packages/mcpb-agents` is scaffold-only (HARD BLOCKER, not polish).** `.mcpb` files have empty `tools` objects and `args` point to `../../local-agents/src/orchestrator.js`, which from `packages/mcpb-agents/` resolves to `PT/local-agents` (outside `packages/`) — **wrong path**. Make them real, executable agent defs with correct `packages/local-agents` paths.
+3. **Add PT `stopServer()`** (PID-file-backed) + cross-process start/commandeer/stop tests. **Must precede retirement** — "can start" without "can stop" is not control-plane completeness.
+4. **Clarify top-level `orchestrator.py` (re-scope).** It already imports `bootstrap_runtime_sync`/`load_runtime_payload` from `orchestrator.control_plane` and has `bootstrap`/`state`/`serve` subcommands (serve = "legacy FastAPI app"). Real work item is **deciding** the canonical boundaries — split into: CLI contract · API contract (`fastapi_app`) · setup-wizard contract · runtime-payload contract. Not "wire from scratch." *(LM Studio `/v1/chat/completions` bug already fixed: `bd6aeda`.)*
 5. **Confirm `agent_launcher.py`** exists in PT root (a `probe_backends()` dependency) or harden the fallback.
-6. **Scaffold `packages/mcpb-agents/`** (`ollama-agent.mcpb`, `lmstudio-agent.mcpb`) into real, executable agent defs.
-7. **Wire top-level `orchestrator.py`** as the idempotent lifecycle entrypoint (`setup_wizard.py` + `fastapi_app.py`). *(LM Studio endpoint bug already fixed 2026-05-31: `bd6aeda`.)*
-8. **Gate 3 E2E `build-verify` flow** + **Gate 4** RC packaging at `0.9.9.8`.
+6. **Gate 2 verification (live):** authenticated 14-tool smoke-test with the non-logging secret flow (see auth precedence below); confirm `packages/local-agents` tests pass (after #1); capture a proof artifact.
+7. **Retire `lib/mcp` + `lib/agents`** in AlphaClaw (after #3+#6): `git rm` the 3 JS files + orphan test `tests/server/local-agent-client.test.js`, repoint/remove the `.mcp.json` entry, re-run AlphaClaw + PT-MCP tests + smoke-test. See the steelman doc + the destructive-step spec below.
+8. **Gate 3:** orama `openclaw_bridge.py` → route through PT adapter (not direct); E2E `build-verify` flow; OTel emitter. **Gate 4:** version-align (below), `npm pack --dry-run`, `/ship`, publish.
 
-## Sequenced roadmap
+## Sequenced roadmap (revised per Codex review)
 
-- **Phase G2 (close Gate 2):** #5 → #6 → #7 → #1 (live smoke-test) → #2 (retire lib/mcp) → #4 (stopServer).
-- **Phase G3:** #3 (bridge reroute) → #8a (build-verify E2E) → OTel emitter.
-- **Phase G4:** version-align all three to `0.9.9.8`, `npm pack --dry-run`, `/ship`, publish.
+1. **Preflight every repo** (before any destructive step) — `git status --short --branch`, `git remote -v`, `git rev-parse --short HEAD`; refuse if all three repos aren't present; paste results into session notes.
+2. **PT-local reproducibility:** fix `#1` (local-agents test path) + `#2` (mcpb-agents paths/tools).
+3. **Lifecycle completeness:** `#3` (PID-file `stopServer()` + start/commandeer/stop tests).
+4. **Clarify entrypoints:** `#4` (CLI vs API vs wizard vs runtime-payload contracts).
+5. **Gate-2 local tests:** `packages/alphaclaw-mcp` build/test (✅ passes per Codex) + `packages/local-agents` tests.
+6. **Live authenticated smoke-test:** `#6` (non-logging secret; proof artifact; all 14 tools).
+7. **Retire AlphaClaw legacy MCP/agents:** `#7` (exact file list; re-run AlphaClaw + PT-MCP + smoke after).
+8. **Gate 3:** orama bridge reroute + E2E build-verify.
+9. **Version/release:** resolve target → align files → `npm pack --dry-run` / package checks.
 
 ## Resume instructions for the next agent (READ FIRST)
 
@@ -77,6 +83,31 @@ Runtime control (Gate 1-2) does not extend to the dev swarm.
 5. Treat the human + each agent as participants the orchestrator **schedules** — not free-for-all writers.
 
 This is a Gate-3 / v2.0 **orchestration** concern, distinct from Gate-2 runtime control, and arguably the highest-leverage fix for stability.
+
+## Codex review — accepted revisions (2026-05-31)
+
+Reviewed by Codex (relentless): [`../../v1/2026-05-31-tri-repo-alignment-plan-code-review.md`](../../v1/2026-05-31-tri-repo-alignment-plan-code-review.md). Accepted points folded into the gaps/roadmap above; the rest:
+
+**Version coherence — the target was incoherent.** PT is internally split (per Codex):
+
+| Component | Current | Target |
+|-----------|---------|--------|
+| Python package | 0.9.9.9 | **0.9.9.9** |
+| `orchestrator.__version__` | 0.9.9.7 | **0.9.9.9** |
+| `fastapi_app` version | 0.9.9.7 | **0.9.9.9** |
+| adapter package | 0.9.9.9 | **0.9.9.9** |
+| local-agents package | 0.9.9.9 | **0.9.9.9** |
+| configs | 0.9.9.8 | **0.9.9.9** |
+| `alphaclaw-mcp` | 0.9.16.9 | **0.9.16.9** (tracks AlphaClaw feature lineage) |
+
+→ Gate 4 aligns all PT-owned to **0.9.9.9**; MCP stays `0.9.16.9`. (Re-verify the actuals at Gate 4.)
+
+**Smoke-test auth precedence** (replaces "ask the user" — wrong for a non-interactive agent env):
+1. `SETUP_PASSWORD` from environment → 2. AlphaClaw `.env` (per adapter contract) → 3. explicit human-provided secure secret mechanism → 4. **fail closed**. The smoke-test MUST assert **no secret is printed**.
+
+**Destructive-step spec** (required for every cross-repo destructive op, after the preflight): repo path · branch · remote · exact SHA · files to remove · exact tests before/after · rollback command · proof-artifact path.
+
+**Steelman (review concurred):** L1/L2/L3 architecture sound · retirement-caution correct · single-yardstick is a good acceptance criterion · **v2.0 write-coordination = highest-value insight** · no-hardcode-stale-IP correct.
 
 ## Cross-links
 
