@@ -1193,7 +1193,7 @@ run once per major update). Now makes `gbrain search "HITL"` work cross-session.
 
 ### Key learnings
 - **gbrain broke on `prepare:true` against the Supabase pooler.** Fix: `prepare:false` in `~/.gbrain/.env` (source it for CLI). CRG registry empty (build per repo).
-- **macOS dup `2` files: NOT OneDrive/iCloud** (both audited + cleared). Historical Finder/IDE keep-both, dormant (newest May 28). 31 identical deleted, 209 files/23 dirs quarantined → `~/dup-quarantine-2026-05-31` (all unique content was stale).
+- **macOS dup `* 2` and `* 3` files: NOT OneDrive/iCloud** (both audited + cleared). Historical Finder/IDE keep-both, dormant (newest May 28). 31 identical deleted, 209 files/23 dirs quarantined → `~/dup-quarantine-2026-05-31` (all unique content was stale).
 - **Subagent Bash is sandboxed** (git/npm/node denied) — run live-server/build/git in the MAIN session.
 - **Two “agent” registries:** OpenClaw `agents.list` in `openclaw.json` (PT `alphaclaw_bootstrap`) ≠ orama `bin/config/agent_registry.json` (ultrathink stages). See completion plan § Config & agent creation (**D2**).
 
