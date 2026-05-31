@@ -506,7 +506,7 @@ async function discoverPort(
  * @param {string} opts.logFile        — if set, append stdout+stderr here
  * @returns {Promise<{ok: boolean, already?: boolean, pid?: number, port: number, error?: string}>}
  */
-async function startServer({ port, alphaclawRoot, logFile } = {}) {
+async function startServer({ port, alphaclawRoot, logFile, pidFile } = {}) {
   const p = port || _port;
   const root = alphaclawRoot || ALPHACLAW_ROOT;
 
@@ -535,9 +535,9 @@ async function startServer({ port, alphaclawRoot, logFile } = {}) {
     });
     child.unref(); // allow parent to exit independently
     _serverPid = child.pid;
-    const pidFile = opts.pidFile || defaultPidFile(root);
-    writePidFile(pidFile, child.pid);
-    return { ok: true, pid: child.pid, port: p, pidFile };
+    const pidFilePath = pidFile || defaultPidFile(root);
+    writePidFile(pidFilePath, child.pid);
+    return { ok: true, pid: child.pid, port: p, pidFile: pidFilePath };
   } catch (e) {
     return { ok: false, error: e.message, port: p };
   }

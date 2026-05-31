@@ -11,6 +11,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 
+const cp = require("child_process");
 const adapter = require("../src/index.js");
 
 describe("stopServer PID file", () => {
@@ -50,6 +51,35 @@ describe("stopServer PID file", () => {
       assert.equal(result.already, true);
     } finally {
       adapter.health = origHealth;
+    }
+  });
+
+  it("startServer writes pid file after spawn (no ReferenceError on opts)", async () => {
+    const adapterPath = require.resolve("../src/index.js");
+    const origSpawn = cp.spawn;
+    cp.spawn = () => ({
+      pid: 424242,
+      unref() {},
+    });
+    delete require.cache[adapterPath];
+    const fresh = require("../src/index.js");
+    const origHealth = fresh.health;
+    fresh.health = async () => ({ ok: false });
+    try {
+      const result = await fresh.startServer({
+        pidFile,
+        alphaclawRoot: tmpDir,
+        port: 39999,
+      });
+      assert.equal(result.ok, true);
+      assert.equal(result.pid, 424242);
+      assert.equal(result.pidFile, pidFile);
+      assert.equal(fs.readFileSync(pidFile, "utf8"), "424242");
+    } finally {
+      fresh.health = origHealth;
+      cp.spawn = origSpawn;
+      delete require.cache[adapterPath];
+      require("../src/index.js");
     }
   });
 
