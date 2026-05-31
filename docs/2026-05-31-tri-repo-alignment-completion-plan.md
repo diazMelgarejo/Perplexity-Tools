@@ -28,7 +28,7 @@ current `stopServer` gap — Work item #4) does **not** satisfy this goal.
 | ID | Decision | Code basis |
 |----|----------|------------|
 | **D1** | Gate 4 / PT-owned surfaces → **`0.9.9.9`**. Keep **`packages/alphaclaw-mcp` at `0.9.16.9`**. | `pyproject.toml`, `packages/*/package.json` already `0.9.9.9`; bump `orchestrator/*` + configs from `0.9.9.7`/`0.9.9.8`. |
-| **D2** | **A + B** — see § Config & agent creation (below). | `alphaclaw_bootstrap.py` writes config + workspaces; orama `apply_runtime_payload()` applies PT payload; **`reconcile_gateway()` attaches `openclaw_config`** (2026-05-31, [`gate2 implementation plan`](plans/2026-05-31-gate2-implementation-plan.md)). |
+| **D2** | **A + B** — see § Config & agent creation (below). | `alphaclaw_bootstrap.py` writes config + workspaces; orama `apply_runtime_payload()` applies PT payload; **gap:** `reconcile_gateway()` does not yet attach `openclaw_config`. |
 | **D3** | AlphaClaw **`feature/MacOS-post-install`** @ **`b540eca1`**. `lib/mcp` + `lib/agents` **present** on that branch. | `git ls-tree origin/feature/MacOS-post-install`: `lib/mcp/alphaclaw-mcp.js`, `lib/agents/*.js`. |
 | **D4** | Smoke auth precedence **`1 > 2 > 3 > 4`**. **Fail-closed: NO** (bootstrap may use default password when non-interactive). | `alphaclaw_bootstrap._gather_alphaclaw_credentials()`; orama inline fallback refuses without `SETUP_PASSWORD` unless `ORAMA_INSECURE_DEV=1`. |
 | **D5** | **C — Both entrypoints**, documented roles. | `orchestrator.py` CLI + legacy app; `orchestrator/fastapi_app.py` supervisor HTTP (tests target this). |
@@ -52,11 +52,11 @@ current `stopServer` gap — Work item #4) does **not** satisfy this goal.
 |------|--------|------|
 | Gate 0 | ✅ | repos renamed, PT `packages/` scaffold, code copied |
 | Gate 1 | ✅ | `packages/alphaclaw-adapter` (25 methods) + `orchestrator/alphaclaw_manager.py` |
-| Gate 2 | 🟡 | Blockers: live smoke; verify `stopServer`/vitest/mcpb on target hardware |
+| Gate 2 | 🟡 | Blockers: `stopServer`, tests, mcpb paths, smoke |
 | Gate 3 | ❌ | `openclaw_bridge.py` bypasses PT (direct OpenClaw gateway) |
 | Gate 4 | ❌ | Align to **D1** (`0.9.9.9`) |
 
-- **Lifecycle (`ACC`):** `stopServer()` + PID file added in adapter (2026-05-31); verify on live AlphaClaw before retiring `lib/mcp`.
+- **Stop gap (`ACC`):** `packages/alphaclaw-adapter` has `startServer` / `ensureRunning` only; no `stopServer`; PID in-memory on detached child.
 - **Retirement held (`SAF`):** AlphaClaw `lib/mcp` (11 JS tools) + `lib/agents` are **superseded** by PT `packages/alphaclaw-mcp` (14 tools ⊇ 11) + `packages/local-agents`, but live only on the **D3** branch and stay until Gate 2 is green.
 
 ---
@@ -89,11 +89,11 @@ When PT has already resolved a runtime payload in memory, orama may apply it **w
 
 **CLI bootstrap** still **delegates** to PT when `PT_HOME/alphaclaw_bootstrap.py` exists (`bootstrap_openclaw()` subprocess).
 
-### Runtime payload (`ACC` — wired 2026-05-31)
+### Implementation gap (`ACC` — Gate 2/3 follow-up)
 
-`reconcile_gateway()` now includes `openclaw_config` and `role_routing` from `alphaclaw_bootstrap --json`. Saved in `.state/runtime_payload.json` for orama `apply_runtime_payload()`.
+`orchestrator/control_plane.reconcile_gateway()` returns gateway status but **does not** include `openclaw_config` today (unlike the mocked shape in `tests/test_control_plane.py`). `alphaclaw_manager.RuntimePayload` also omits `openclaw_config`.
 
-**Remaining:** `alphaclaw_manager.RuntimePayload` (`--resolve` CLI) still omits `openclaw_config` — follow-up if `start.sh` needs it without full bootstrap payload.
+**Required for D2-B in production:** after `alphaclaw_bootstrap` / reconcile, attach `openclaw_config` to `.state/runtime_payload.json` → orama calls `apply_runtime_payload` OR orama only uses PT subprocess bootstrap (already delegated).
 
 **orama inline fallback** (no PT): writes its own simplified `openclaw.json` — **SEC:** refuses start without `SETUP_PASSWORD` unless `ORAMA_INSECURE_DEV=1` (stricter than PT bootstrap default-password path per **D4**).
 
@@ -107,7 +107,7 @@ When PT has already resolved a runtime payload in memory, orama may apply it **w
 |---------|------------------|------|
 | **CLI lifecycle** | `python orchestrator.py bootstrap \| state \| serve` | `bootstrap` → `control_plane.bootstrap_runtime_sync()`; `serve` → legacy FastAPI in `orchestrator.py` (port 8000). |
 | **Supervisor HTTP** | `orchestrator.fastapi_app:app` | Jobs, routing, redacted runtime read — **primary test target** (`tests/test_*` import `fastapi_app`). |
-| **orama delegation** | `python -m orchestrator.alphaclaw_manager --resolve` | Emits `RuntimePayload` JSON for `start.sh` (probe/env; config via `orchestrator.py bootstrap` payload). |
+| **orama delegation** | `python -m orchestrator.alphaclaw_manager --resolve` | Emits `RuntimePayload` JSON for `start.sh` (no `openclaw_config` yet — see gap above). |
 | **Setup wizard** | `setup_wizard.py` | Interactive hardware/env; not the canonical HTTP server. |
 
 ---
@@ -137,10 +137,10 @@ git ls-tree -r HEAD --name-only | rg '^lib/(mcp|agents)/'
 | 1 | Live smoke + `local-agents` tests | **SEC:** auth order D4; no password in logs |
 | 2 | Retire `lib/mcp` on **D3** branch only | **SAF** after #4 and #1 |
 | 3 | Gate 3: orama → PT adapter (not direct `OPENCLAW_GATEWAY`) | **ACC** |
-| 4 | `stopServer()` + PID file + tests — **done** ([gate2 plan](plans/2026-05-31-gate2-implementation-plan.md)) | **SAF** before #2 |
-| 5 | Verify `agent_launcher.py` probe (exists at PT root) | **ACC** |
-| 6 | `mcpb-agents` → `mcp-stdio.mjs` + Vitest — **done** | **ACC** |
-| 7 | Entrypoints (**D5**) + `openclaw_config` in payload — **done** | **EFF** |
+| 4 | `stopServer()` + PID file + tests | **SAF** before #2 |
+| 5 | ✅ **Verified 2026-06-01:** `agent_launcher.py` present at PT root (38631B) | **ACC** |
+| 6 | Fix `mcpb-agents` — **confirmed broken 2026-06-01:** both `.mcpb` use `../../local-agents/src/orchestrator.js` (resolves to `PT/local-agents`, outside `packages/`) → `../local-agents/src/orchestrator.js`; empty `tools` too *(code pending)* | **ACC** |
+| 7 | Document entrypoints (D5 — done in this doc); wire `openclaw_config` in payload | **EFF** |
 | 8 | Gate 3 E2E + Gate 4 @ **0.9.9.9** | **ACC** |
 
 ---
@@ -148,7 +148,7 @@ git ls-tree -r HEAD --name-only | rg '^lib/(mcp|agents)/'
 ## Phase G2 sequence (`EFF`)
 
 ```text
-Preflight → #5 → #1 (live smoke + hardware verify #4/#6) → #2 (retire lib/mcp)
+Preflight → #5 → #6 → #7 (payload openclaw_config wire-up) → #4 (stopServer) → #1 (live smoke) → #2 (retire lib/mcp)
 ```
 
 > Sequencing rule (`EFF`/`SAF`): `stopServer()` (#4) precedes retiring `lib/mcp` (#2) — never delete the old MCP before PT owns cross-process stop/restart.
@@ -218,6 +218,14 @@ Follow the steelman on that branch **after Gate 2 green**. `main` in cloud clone
 
 ## Resume instructions for the next agent (READ FIRST)
 
+> **⚠ Active blocker (2026-06-01) — concurrent-write collisions:** PT `main` was repeatedly
+> yanked to a **detached HEAD by a concurrent Cursor agent** this session; local commits
+> collided and one plan-revision commit was lost, then recovered via reflog. **Every** plan/doc
+> edit this session was landed via the **GitHub Contents API** to bypass the local working tree.
+> **Before any PT code work** (Gate-2 items #4–#7), pause/coordinate the concurrent agent and
+> confirm a stable checkout — `git -C Perpetua-Tools status -sb` must show a branch, not
+> `HEAD (no branch)`. This is the § v2.0 multi-agent write-coordination gap, live.
+
 - Decisions **D1–D5** are locked above; do not re-debate without human override.
 - Run § Mandatory preflight every session before destructive work. Live smoke runs in the **main session** (subagent Bash is sandboxed — can't run git/npm/node).
 - **gbrain CLI:** `set -a; source ~/.gbrain/.env; set +a` before any `gbrain` call (DB URL lives in env, not config.json). Config has `prepare:false` (Supabase pooler fix). The `mcp__gbrain__*` MCP tools may be disconnected — reconnect via `/mcp` or use the CLI. See [orama gstack/SKILL.md §GBrain Ops](../../orama-system/bin/orama-system/gstack/SKILL.md).
@@ -258,10 +266,10 @@ This is a Gate-3 / v2.0 **orchestration** concern, distinct from Gate-2 runtime 
 ## Cross-links
 
 - [`MIGRATION.md`](MIGRATION.md) — gate ladder (Gate 4 = `0.9.9.9`)
-- [`docs/plans/2026-05-31-gate2-implementation-plan.md`](plans/2026-05-31-gate2-implementation-plan.md) — Gate 2 code execution (#4, #6, #7)
 - [`adapter-interface-contract.md`](adapter-interface-contract.md) — AlphaClaw HTTP surface
 - Retirement: [`../../AlphaClaw/docs/gate2-lib-mcp-deletion-steelman.md`](../../AlphaClaw/docs/gate2-lib-mcp-deletion-steelman.md) on **D3** branch
 - Session lessons: [PT](LESSONS.md) · [orama](../../orama-system/docs/LESSONS.md) · [AlphaClaw](../../AlphaClaw/docs/Lessons.MD)
+- orama v2 migration plan (bidirectional cross-link): <https://github.com/diazMelgarejo/orama-system/blob/main/docs/v2/18-master-alignment-v2-migration-plan.md>
 
 ---
 
@@ -271,6 +279,5 @@ This is a Gate-3 / v2.0 **orchestration** concern, distinct from Gate-2 runtime 
 |------|--------|
 | 2026-05-31 | Initial plan (variant A — Codex-folded revision) |
 | 2026-05-31 | Locked D1–D5; code-verified D2 agent paths + `apply_runtime_payload` gap; D3 `b540eca1`; reordered G2 (variant B / PR #67) |
-| 2026-05-31 | **Combined A+B:** B's D1–D5 / SSEA / code-verified structure + A's full "single yardstick" goal, detailed resume instructions, and full v2.0 section. One canonical conflict-free plan ([`a261d70`](https://github.com/diazMelgarejo/Perpetua-Tools/commit/a261d70e41e1825353654b7f3d9703270a33fa00)). |
-| 2026-05-31 | Companion cross-links: [`MIGRATION.md`](MIGRATION.md) + [`LESSONS.md`](LESSONS.md) enriched to point at this doc (gate ladder vs execution anchor). |
-| 2026-05-31 | Gate 2 implementation: #4 `stopServer`, #6 mcpb/`mcp-stdio.mjs`, #7 `openclaw_config` — [`plans/2026-05-31-gate2-implementation-plan.md`](plans/2026-05-31-gate2-implementation-plan.md) |
+| 2026-05-31 | **Combined A+B:** B's D1–D5 / SSEA / code-verified structure + A's full "single yardstick" goal, detailed resume instructions, and full v2.0 section. One canonical conflict-free plan. |
+| 2026-06-01 | Gate-2 verifications: `agent_launcher.py` confirmed present (#5 ✅); `mcpb-agents` paths confirmed broken (#6, code pending). Added concurrent-write blocker callout + bidirectional orama cross-link. |
