@@ -116,6 +116,7 @@ As-built: [`../orama-system/docs/v2/`](../orama-system/docs/v2/)
 - Dated branches: `yyyy-mm-dd-NNN-brief-summary`
 - Lockstep commits: changes to shared schema fields, exception classes, or policy keys commit to **both repos in the same session**
 - Never commit `.env`, `.env.local`
+- **No workstation paths in tracked files** (docs included): use `$OPENCLAW_ROOT`/`~`/`$REPO_ROOT`, never literal `/Users/<name>/…` or the `…/claude/OpenClaw` tree. CI enforces via `scripts/review/repo_hygiene.py` (same checker as orama) — run it before committing docs with shell commands. Rule: [`../orama-system/docs/wiki/08-git-hygiene-and-branching.md`](../orama-system/docs/wiki/08-git-hygiene-and-branching.md#portable-paths-in-tracked-files-no-workstation-leaks)
 
 ---
 
