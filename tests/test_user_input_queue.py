@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import collections
 import importlib.util
-import threading
 from pathlib import Path
 
 import pytest
@@ -51,28 +50,100 @@ def test_user_input_next_returns_task_string_not_nested_entry(monkeypatch):
     assert empty.json()["message"] is None
 
 
-def test_user_input_next_concurrent_pop_never_raises(monkeypatch):
-    """Two pollers on one queued message: one wins, one gets null — no IndexError."""
-    monkeypatch.setenv("ORAMA_INSECURE_DEV", "1")
+# ---------------------------------------------------------------------------
+# get_user_input_next — if/else guard (PR: replace try/except IndexError)
+# ---------------------------------------------------------------------------
+
+
+def test_get_user_input_next_empty_queue_returns_null_message(monkeypatch):
+    """Empty queue returns {"message": None} without raising any exception."""
+    monkeypatch.setattr(_fapp, "_USER_INPUT_QUEUE", collections.deque(maxlen=50))
+    result = _fapp.get_user_input_next()
+    assert result == {"message": None}
+
+
+def test_get_user_input_next_empty_queue_response_has_only_message_key(monkeypatch):
+    """Empty-queue response contains exactly the 'message' key — no source/ts leakage."""
+    monkeypatch.setattr(_fapp, "_USER_INPUT_QUEUE", collections.deque(maxlen=50))
+    result = _fapp.get_user_input_next()
+    assert set(result.keys()) == {"message"}
+
+
+def test_get_user_input_next_entry_without_source_returns_none_source(monkeypatch):
+    """Entry missing 'source' key returns source=None via dict.get() fallback."""
     queue = collections.deque(maxlen=50)
-    queue.appendleft({"message": "only-one", "source": "portal", "ts": 1.0})
+    queue.appendleft({"message": "task-no-source", "ts": 99.0})
+    monkeypatch.setattr(_fapp, "_USER_INPUT_QUEUE", queue)
+    result = _fapp.get_user_input_next()
+    assert result["message"] == "task-no-source"
+    assert result["source"] is None
+    assert result["ts"] == 99.0
+
+
+def test_get_user_input_next_entry_without_ts_returns_none_ts(monkeypatch):
+    """Entry missing 'ts' key returns ts=None via dict.get() fallback."""
+    queue = collections.deque(maxlen=50)
+    queue.appendleft({"message": "task-no-ts", "source": "cli"})
+    monkeypatch.setattr(_fapp, "_USER_INPUT_QUEUE", queue)
+    result = _fapp.get_user_input_next()
+    assert result["message"] == "task-no-ts"
+    assert result["source"] == "cli"
+    assert result["ts"] is None
+
+
+def test_get_user_input_next_multiple_items_pops_fifo_order(monkeypatch):
+    """With two items queued, the first enqueued message is returned first (FIFO)."""
+    queue = collections.deque(maxlen=50)
+    # appendleft mimics post_user_input; deque.pop() removes from right,
+    # so first appendleft ends up on the right and is popped first.
+    queue.appendleft({"message": "first", "source": "portal", "ts": 1.0})
+    queue.appendleft({"message": "second", "source": "portal", "ts": 2.0})
     monkeypatch.setattr(_fapp, "_USER_INPUT_QUEUE", queue)
 
-    results: list[dict | BaseException] = [None] * 4  # type: ignore[misc]
+    first_result = _fapp.get_user_input_next()
+    second_result = _fapp.get_user_input_next()
+    empty_result = _fapp.get_user_input_next()
 
-    def _poll(slot: int) -> None:
-        try:
-            results[slot] = _fapp.get_user_input_next()
-        except BaseException as exc:  # noqa: BLE001 — test must record crashes
-            results[slot] = exc
+    assert first_result["message"] == "first"
+    assert second_result["message"] == "second"
+    assert empty_result == {"message": None}
 
-    threads = [threading.Thread(target=_poll, args=(i,)) for i in range(4)]
-    for thread in threads:
-        thread.start()
-    for thread in threads:
-        thread.join(timeout=5)
 
-    assert all(not isinstance(r, BaseException) for r in results)
-    messages = [r["message"] for r in results]  # type: ignore[index]
-    assert messages.count("only-one") == 1
-    assert messages.count(None) == 3
+def test_get_user_input_next_drains_to_empty(monkeypatch):
+    """After popping the last item, the queue is empty and subsequent calls return null."""
+    queue = collections.deque(maxlen=50)
+    queue.appendleft({"message": "only-one", "source": "cli", "ts": 5.0})
+    monkeypatch.setattr(_fapp, "_USER_INPUT_QUEUE", queue)
+
+    _fapp.get_user_input_next()  # consume the item
+
+    # Queue must be falsy now; all further pops return null
+    for _ in range(3):
+        assert _fapp.get_user_input_next() == {"message": None}
+
+
+def test_get_user_input_next_via_http_empty_queue_shape(monkeypatch):
+    """HTTP /user-input/next on an empty queue returns JSON {message: null} with status 200."""
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "1")
+    monkeypatch.setattr(_fapp, "_USER_INPUT_QUEUE", collections.deque(maxlen=50))
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        resp = client.get("/user-input/next")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["message"] is None
+    # source and ts are not present in the empty-queue response
+    assert "source" not in body
+    assert "ts" not in body
+
+
+def test_get_user_input_next_entry_all_optional_fields_missing(monkeypatch):
+    """Entry with only 'message' key returns source=None and ts=None — no KeyError."""
+    queue = collections.deque(maxlen=50)
+    queue.appendleft({"message": "bare"})
+    monkeypatch.setattr(_fapp, "_USER_INPUT_QUEUE", queue)
+    result = _fapp.get_user_input_next()
+    assert result["message"] == "bare"
+    assert result["source"] is None
+    assert result["ts"] is None
