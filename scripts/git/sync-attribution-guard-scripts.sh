@@ -21,7 +21,10 @@ for rel in \
   commit-clean.sh \
   apply-attribution-guard-all-repos.sh \
   sync-attribution-guard-scripts.sh \
-  sync-banned-patterns-to-repo.sh; do
+  sync-banned-patterns-to-repo.sh \
+  banned_attribution_lib.sh \
+  audit_attribution.sh \
+  scan-tracked-banned-tokens.sh; do
   [[ -f "$SCRIPT_DIR/$rel" ]] || continue
   install -m 0755 "$SCRIPT_DIR/$rel" "$target/scripts/git/$rel"
 done

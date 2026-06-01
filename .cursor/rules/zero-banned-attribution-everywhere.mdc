@@ -1,0 +1,17 @@
+---
+description: Banned identities must not appear in code, commits, authors, or messages — ever on GitHub
+alwaysApply: true
+---
+
+# Zero tolerance (four layers)
+
+Forbidden identities are listed only in `.cursor/private/banned-attribution-patterns` (gitignored).
+
+They must not appear in:
+
+1. **Tracked code or docs** — CI runs `bash scripts/git/scan-tracked-banned-tokens.sh`
+2. **Commit author or committer** — `check_identity.sh` + `audit_attribution.sh`
+3. **Commit message body** (including `Co-authored-by`) — strip hook + `check_commit_message.sh` + `commit-clean.sh`
+4. **GitHub at all** — `pre-push` audit; if leaked, run `expunge-all-workspace-repos.sh` and force-push every branch
+
+Re-adding after an expunge forces another destructive `main` rewrite. Do not document forbidden tokens in the repo to "remember" them — read `.cursor/private/agent-lesson-git-attribution.md` only.
