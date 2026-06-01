@@ -81,7 +81,7 @@ ensure_mcpb_cli() {
   fi
   log "Installing @anthropic-ai/mcpb to $PT_ROOT/.npm-global ..."
   mkdir -p "$PT_ROOT/.npm-global"
-  npm install --prefix "$PT_ROOT/.npm-global" @anthropic-ai/mcpb
+  npm install -g --prefix "$PT_ROOT/.npm-global" @anthropic-ai/mcpb
   if [[ -x "$local_bin/mcpb" ]]; then
     MCPB_CMD=("$local_bin/mcpb")
     ok "mcpb CLI (local prefix)"

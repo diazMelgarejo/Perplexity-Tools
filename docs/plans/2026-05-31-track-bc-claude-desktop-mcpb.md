@@ -24,7 +24,7 @@
 cd /path/to/Perpetua-Tools
 bash install.sh --skip-desktop
 file packages/mcpb-agents/built/ollama-agent.mcpb   # Zip archive
-.nvm/... or .npm-global/bin/mcpb info packages/mcpb-agents/built/ollama-agent.mcpb
+$(npm bin -g)/mcpb info packages/mcpb-agents/built/ollama-agent.mcpb
 unzip -l packages/mcpb-agents/built/ollama-agent.mcpb | rg manifest.json
 ```
 

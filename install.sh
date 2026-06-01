@@ -8,7 +8,7 @@
 # Usage:
 #   bash install.sh                    # submodule + build MCPB + stage bundles
 #   bash install.sh --open             # also open .mcpb on macOS (Claude Desktop UI)
-#   bash install.sh --skip-mcpb          # skip Desktop LLM (submodule init only)
+#   bash install.sh --skip-mcpb        # skip Desktop LLM (submodule init only)
 #   bash install.sh --help
 # =============================================================================
 
@@ -22,7 +22,7 @@ for arg in "$@"; do
   case "$arg" in
     --skip-mcpb) SKIP_MCPB=1 ;;
     --help|-h)
-      echo "Usage: install.sh [--open] [--skip-mcpb] [--skip-desktop]"
+      echo "Usage: install.sh [--open] [--skip-mcpb] [--help]"
       echo "  Default: init vendor/Claude-Desktop-LLM and build MCPB bundles."
       exit 0
       ;;
@@ -34,7 +34,10 @@ echo ""
 echo "Perpetua-Tools install"
 echo "──────────────────────"
 
-git -C "$SCRIPT_DIR" submodule update --init --recursive vendor/Claude-Desktop-LLM 2>/dev/null || true
+if ! git -C "$SCRIPT_DIR" submodule update --init --recursive vendor/Claude-Desktop-LLM; then
+  echo "Failed to init submodule vendor/Claude-Desktop-LLM" >&2
+  exit 1
+fi
 
 if [[ "$SKIP_MCPB" -eq 0 ]]; then
   bash "$SCRIPT_DIR/scripts/install-claude-desktop-llm.sh" "${EXTRA_ARGS[@]}"
