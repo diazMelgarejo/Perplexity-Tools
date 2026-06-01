@@ -1,4 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
-exec "$ROOT/scripts/git/check_commit_message.sh" "$1"
+MSG="${1:?commit message file required}"
+
+"$ROOT/scripts/git/ensure_hooks_installed.sh"
+
+# Strip Cursor-injected trailers before policy validation.
+if [[ -x "$ROOT/scripts/git/hooks/commit-msg.strip-coauthor" ]]; then
+  "$ROOT/scripts/git/hooks/commit-msg.strip-coauthor" "$MSG"
+fi
+
+exec "$ROOT/scripts/git/check_commit_message.sh" "$MSG"

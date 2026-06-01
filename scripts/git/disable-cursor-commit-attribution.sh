@@ -26,9 +26,8 @@ if [[ -f "$coauthor_hook" ]]; then
   echo "disabled: $coauthor_hook"
 fi
 
-# 2) Restore repo-local hooks and install stripper (bypasses redirected hookspath).
-install -m 0755 "$SCRIPT_DIR/hooks/commit-msg.strip-coauthor" "$hooks_dir/commit-msg"
-git -C "$repo" config --local core.hookspath "$hooks_dir"
+# 2) Keep mandatory hooks on .githooks (strip runs inside .githooks/commit-msg).
+git -C "$repo" config --local core.hooksPath .githooks
 
 # 3) Prefer approved cyre identity when unset locally.
 if [[ -z "$(git -C "$repo" config --local user.name 2>/dev/null || true)" ]]; then

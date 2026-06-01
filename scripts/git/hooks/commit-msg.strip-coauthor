@@ -5,6 +5,19 @@ set -euo pipefail
 msg_file="${1:?commit message file required}"
 [[ -f "$msg_file" ]] || exit 0
 
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+LIB="${ROOT}/scripts/git/banned_attribution_lib.sh"
+if [[ -f "$LIB" ]]; then
+  # shellcheck source=banned_attribution_lib.sh
+  source "$LIB"
+  if banned_patterns_ready "$ROOT"; then
+    while IFS= read -r token; do
+      token_esc="$(printf '%s' "$token" | sed 's/[.[\*^$()+?{|]/\\&/g')"
+      sed -i "/${token_esc}/Id" "$msg_file" 2>/dev/null || true
+    done < <(list_banned_pattern_tokens "$ROOT")
+  fi
+fi
+
 sed -i \
   -e '/^Co-authored-by:.*cursoragent@cursor\.com/Id' \
   -e '/^Co-authored-by:.*@bettermind\.ph/Id' \
@@ -12,6 +25,5 @@ sed -i \
   -e '/^Made-with:.*[Cc]ursor/Id' \
   "$msg_file"
 
-# Trim trailing blank lines.
 sed -i -e :a -e '/^\n*$/{$d;N;ba' -e '}' "$msg_file"
 exit 0

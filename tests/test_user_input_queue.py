@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import collections
 import importlib.util
+import threading
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -11,6 +13,37 @@ from fastapi.testclient import TestClient
 
 import orchestrator.fastapi_app as _fapp
 from orchestrator.fastapi_app import app
+
+_POLL_JOIN_TIMEOUT_S = 5.0
+
+
+def _run_barrier_pollers(
+    count: int,
+    poll: Callable[[int], None],
+    *,
+    join_timeout_s: float = _POLL_JOIN_TIMEOUT_S,
+) -> None:
+    """Run ``count`` pollers concurrently after a threading.Barrier start gate."""
+    start_gate = threading.Barrier(count)
+    completed = [False] * count
+
+    def _worker(slot: int) -> None:
+        try:
+            start_gate.wait()
+            poll(slot)
+        finally:
+            completed[slot] = True
+
+    threads = [threading.Thread(target=_worker, args=(i,)) for i in range(count)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=join_timeout_s)
+        assert not thread.is_alive(), (
+            f"poller thread did not finish within {join_timeout_s}s"
+        )
+    assert all(completed), "one or more pollers did not run to completion"
+
 
 _LAUNCH_RESEARCHERS = Path(__file__).resolve().parents[1] / "scripts" / "launch_researchers.py"
 _spec = importlib.util.spec_from_file_location("launch_researchers", _LAUNCH_RESEARCHERS)
@@ -51,7 +84,16 @@ def test_user_input_next_returns_task_string_not_nested_entry(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# get_user_input_next — if/else guard (PR: replace try/except IndexError)
+# get_user_input_next — harmonized empty-queue + concurrent-poll guards
+#
+# Production code keeps BOTH:
+#   • ``if not _USER_INPUT_QUEUE`` (fast empty path, legacy response shape)
+#   • ``try/except IndexError`` on pop (concurrent pollers after the check)
+#
+# Tests in this module are additive layers (do not replace one another):
+#   • CodeRabbit #85 — empty-queue shape, optional fields, FIFO, HTTP contract
+#   • harmonize — concurrent poll regression
+#   • CodeRabbit docstrings PR — fast-path vs IndexError path, response-shape contract
 # ---------------------------------------------------------------------------
 
 
@@ -147,3 +189,200 @@ def test_get_user_input_next_entry_all_optional_fields_missing(monkeypatch):
     assert result["message"] == "bare"
     assert result["source"] is None
     assert result["ts"] is None
+
+
+# ---------------------------------------------------------------------------
+# Concurrent polls — IndexError guard (additive to the if-not-queue guard above)
+# ---------------------------------------------------------------------------
+
+
+def test_user_input_next_concurrent_pop_never_raises(monkeypatch):
+    """Four simultaneous pollers on one message: one wins, three get null — no 500."""
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "1")
+    queue = collections.deque(maxlen=50)
+    queue.appendleft({"message": "only-one", "source": "portal", "ts": 1.0})
+    monkeypatch.setattr(_fapp, "_USER_INPUT_QUEUE", queue)
+
+    results: list[dict | BaseException] = [None] * 4  # type: ignore[misc]
+
+    def _poll(slot: int) -> None:
+        try:
+            results[slot] = _fapp.get_user_input_next()
+        except BaseException as exc:  # noqa: BLE001 — test must record crashes
+            results[slot] = exc
+
+    _run_barrier_pollers(4, _poll)
+
+    assert all(not isinstance(r, BaseException) for r in results)
+    messages = [r["message"] for r in results]  # type: ignore[index]
+    assert messages.count("only-one") == 1
+    assert messages.count(None) == 3
+
+
+# ---------------------------------------------------------------------------
+# Response shape contract — full entry must expose exactly {message, source, ts}
+# ---------------------------------------------------------------------------
+
+
+def test_get_user_input_next_full_entry_has_exactly_three_keys(monkeypatch):
+    """Successful pop returns exactly the keys: message, source, ts — no extras."""
+    queue = collections.deque(maxlen=50)
+    queue.appendleft({"message": "shaped", "source": "cli", "ts": 42.0})
+    monkeypatch.setattr(_fapp, "_USER_INPUT_QUEUE", queue)
+    result = _fapp.get_user_input_next()
+    assert set(result.keys()) == {"message", "source", "ts"}
+
+
+def test_get_user_input_next_preserves_exact_values(monkeypatch):
+    """source and ts values pass through without mutation."""
+    queue = collections.deque(maxlen=50)
+    queue.appendleft({"message": "exact", "source": "portal", "ts": 1_700_000_000.5})
+    monkeypatch.setattr(_fapp, "_USER_INPUT_QUEUE", queue)
+    result = _fapp.get_user_input_next()
+    assert result["message"] == "exact"
+    assert result["source"] == "portal"
+    assert result["ts"] == pytest.approx(1_700_000_000.5)
+
+
+# ---------------------------------------------------------------------------
+# Fast-path guard: ``if not _USER_INPUT_QUEUE`` fires before pop is attempted
+# ---------------------------------------------------------------------------
+
+
+def test_get_user_input_next_empty_deque_is_falsy():
+    """Sanity: an empty collections.deque() is falsy — the fast-path guard relies on this."""
+    assert not collections.deque()
+    assert not collections.deque(maxlen=50)
+
+
+def test_get_user_input_next_non_empty_deque_is_truthy():
+    """Non-empty deque is truthy — fast-path guard must NOT short-circuit when items exist."""
+    q = collections.deque(maxlen=50)
+    q.appendleft({"message": "x"})
+    assert q  # truthy → guard does not fire → pop proceeds
+
+
+def test_get_user_input_next_fast_path_bypasses_pop_on_empty(monkeypatch):
+    """Empty queue returns null via the if-not guard, never reaching pop()."""
+
+    class _PoppingForbidden(collections.deque):
+        def pop(self):
+            raise AssertionError("pop() must not be called on an empty queue")
+
+    monkeypatch.setattr(_fapp, "_USER_INPUT_QUEUE", _PoppingForbidden(maxlen=50))
+    result = _fapp.get_user_input_next()
+    assert result == {"message": None}
+
+
+# ---------------------------------------------------------------------------
+# IndexError fallback path — race after the emptiness check
+# ---------------------------------------------------------------------------
+
+
+def test_get_user_input_next_indexerror_on_pop_returns_null_not_500(monkeypatch):
+    """If pop() raises IndexError after the emptiness check passes, return null — no crash."""
+
+    class _AlwaysNonEmptyButPopFails(collections.deque):
+        def __bool__(self):
+            return True  # trick the ``if not`` guard into passing
+
+        def pop(self):
+            raise IndexError("simulated concurrent drain")
+
+    monkeypatch.setattr(_fapp, "_USER_INPUT_QUEUE", _AlwaysNonEmptyButPopFails(maxlen=50))
+    result = _fapp.get_user_input_next()
+    assert result == {"message": None}
+
+
+def test_get_user_input_next_indexerror_path_response_shape(monkeypatch):
+    """IndexError fallback also returns exactly {message: None} — same contract as empty."""
+
+    class _FakeTruthyEmptyDeque(collections.deque):
+        def __bool__(self):
+            return True
+
+        def pop(self):
+            raise IndexError
+
+    monkeypatch.setattr(_fapp, "_USER_INPUT_QUEUE", _FakeTruthyEmptyDeque(maxlen=50))
+    result = _fapp.get_user_input_next()
+    assert set(result.keys()) == {"message"}
+    assert result["message"] is None
+
+
+# ---------------------------------------------------------------------------
+# Concurrent polls — more threads than messages
+# ---------------------------------------------------------------------------
+
+
+def test_user_input_next_concurrent_eight_threads_two_messages(monkeypatch):
+    """8 threads compete for 2 messages: exactly 2 win, 6 get null — no exceptions."""
+    queue = collections.deque(maxlen=50)
+    queue.appendleft({"message": "msg-a", "source": "portal", "ts": 1.0})
+    queue.appendleft({"message": "msg-b", "source": "cli", "ts": 2.0})
+    monkeypatch.setattr(_fapp, "_USER_INPUT_QUEUE", queue)
+
+    results: list[dict | BaseException] = [None] * 8  # type: ignore[misc]
+
+    def _poll(slot: int) -> None:
+        try:
+            results[slot] = _fapp.get_user_input_next()
+        except BaseException as exc:  # noqa: BLE001
+            results[slot] = exc
+
+    _run_barrier_pollers(8, _poll)
+
+    assert all(not isinstance(r, BaseException) for r in results)
+    messages = [r["message"] for r in results]  # type: ignore[index]
+    assert messages.count(None) == 6
+    assert sum(1 for m in messages if m is not None) == 2
+    assert set(m for m in messages if m is not None) == {"msg-a", "msg-b"}
+
+
+def test_user_input_next_concurrent_equal_threads_and_messages(monkeypatch):
+    """N threads compete for exactly N messages: all N threads get a non-null message."""
+    n = 5
+    queue = collections.deque(maxlen=50)
+    for i in range(n):
+        queue.appendleft({"message": f"item-{i}", "source": "portal", "ts": float(i)})
+    monkeypatch.setattr(_fapp, "_USER_INPUT_QUEUE", queue)
+
+    results: list[dict | BaseException] = [None] * n  # type: ignore[misc]
+
+    def _poll(slot: int) -> None:
+        try:
+            results[slot] = _fapp.get_user_input_next()
+        except BaseException as exc:  # noqa: BLE001
+            results[slot] = exc
+
+    _run_barrier_pollers(n, _poll)
+
+    assert all(not isinstance(r, BaseException) for r in results)
+    messages = [r["message"] for r in results]  # type: ignore[index]
+    assert all(m is not None for m in messages)
+    assert len(set(messages)) == n  # each thread got a distinct message
+
+
+# ---------------------------------------------------------------------------
+# Regression: queue emptied after pop, not before — single-pass drain
+# ---------------------------------------------------------------------------
+
+
+def test_get_user_input_next_queue_is_empty_after_single_item_consumed(monkeypatch):
+    """After popping the sole entry, the underlying deque is empty (len == 0)."""
+    queue = collections.deque(maxlen=50)
+    queue.appendleft({"message": "last", "source": "cli", "ts": 7.0})
+    monkeypatch.setattr(_fapp, "_USER_INPUT_QUEUE", queue)
+
+    _fapp.get_user_input_next()  # consumes the item
+
+    assert len(_fapp._USER_INPUT_QUEUE) == 0
+    assert not _fapp._USER_INPUT_QUEUE  # falsy — fast-path guard will fire next time
+
+
+def test_get_user_input_next_repeated_empty_polls_never_raise(monkeypatch):
+    """Repeated polls on an empty queue always return null — no error on any call."""
+    monkeypatch.setattr(_fapp, "_USER_INPUT_QUEUE", collections.deque(maxlen=50))
+    for _ in range(10):
+        result = _fapp.get_user_input_next()
+        assert result == {"message": None}

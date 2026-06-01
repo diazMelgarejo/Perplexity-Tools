@@ -7,7 +7,43 @@ on:
     branches: [main]
 
 jobs:
+  git-hygiene:
+    name: Git hygiene (mandatory hooks + attribution)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure approved git identity
+        run: |
+          git config user.name "cyre"
+          git config user.email "Lawrence@cyre.me"
+
+      - name: Install mandatory repo hooks
+        run: bash scripts/git/install-local-hooks.sh
+
+      - name: Write gitignored banned-attribution patterns
+        run: bash scripts/cursor/write-cursor-private-attribution.sh
+
+      - name: Scan tracked files for banned tokens
+        run: bash scripts/git/scan-tracked-banned-tokens.sh
+
+      - name: Verify git guards
+        run: bash scripts/git/verify-git-guards.sh
+
+      - name: Repo hygiene gate
+        run: python3 scripts/review/repo_hygiene.py .
+
+      - name: Audit branch commit attribution (PR commits)
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin "${{ github.base_ref }}:${{ github.base_ref }}" || true
+          RANGE="origin/${{ github.base_ref }}..HEAD"
+          GIT_AUDIT_RANGE="$RANGE" GIT_AUDIT_STRICT=1 bash scripts/git/audit_attribution.sh
+
   lint-and-test:
+    needs: [git-hygiene]
     runs-on: ubuntu-latest
     strategy:
       matrix:

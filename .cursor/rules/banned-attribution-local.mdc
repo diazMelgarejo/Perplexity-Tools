@@ -1,0 +1,15 @@
+---
+description: Load gitignored banned-attribution list before any git commit in this repo
+alwaysApply: true
+---
+
+# Banned attribution (local reference only)
+
+Before `git commit` or `git push` in Perpetua-Tools:
+
+1. Read **`.cursor/private/banned-attribution-local.md`** and **`.cursor/private/banned-attribution-patterns`** (gitignored — not on GitHub).
+2. If missing, run: `bash scripts/cursor/install-user-git-environment.sh`
+3. **Never** copy banned tokens into tracked files (`docs/LESSONS.md`, `CLAUDE.md`, `AGENTS.md`, instincts, or commit messages).
+4. Approved **primary author** only: `cyre` + owner emails, or `Codex <codex@openai.com>`.
+
+Public policy (no banned-token examples): `../orama-system/docs/wiki/08-git-hygiene-and-branching.md`

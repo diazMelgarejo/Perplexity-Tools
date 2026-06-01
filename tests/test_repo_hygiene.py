@@ -256,6 +256,13 @@ def test_forbidden_identity_exception_is_exempt(tmp_path):
 
 # ---------------------------------------------------------------------------
 # CLAUDE.md — portable-paths rule (§ 6 Git Hygiene, lockstep w/ orama)
+#
+# Additive coverage (does not replace scripts/review/repo_hygiene.py checks):
+#   a) CLAUDE.md is NOT in PERSONAL_PATH_EXCEPTIONS — navigation doc stays scanned
+#   b) The live CLAUDE.md on main passes scan_personal_paths (portable tokens only)
+#   c) Synthetic CLAUDE.md fixtures prove /Users/<real>/ and /home/<user>/ leaks
+#      are still blocked — enforcement is independent of how § 6 prose is worded
+# Canonical rule: ../orama-system/docs/wiki/08-git-hygiene-and-branching.md
 # ---------------------------------------------------------------------------
 
 def test_claude_md_is_not_in_personal_path_exceptions():
@@ -281,8 +288,8 @@ def test_claude_md_passes_personal_path_scan():
 def test_claude_md_with_workstation_path_is_blocked(tmp_path):
     """scan_personal_paths blocks a CLAUDE.md that leaks a real developer path.
 
-    Regression guard: the enforcement must hold even though the documentation
-    bullet explaining the rule was removed from CLAUDE.md in this PR.
+    Regression guard: hygiene enforcement on CLAUDE.md is unchanged regardless of
+    how § 6 documents the rule (bullet text may evolve; the scanner does not).
     """
     repo_hygiene = load_repo_hygiene()
     claude_md = tmp_path / "CLAUDE.md"
