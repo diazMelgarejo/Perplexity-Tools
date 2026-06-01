@@ -423,9 +423,11 @@ describe("startServer — boundary and regression cases", () => {
     delete require.cache[adapterPath];
     const fresh = require("../src/index.js");
     fresh.health = async () => ({ ok: false });
+    // Use tmpDir as alphaclawRoot so defaultPidFile() writes within the cleaned-up tmpDir.
+    fresh.configure({ host: "127.0.0.1", port: 39992 });
     try {
-      // {} passes as the opts object but provides no pidFile/port/root.
-      const result = await fresh.startServer({});
+      // Pass alphaclawRoot to constrain default pidFile to tmpDir (prevents residue outside test dir).
+      const result = await fresh.startServer({ alphaclawRoot: tmpDir });
       // Should not throw; result must at minimum have ok and port.
       assert.ok("ok" in result, "result must have ok");
       assert.ok("port" in result, "result must have port");
