@@ -1,33 +1,55 @@
-# mcpb-agents
+# mcpb-agents — Claude Desktop extensions (upstream MCPB)
 
-Process-per-model MCP definitions (Claude Desktop / MCPB-style JSON configs).
+Real **MCP Bundle** (`.mcpb`) artifacts from the first-class git submodule
+[`vendor/Claude-Desktop-LLM`](../../vendor/Claude-Desktop-LLM) ([yayoboy/Claude-Desktop-LLM](https://github.com/yayoboy/Claude-Desktop-LLM)).
 
-## Canonical entry
+We do **not** ship JSON “knockoff” configs here anymore. Bundles are ZIP archives with
+`manifest.json` (MCPB v0.3), built by upstream `scripts/build-extensions.sh` and
+`@anthropic-ai/mcpb pack`.
 
-From this directory, both bundles launch:
-
-```text
-../local-agents/src/mcp-stdio.mjs --backend ollama|lmstudio
-```
-
-Not `../../local-agents` (that incorrectly resolves outside `packages/`).
-
-## Bundles
-
-| File | Backend |
-|------|---------|
-| `ollama-agent.mcpb` | Ollama @ `127.0.0.1:11435` (env override via `OLLAMA_BASE_URL`) |
-| `lmstudio-agent.mcpb` | LM Studio (`LMSTUDIO_BASE_URL`) |
-
-## Install / test
+## Build and stage
 
 ```bash
-cd ../local-agents && npm install && npm test
-node ../local-agents/src/mcp-stdio.mjs --backend ollama   # stdio MCP — use with MCP client
+# From Perpetua-Tools repo root (default in install.sh):
+bash install.sh
+
+# Or only the Desktop LLM step:
+bash scripts/install-claude-desktop-llm.sh
 ```
 
-Implementation plan: [`docs/plans/2026-05-31-gate2-implementation-plan.md`](../../docs/plans/2026-05-31-gate2-implementation-plan.md)
+Output: `packages/mcpb-agents/built/`
 
-Parent: [`docs/2026-05-31-tri-repo-alignment-completion-plan.md`](../../docs/2026-05-31-tri-repo-alignment-completion-plan.md)
+| File | Upstream extension |
+|------|-------------------|
+| `ollama-agent.mcpb` | Ollama tools (`ollama_query`, `ollama_chat`, …) |
+| `lmstudio-agent.mcpb` | LM Studio tools (`lmstudio_query`, …) |
 
-Reference: https://github.com/yayoboy/Claude-Desktop-LLM · https://github.com/anthropics/mcpb
+## Install in Claude Desktop
+
+1. Build (above).
+2. Claude Desktop → **Settings → Extensions → Advanced → Install Extension…**
+3. Select each `.mcpb` under `built/`.
+
+On macOS: `bash scripts/install-claude-desktop-llm.sh --open` opens the bundles in Claude Desktop.
+
+Configure **server URL**, **default model**, and **timeout** in the extension UI (`user_config` in manifest) — same as upstream.
+
+## Stack integration (PT glue, not AlphaClaw)
+
+| Surface | Role |
+|---------|------|
+| **Claude Desktop** | These `.mcpb` bundles (upstream behavior, no AlphaClaw dependency) |
+| **Claude Code** | `packages/alphaclaw-mcp` (14 tools, stdio MCP) |
+| **PT orchestrator** | `packages/local-agents` for routing/tests; optional env hints in `built/stack-env.example` |
+
+AlphaClaw is not required to build or run these extensions.
+
+## Submodule
+
+```bash
+git submodule update --init vendor/Claude-Desktop-LLM
+```
+
+Pin updates intentionally: bump submodule commit + rebuild MCPB when upstream releases.
+
+References: [Anthropic MCPB](https://github.com/anthropics/mcpb) · [Claude Desktop extensions](https://www.anthropic.com/engineering/desktop-extensions)

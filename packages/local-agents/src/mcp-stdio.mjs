@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Stdio MCP server — single-backend local agent (Ollama or LM Studio).
- * Used by packages/mcpb-agents/*.mcpb (process-per-model pattern).
+ * Claude Code / dev stdio MCP (not Claude Desktop — Desktop uses vendor/Claude-Desktop-LLM MCPB).
  *
  * Usage:
  *   node packages/local-agents/src/mcp-stdio.mjs --backend ollama
