@@ -217,17 +217,15 @@ probe_required_endpoints() {
       exit 1
     fi
 
-    # Check Ollama service
-    if ! curl -sf http://localhost:11434/api/tags &>/dev/null; then
-      err "Ollama not reachable at http://localhost:11434"
+    # Single call: check reachability and fetch model list with a 5-second timeout.
+    local models_json
+    models_json=$(curl -sf --max-time 5 http://localhost:11434/api/tags 2>/dev/null)
+    if [[ -z "$models_json" ]]; then
+      err "Ollama not reachable at http://localhost:11434 (timeout or not running)"
       err "Mac requires Ollama with qwen3.5:9b-nvfp4 and bge-m3 models"
       err "Install: https://ollama.ai/ then run: ollama pull qwen3.5:9b-nvfp4 && ollama pull bge-m3"
       exit 1
     fi
-
-    # Check for required models
-    local models_json
-    models_json=$(curl -sf http://localhost:11434/api/tags 2>/dev/null || echo '{"models":[]}')
     local has_qwen=false
     local has_bge=false
 
