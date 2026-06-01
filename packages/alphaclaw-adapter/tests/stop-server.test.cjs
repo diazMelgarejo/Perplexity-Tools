@@ -91,7 +91,9 @@ describe("stopServer PID file", () => {
     cp.spawn = () => ({ pid: 777888, unref() {} });
     delete require.cache[adapterPath];
     const fresh = require("../src/index.js");
-    fresh.health = async () => ({ ok: false });
+    // Set module-internal _port to 39997 so health() probes an unoccupied port
+    // (returns {ok:false} naturally, without needing to stub exports.health).
+    fresh.configure({ host: "127.0.0.1", port: 39997 });
 
     // Point the default pid file to a temp path via env
     const defaultPath = path.join(tmpDir, "alphaclaw-server.pid");

@@ -9,6 +9,7 @@
 #   bash install.sh                    # submodule + build MCPB + stage bundles
 #   bash install.sh --open             # also open .mcpb on macOS (Claude Desktop UI)
 #   bash install.sh --skip-mcpb        # skip Desktop LLM (submodule init only)
+#   bash install.sh --skip-desktop     # forwarded to install-claude-desktop-llm.sh
 #   bash install.sh --help
 # =============================================================================
 
@@ -21,8 +22,9 @@ EXTRA_ARGS=()
 for arg in "$@"; do
   case "$arg" in
     --skip-mcpb) SKIP_MCPB=1 ;;
+    --skip-desktop) EXTRA_ARGS+=("$arg") ;; # forwarded to install-claude-desktop-llm.sh
     --help|-h)
-      echo "Usage: install.sh [--open] [--skip-mcpb] [--help]"
+      echo "Usage: install.sh [--open] [--skip-mcpb] [--skip-desktop] [--help]"
       echo "  Default: init vendor/Claude-Desktop-LLM and build MCPB bundles."
       exit 0
       ;;
