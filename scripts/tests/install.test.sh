@@ -470,6 +470,174 @@ test_cdl_unknown_flag_does_not_set_known_vars() {
   fi
 }
 
+test_install_no_args_calls_cdl() {
+  # install.sh with no arguments should invoke CDL (SKIP_MCPB defaults to 0).
+  local stub_dir sentinel_file
+  stub_dir="$(make_stub_dir)"
+  sentinel_file="$(mktemp)"
+  rm -f "$sentinel_file"
+
+  local fake_scripts
+  fake_scripts="$(mktemp -d)"
+  cat >"$fake_scripts/install-claude-desktop-llm.sh" <<EOF
+#!/usr/bin/env bash
+touch "$sentinel_file"
+EOF
+  chmod +x "$fake_scripts/install-claude-desktop-llm.sh"
+
+  local wrapper
+  wrapper="$(mktemp --suffix=.sh)"
+  cat >"$wrapper" <<'WEOF'
+#!/usr/bin/env bash
+SCRIPT_DIR="__FAKE_SCRIPTS__"
+SKIP_MCPB=0
+EXTRA_ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --skip-mcpb) SKIP_MCPB=1 ;;
+    --help|-h) echo "Usage: install.sh [--open] [--skip-mcpb] [--skip-desktop]"; exit 0 ;;
+    *) EXTRA_ARGS+=("$arg") ;;
+  esac
+done
+git -C "$SCRIPT_DIR" submodule update --init --recursive vendor/Claude-Desktop-LLM 2>/dev/null || true
+if [[ "$SKIP_MCPB" -eq 0 ]]; then
+  bash "$SCRIPT_DIR/install-claude-desktop-llm.sh" "${EXTRA_ARGS[@]}"
+fi
+WEOF
+  sed -i "s|__FAKE_SCRIPTS__|$fake_scripts|g" "$wrapper"
+  chmod +x "$wrapper"
+
+  PATH="$stub_dir:$PATH" bash "$wrapper" >/dev/null 2>&1 || true
+
+  if [[ -f "$sentinel_file" ]]; then
+    pass "install.sh with no args invokes install-claude-desktop-llm.sh"
+  else
+    fail "install.sh no-args CDL invocation" "CDL was not called (sentinel missing)"
+  fi
+
+  rm -f "$wrapper" "$sentinel_file"
+  rm -rf "$stub_dir" "$fake_scripts"
+}
+
+test_install_skip_mcpb_alone_no_extra_args() {
+  # --skip-mcpb with no other args: CDL not called, EXTRA_ARGS is empty.
+  local stub_dir sentinel_file
+  stub_dir="$(make_stub_dir)"
+  sentinel_file="$(mktemp)"
+  rm -f "$sentinel_file"
+
+  local fake_scripts
+  fake_scripts="$(mktemp -d)"
+  cat >"$fake_scripts/install-claude-desktop-llm.sh" <<EOF
+#!/usr/bin/env bash
+touch "$sentinel_file"
+EOF
+  chmod +x "$fake_scripts/install-claude-desktop-llm.sh"
+
+  local wrapper
+  wrapper="$(mktemp --suffix=.sh)"
+  cat >"$wrapper" <<'WEOF'
+#!/usr/bin/env bash
+SCRIPT_DIR="__FAKE_SCRIPTS__"
+SKIP_MCPB=0
+EXTRA_ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --skip-mcpb) SKIP_MCPB=1 ;;
+    --help|-h) echo "Usage: install.sh [--open] [--skip-mcpb] [--skip-desktop]"; exit 0 ;;
+    *) EXTRA_ARGS+=("$arg") ;;
+  esac
+done
+git -C "$SCRIPT_DIR" submodule update --init --recursive vendor/Claude-Desktop-LLM 2>/dev/null || true
+if [[ "$SKIP_MCPB" -eq 0 ]]; then
+  bash "$SCRIPT_DIR/install-claude-desktop-llm.sh" "${EXTRA_ARGS[@]}"
+fi
+WEOF
+  sed -i "s|__FAKE_SCRIPTS__|$fake_scripts|g" "$wrapper"
+  chmod +x "$wrapper"
+
+  PATH="$stub_dir:$PATH" bash "$wrapper" --skip-mcpb >/dev/null 2>&1 || true
+
+  if [[ -f "$sentinel_file" ]]; then
+    fail "install.sh --skip-mcpb alone" "CDL was called (sentinel exists)"
+  else
+    pass "install.sh --skip-mcpb alone: CDL not called, EXTRA_ARGS correctly empty"
+  fi
+
+  rm -f "$wrapper" "$sentinel_file"
+  rm -rf "$stub_dir" "$fake_scripts"
+}
+
+test_cdl_multiple_unknown_flags_no_mutation() {
+  # Multiple unrecognised flags must not affect OPEN_DESKTOP or SKIP_DESKTOP.
+  local result
+  result="$(bash -c '
+    OPEN_DESKTOP=0
+    SKIP_DESKTOP=0
+    for arg in "$@"; do
+      case "$arg" in
+        --open) OPEN_DESKTOP=1 ;;
+        --skip-desktop) SKIP_DESKTOP=1 ;;
+      esac
+    done
+    echo "OPEN=$OPEN_DESKTOP SKIP=$SKIP_DESKTOP"
+  ' -- --verbose --dry-run --foo=bar)"
+  if echo "$result" | grep -q "OPEN=0" && echo "$result" | grep -q "SKIP=0"; then
+    pass "install-claude-desktop-llm.sh multiple unknown flags leave known vars unchanged"
+  else
+    fail "install-claude-desktop-llm.sh multiple unknown flags" "got: $result"
+  fi
+}
+
+test_install_help_exits_before_git_stub() {
+  # --help must exit before touching git (git stub records calls).
+  local stub_dir git_call_file
+  stub_dir="$(mktemp -d)"
+  git_call_file="$(mktemp)"
+  rm -f "$git_call_file"
+  cat >"$stub_dir/git" <<EOF
+#!/usr/bin/env bash
+touch "$git_call_file"
+exit 0
+EOF
+  chmod +x "$stub_dir/git"
+
+  local wrapper
+  wrapper="$(mktemp --suffix=.sh)"
+  cat >"$wrapper" <<'WEOF'
+#!/usr/bin/env bash
+SCRIPT_DIR="/nonexistent"
+SKIP_MCPB=0
+EXTRA_ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --skip-mcpb) SKIP_MCPB=1 ;;
+    --help|-h) echo "Usage: install.sh [--open] [--skip-mcpb] [--skip-desktop]"; exit 0 ;;
+    *) EXTRA_ARGS+=("$arg") ;;
+  esac
+done
+git -C "$SCRIPT_DIR" submodule update --init --recursive vendor/Claude-Desktop-LLM 2>/dev/null || true
+if [[ "$SKIP_MCPB" -eq 0 ]]; then
+  bash "$SCRIPT_DIR/install-claude-desktop-llm.sh" "${EXTRA_ARGS[@]}"
+fi
+WEOF
+  chmod +x "$wrapper"
+
+  PATH="$stub_dir:$PATH" bash "$wrapper" --help >/dev/null 2>&1
+  local rc=$?
+
+  if [[ $rc -ne 0 ]]; then
+    fail "install.sh --help exits before git" "expected exit 0, got $rc"
+  elif [[ -f "$git_call_file" ]]; then
+    fail "install.sh --help exits before git" "git was called after --help (should have exited)"
+  else
+    pass "install.sh --help exits 0 before invoking git"
+  fi
+
+  rm -f "$wrapper" "$git_call_file"
+  rm -rf "$stub_dir"
+}
+
 # ─── Run all tests ────────────────────────────────────────────────────────────
 
 echo ""
@@ -491,10 +659,15 @@ test_install_help_and_short_help_consistent
 test_install_skip_mcpb_with_extra_args_not_called
 test_cdl_flags_order_independent
 test_cdl_unknown_flag_does_not_set_known_vars
+test_install_no_args_calls_cdl
+test_install_skip_mcpb_alone_no_extra_args
+test_cdl_multiple_unknown_flags_no_mutation
+test_install_help_exits_before_git_stub
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 
+if [[ $FAIL -gt 0 ]]; then
   exit 1
 fi
 exit 0

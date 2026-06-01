@@ -371,3 +371,184 @@ describe("startServer — return shape and edge cases", () => {
     }
   });
 });
+
+describe("startServer — boundary and regression cases", () => {
+  let tmpDir;
+  let pidFile;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ac-boundary-"));
+    pidFile = path.join(tmpDir, "alphaclaw-server.pid");
+  });
+
+  afterEach(() => {
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+  });
+
+  it("startServer writes pidFile in a deeply nested path (writePidFile mkdir -p behavior)", async () => {
+    // writePidFile calls mkdirSync with recursive:true — verify nested dirs are created.
+    const adapterPath = require.resolve("../src/index.js");
+    const origSpawn = cp.spawn;
+    cp.spawn = () => ({ pid: 101010, unref() {} });
+    delete require.cache[adapterPath];
+    const fresh = require("../src/index.js");
+    fresh.health = async () => ({ ok: false });
+    const nestedPidFile = path.join(tmpDir, "a", "b", "c", "server.pid");
+    try {
+      const result = await fresh.startServer({
+        pidFile: nestedPidFile,
+        alphaclawRoot: tmpDir,
+        port: 39985,
+      });
+      assert.equal(result.ok, true);
+      assert.equal(result.pidFile, nestedPidFile);
+      assert.equal(fs.readFileSync(nestedPidFile, "utf8"), "101010");
+    } finally {
+      cp.spawn = origSpawn;
+      delete require.cache[adapterPath];
+      require("../src/index.js");
+    }
+  });
+
+  it("startServer called with empty options {} still returns a valid result", async () => {
+    // Regression: the old code read opts.pidFile which would ReferenceError;
+    // calling with {} (no properties) exercises the full fallback path.
+    const adapterPath = require.resolve("../src/index.js");
+    const origSpawn = cp.spawn;
+    cp.spawn = () => ({ pid: 202020, unref() {} });
+    delete require.cache[adapterPath];
+    const fresh = require("../src/index.js");
+    fresh.health = async () => ({ ok: false });
+    try {
+      // {} passes as the opts object but provides no pidFile/port/root.
+      const result = await fresh.startServer({});
+      // Should not throw; result must at minimum have ok and port.
+      assert.ok("ok" in result, "result must have ok");
+      assert.ok("port" in result, "result must have port");
+      assert.equal(typeof result.port, "number");
+    } finally {
+      cp.spawn = origSpawn;
+      delete require.cache[adapterPath];
+      require("../src/index.js");
+    }
+  });
+
+  it("startServer null pidFile falls back to defaultPidFile (falsy coercion)", async () => {
+    // null is falsy — `pidFile || defaultPidFile(root)` must resolve to default.
+    const adapterPath = require.resolve("../src/index.js");
+    const origSpawn = cp.spawn;
+    cp.spawn = () => ({ pid: 303030, unref() {} });
+    delete require.cache[adapterPath];
+    const fresh = require("../src/index.js");
+    fresh.health = async () => ({ ok: false });
+    try {
+      const result = await fresh.startServer({ pidFile: null, alphaclawRoot: tmpDir, port: 39983 });
+      assert.equal(result.ok, true);
+      // null should fall back to the default pid file path
+      const expectedPidFile = path.join(tmpDir, "alphaclaw-server.pid");
+      assert.equal(result.pidFile, expectedPidFile);
+      assert.equal(fs.readFileSync(expectedPidFile, "utf8"), "303030");
+    } finally {
+      cp.spawn = origSpawn;
+      delete require.cache[adapterPath];
+      require("../src/index.js");
+    }
+  });
+
+  it("startServer already-running path does NOT write a pidFile", async () => {
+    // When health returns ok:true (already running), startServer returns early
+    // without spawning or writing a pidFile.
+    const adapterPath = require.resolve("../src/index.js");
+    const origSpawn = cp.spawn;
+    let spawnCalled = false;
+    cp.spawn = () => { spawnCalled = true; return { pid: 404040, unref() {} }; };
+    delete require.cache[adapterPath];
+    const fresh = require("../src/index.js");
+    fresh.health = async () => ({ ok: true });
+    try {
+      const result = await fresh.startServer({ pidFile, alphaclawRoot: tmpDir, port: 39982 });
+      assert.equal(result.ok, true);
+      assert.equal(result.already, true);
+      assert.equal(spawnCalled, false, "spawn must not be called when server is already running");
+      assert.equal(fs.existsSync(pidFile), false, "pidFile must not be written on already-running path");
+    } finally {
+      cp.spawn = origSpawn;
+      delete require.cache[adapterPath];
+      require("../src/index.js");
+    }
+  });
+
+  it("startServer passes PORT env var to spawn as string (env propagation)", async () => {
+    // Verify that the PORT env variable is set to the correct port string in the child env.
+    const adapterPath = require.resolve("../src/index.js");
+    const origSpawn = cp.spawn;
+    let capturedEnv;
+    cp.spawn = (_cmd, _args, spawnOpts) => {
+      capturedEnv = spawnOpts.env;
+      return { pid: 505050, unref() {} };
+    };
+    delete require.cache[adapterPath];
+    const fresh = require("../src/index.js");
+    fresh.health = async () => ({ ok: false });
+    try {
+      await fresh.startServer({ pidFile, alphaclawRoot: tmpDir, port: 39981 });
+      assert.equal(capturedEnv.PORT, "39981", "PORT env must be the requested port as a string");
+    } finally {
+      cp.spawn = origSpawn;
+      delete require.cache[adapterPath];
+      require("../src/index.js");
+    }
+  });
+
+  it("startServer uses detached:true so parent can exit independently", async () => {
+    // The adapter spawns detached so PT process can exit without killing AlphaClaw.
+    const adapterPath = require.resolve("../src/index.js");
+    const origSpawn = cp.spawn;
+    let capturedOpts;
+    cp.spawn = (_cmd, _args, spawnOpts) => {
+      capturedOpts = spawnOpts;
+      return { pid: 606060, unref() {} };
+    };
+    delete require.cache[adapterPath];
+    const fresh = require("../src/index.js");
+    fresh.health = async () => ({ ok: false });
+    try {
+      await fresh.startServer({ pidFile, alphaclawRoot: tmpDir, port: 39980 });
+      assert.equal(capturedOpts.detached, true, "child must be spawned with detached:true");
+    } finally {
+      cp.spawn = origSpawn;
+      delete require.cache[adapterPath];
+      require("../src/index.js");
+    }
+  });
+
+  it("startServer with no logFile uses ignore stdio for all streams", async () => {
+    // Without logFile, all stdio streams should be 'ignore'.
+    const adapterPath = require.resolve("../src/index.js");
+    const origSpawn = cp.spawn;
+    let capturedStdio;
+    cp.spawn = (_cmd, _args, spawnOpts) => {
+      capturedStdio = spawnOpts.stdio;
+      return { pid: 707070, unref() {} };
+    };
+    delete require.cache[adapterPath];
+    const fresh = require("../src/index.js");
+    fresh.health = async () => ({ ok: false });
+    try {
+      await fresh.startServer({ pidFile, alphaclawRoot: tmpDir, port: 39979 });
+      assert.deepEqual(
+        capturedStdio,
+        ["ignore", "ignore", "ignore"],
+        "all stdio must be 'ignore' when no logFile is provided"
+      );
+    } finally {
+      cp.spawn = origSpawn;
+      delete require.cache[adapterPath];
+      require("../src/index.js");
+    }
+  });
+});
