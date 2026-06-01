@@ -113,7 +113,8 @@ def _parse_bootstrap_json(stdout: str) -> dict:
     if whole:
         return whole
 
-    start = text.rfind("{")
+    # Progress lines do not contain "{"; the payload is one root object after them.
+    start = text.find("{")
     if start == -1:
         return {}
     return _as_dict(text[start:])
