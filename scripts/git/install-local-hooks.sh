@@ -19,7 +19,7 @@ fi
 hooks_dir="$REPO_ROOT/.githooks"
 mkdir -p "$hooks_dir" "$REPO_ROOT/scripts/git/hooks"
 
-for hook in pre-commit commit-msg; do
+for hook in pre-commit commit-msg pre-push; do
   src="$hooks_dir/$hook"
   if [[ ! -f "$src" ]]; then
     echo "ERROR: missing $src (expected tracked hook in .githooks/)" >&2
@@ -48,4 +48,5 @@ fi
 
 echo "OK: mandatory hooks active — core.hooksPath=$(git config --local --get core.hooksPath)"
 echo "Approved authors: cyre <Lawrence@cyre.me|diazMelgarejo@gmail.com>, Codex <codex@openai.com>"
+echo "Hooks: pre-commit (identity), commit-msg (strip + policy), pre-push (block banned trailers on push)"
 echo "Verify: bash scripts/git/verify-git-guards.sh"

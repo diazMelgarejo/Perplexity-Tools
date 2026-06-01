@@ -19,7 +19,7 @@ if [[ "$hooks_path" != ".githooks" ]]; then
   exit 1
 fi
 
-for hook in pre-commit commit-msg; do
+for hook in pre-commit commit-msg pre-push; do
   path="$REPO_ROOT/.githooks/$hook"
   if [[ ! -f "$path" || ! -x "$path" ]]; then
     echo "ERROR: missing or non-executable $path" >&2

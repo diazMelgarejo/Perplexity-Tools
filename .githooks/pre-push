@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Block push if any outgoing commit message contains banned Co-authored-by trailers.
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+"$ROOT/scripts/git/ensure_hooks_installed.sh"
+
+if [[ -x scripts/cursor/sync-private-attribution-from-home.sh ]]; then
+  bash scripts/cursor/sync-private-attribution-from-home.sh >/dev/null 2>&1 || true
+fi
+
+zero="0000000000000000000000000000000000000000"
+upstream_ref="${GIT_PUSH_UPSTREAM:-origin/main}"
+
+while read -r local_ref local_oid remote_ref remote_oid; do
+  [[ "$local_ref" =~ refs/heads/ ]] || continue
+  [[ "$local_oid" == "$zero" ]] && continue
+
+  if [[ "$remote_oid" == "$zero" ]]; then
+    if git rev-parse --verify "$upstream_ref" >/dev/null 2>&1; then
+      range="$(git rev-parse "$upstream_ref")..${local_oid}"
+    else
+      range="${local_oid}"
+    fi
+  else
+    range="${remote_oid}..${local_oid}"
+  fi
+
+  if ! git rev-list "$range" >/dev/null 2>&1; then
+    continue
+  fi
+
+  if ! GIT_AUDIT_RANGE="$range" GIT_AUDIT_STRICT=1 bash "$ROOT/scripts/git/audit_attribution.sh"; then
+    echo "pre-push: blocked — banned or unapproved attribution in commits to push" >&2
+    echo "Use: bash scripts/git/publish-clean-branch.sh <branch>" >&2
+    exit 1
+  fi
+done
+
+exit 0
