@@ -255,6 +255,83 @@ def test_forbidden_identity_exception_is_exempt(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# CLAUDE.md — portable-paths rule (§ 6 Git Hygiene, lockstep w/ orama)
+# ---------------------------------------------------------------------------
+
+def test_claude_md_is_not_in_personal_path_exceptions():
+    """CLAUDE.md must not appear in PERSONAL_PATH_EXCEPTIONS — it stays scanned."""
+    repo_hygiene = load_repo_hygiene()
+    assert "CLAUDE.md" not in repo_hygiene.PERSONAL_PATH_EXCEPTIONS
+
+
+def test_claude_md_passes_personal_path_scan():
+    """The live CLAUDE.md must contain no real workstation paths."""
+    repo_hygiene = load_repo_hygiene()
+    claude_md = ROOT / "CLAUDE.md"
+    assert claude_md.exists(), "CLAUDE.md not found at repo root"
+
+    errors = repo_hygiene.scan_personal_paths(ROOT, ["CLAUDE.md"])
+
+    assert errors == [], (
+        "CLAUDE.md contains a personal/workstation path — "
+        "use ~, $REPO_ROOT, or $OPENCLAW_ROOT instead:\n" + "\n".join(errors)
+    )
+
+
+def test_claude_md_with_workstation_path_is_blocked(tmp_path):
+    """scan_personal_paths blocks a CLAUDE.md that leaks a real developer path.
+
+    Regression guard: the enforcement must hold even though the documentation
+    bullet explaining the rule was removed from CLAUDE.md in this PR.
+    """
+    repo_hygiene = load_repo_hygiene()
+    claude_md = tmp_path / "CLAUDE.md"
+    claude_md.write_text(
+        "## Setup\n"
+        "Run `bash /Users/johndoe/projects/perpetua-tools/scripts/setup.sh`\n",
+        encoding="utf-8",
+    )
+
+    errors = repo_hygiene.scan_personal_paths(tmp_path, ["CLAUDE.md"])
+
+    assert len(errors) == 1
+    assert "CLAUDE.md:2" in errors[0]
+    assert "/Users/johndoe/" in errors[0]
+
+
+def test_claude_md_with_home_path_is_blocked(tmp_path):
+    """/home/<user>/ paths in CLAUDE.md are blocked (Linux workstation leak)."""
+    repo_hygiene = load_repo_hygiene()
+    claude_md = tmp_path / "CLAUDE.md"
+    claude_md.write_text(
+        "cd /home/devuser/code/perpetua-tools && npm install\n",
+        encoding="utf-8",
+    )
+
+    errors = repo_hygiene.scan_personal_paths(tmp_path, ["CLAUDE.md"])
+
+    assert len(errors) == 1
+    assert "/home/devuser/" in errors[0]
+
+
+def test_claude_md_with_portable_paths_passes(tmp_path):
+    """CLAUDE.md using portable path tokens must pass the scan cleanly."""
+    repo_hygiene = load_repo_hygiene()
+    claude_md = tmp_path / "CLAUDE.md"
+    claude_md.write_text(
+        "## Setup\n"
+        "Run from `$OPENCLAW_ROOT` or `$REPO_ROOT`.\n"
+        "Shorthand: `~/projects/perpetua-tools`.\n"
+        "Example path: /Users/you/projects is fine (placeholder username).\n",
+        encoding="utf-8",
+    )
+
+    errors = repo_hygiene.scan_personal_paths(tmp_path, ["CLAUDE.md"])
+
+    assert errors == [], f"Portable-path CLAUDE.md should pass: {errors}"
+
+
+# ---------------------------------------------------------------------------
 # full script smoke test
 # ---------------------------------------------------------------------------
 
