@@ -53,6 +53,16 @@ _spec.loader.exec_module(_launch)
 _extract = _launch._extract_user_input_message
 
 
+def test_parse_crash_recovery_secs_boolean_true(monkeypatch):
+    monkeypatch.setenv("RESEARCHER_CRASH_RECOVERY", "true")
+    assert _launch._parse_crash_recovery_secs() == 30
+
+
+def test_parse_crash_recovery_secs_numeric(monkeypatch):
+    monkeypatch.setenv("RESEARCHER_CRASH_RECOVERY", "45")
+    assert _launch._parse_crash_recovery_secs() == 45
+
+
 def test_extract_user_input_message_flat_string():
     assert _extract("  run tests  ") == "run tests"
 
