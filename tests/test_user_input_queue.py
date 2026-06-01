@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import collections
 import importlib.util
+import threading
 from pathlib import Path
 
 import pytest
@@ -48,3 +49,30 @@ def test_user_input_next_returns_task_string_not_nested_entry(monkeypatch):
     assert body["source"] == "portal"
     assert isinstance(body["ts"], (int, float))
     assert empty.json()["message"] is None
+
+
+def test_user_input_next_concurrent_pop_never_raises(monkeypatch):
+    """Two pollers on one queued message: one wins, one gets null — no IndexError."""
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "1")
+    queue = collections.deque(maxlen=50)
+    queue.appendleft({"message": "only-one", "source": "portal", "ts": 1.0})
+    monkeypatch.setattr(_fapp, "_USER_INPUT_QUEUE", queue)
+
+    results: list[dict | BaseException] = [None] * 4  # type: ignore[misc]
+
+    def _poll(slot: int) -> None:
+        try:
+            results[slot] = _fapp.get_user_input_next()
+        except BaseException as exc:  # noqa: BLE001 — test must record crashes
+            results[slot] = exc
+
+    threads = [threading.Thread(target=_poll, args=(i,)) for i in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=5)
+
+    assert all(not isinstance(r, BaseException) for r in results)
+    messages = [r["message"] for r in results]  # type: ignore[index]
+    assert messages.count("only-one") == 1
+    assert messages.count(None) == 3
