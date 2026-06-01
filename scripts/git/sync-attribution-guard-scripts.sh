@@ -40,7 +40,7 @@ chmod +x "$target/scripts/git/daily-attribution-guard.sh"
 
 # Repo-local agent rules (Cursor Cloud) — no forbidden tokens in these files.
 mkdir -p "$target/.cursor/rules"
-for rule in no-commit-attribution.mdc never-undo-attribution-expunge.mdc banned-attribution-local.mdc; do
+for rule in no-commit-attribution.mdc never-undo-attribution-expunge.mdc banned-attribution-local.mdc zero-banned-attribution-everywhere.mdc; do
   [[ -f "$source_root/.cursor/rules/$rule" ]] || continue
   install -m 0644 "$source_root/.cursor/rules/$rule" "$target/.cursor/rules/$rule"
 done
