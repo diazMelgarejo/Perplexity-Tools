@@ -182,7 +182,18 @@ ensure_submodule() {
 # ---------------------------------------------------------------------------
 
 def _run_bash(script: Path, *args: str, env=None, timeout=10) -> subprocess.CompletedProcess:
-    """Run a bash script with the given args, capturing stdout+stderr."""
+    """
+    Execute a Bash script with the given arguments and capture stdout and stderr.
+    
+    Parameters:
+        script (Path): Path to the Bash script to run.
+        *args (str): Positional arguments to pass to the script.
+        env (dict | None): Environment variables to use for the subprocess; if None, the current environment is used.
+        timeout (int): Number of seconds to wait before timing out the subprocess.
+    
+    Returns:
+        subprocess.CompletedProcess: Completed process object containing return code, `stdout`, and `stderr`.
+    """
     return subprocess.run(
         ["bash", str(script), *args],
         text=True,
@@ -195,7 +206,17 @@ def _run_bash(script: Path, *args: str, env=None, timeout=10) -> subprocess.Comp
 
 
 def _make_stub(bin_dir: Path, name: str, body: str = "#!/usr/bin/env bash\nexit 0\n") -> Path:
-    """Write a minimal stub executable and mark it executable."""
+    """
+    Create a minimal executable stub file in bin_dir with the given name.
+    
+    Parameters:
+        bin_dir (Path): Directory where the stub will be written.
+        name (str): Filename for the stub executable.
+        body (str): Contents to write into the stub; defaults to a simple bash script that exits successfully.
+    
+    Returns:
+        Path: Path to the created stub file.
+    """
     stub = bin_dir / name
     stub.write_text(body, encoding="utf-8")
     stub.chmod(stub.stat().st_mode | stat.S_IEXEC | stat.S_IXGRP | stat.S_IXOTH)
@@ -203,7 +224,16 @@ def _make_stub(bin_dir: Path, name: str, body: str = "#!/usr/bin/env bash\nexit 
 
 
 def _env_with_path(extra_bin: Path, base_env=None) -> dict:
-    """Return an env dict with *extra_bin* prepended to PATH."""
+    """
+    Prepend extra_bin to the PATH in a copy of the given environment and return it.
+    
+    Parameters:
+        extra_bin (Path): Directory to add to the front of the PATH.
+        base_env (dict | None): Optional environment mapping to copy; when None, uses os.environ.
+    
+    Returns:
+        env (dict): A copy of the environment with "PATH" updated to begin with extra_bin.
+    """
     env = dict(base_env or os.environ)
     env["PATH"] = f"{extra_bin}:{env.get('PATH', '')}"
     return env
@@ -211,12 +241,17 @@ def _env_with_path(extra_bin: Path, base_env=None) -> dict:
 
 def _run_fn(fn_body: str, call: str, setup: str = "", env: dict | None = None, timeout: int = 10) -> subprocess.CompletedProcess:
     """
-    Run a bash function defined inline (not by sourcing the full script).
-
-    *fn_body*  : one or more bash function definitions
-    *call*     : the function call expression (e.g. 'my_fn; echo "EXIT:$?"')
-    *setup*    : variable assignments executed before function definitions
-    *env*      : environment dict (defaults to os.environ)
+    Execute inline Bash function definitions with an optional setup and call, returning the completed process result.
+    
+    Parameters:
+        fn_body (str): One or more Bash function definitions to include in the inline script.
+        call (str): The command(s) to execute after the functions are defined (e.g., 'my_fn; echo "EXIT:$?"').
+        setup (str): Shell statements to run before the function definitions (e.g., variable assignments). Defaults to an empty string.
+        env (dict | None): Environment mapping to use for the subprocess; when None, the current environment is used.
+        timeout (int): Seconds to wait before terminating the subprocess. Defaults to 10.
+    
+    Returns:
+        subprocess.CompletedProcess: The completed process containing stdout, stderr, and the return code.
     """
     code = f"""
 set +e
@@ -321,9 +356,19 @@ class TestInstallSh:
         assert mode & stat.S_IEXEC, "install.sh must be executable (mode 100755 per PR)"
 
     def test_install_sh_exists(self):
+        """
+        Verify that the repository contains a top-level install.sh script.
+        
+        Asserts that `INSTALL_SH` exists at the repository root; the test fails with an explanatory message if the file is missing.
+        """
         assert INSTALL_SH.exists(), "install.sh must exist at repo root"
 
     def test_install_sh_has_bash_shebang(self):
+        """
+        Assert that the top-level install.sh begins with a bash shebang.
+        
+        Checks that the first line of INSTALL_SH contains the substring "bash", ensuring the script declares a bash interpreter.
+        """
         first_line = INSTALL_SH.read_text(encoding="utf-8").splitlines()[0]
         assert "bash" in first_line
 
@@ -351,6 +396,11 @@ class TestInstallClaudeDesktopLlm:
         assert "bash" in first_line
 
     def test_script_has_set_euo_pipefail(self):
+        """
+        Verify the install-claude-desktop-llm.sh script declares strict shell options.
+        
+        Checks that the file contains the exact string "set -euo pipefail", ensuring the script enables exit-on-error, undefined-variable checks, and pipeline-failure propagation.
+        """
         content = INSTALL_DESKTOP_SH.read_text(encoding="utf-8")
         assert "set -euo pipefail" in content
 
@@ -584,6 +634,11 @@ class TestInstallClaudeDesktopLlm:
         assert (stage_dir / "lmstudio-agent.mcpb").exists()
 
     def test_stage_bundles_preserves_content(self, tmp_path):
+        """
+        Verify that stage_bundles copies bundled .mcpb files into the staging directory without altering their content.
+        
+        Creates a fake submodule `dist` with `ollama-agent.mcpb` and `lmstudio-agent.mcpb`, runs the `stage_bundles` function, and asserts the staged `ollama-agent.mcpb` bytes equal the original file content.
+        """
         dist = tmp_path / "vendor" / "Claude-Desktop-LLM" / "dist"
         dist.mkdir(parents=True)
         expected = b"PK\x03\x04ollama-content-marker"
@@ -810,6 +865,12 @@ class TestGitignoreRules:
     """Verify the new .gitignore entries added in this PR are present."""
 
     def _gitignore_content(self) -> str:
+        """
+        Read and return the repository's .gitignore file content.
+        
+        Returns:
+            str: The contents of the repository's `.gitignore` file decoded as UTF-8.
+        """
         return (ROOT / ".gitignore").read_text(encoding="utf-8")
 
     def test_npm_global_dir_is_ignored(self):
@@ -927,6 +988,12 @@ class TestGitmodules:
     """Verify the new Claude-Desktop-LLM submodule entry in .gitmodules."""
 
     def _content(self) -> str:
+        """
+        Read and return the repository's .gitmodules file contents.
+        
+        Returns:
+            The utf-8 decoded text of the `.gitmodules` file at the repository root.
+        """
         return (ROOT / ".gitmodules").read_text(encoding="utf-8")
 
     def test_claude_desktop_llm_submodule_entry_present(self):

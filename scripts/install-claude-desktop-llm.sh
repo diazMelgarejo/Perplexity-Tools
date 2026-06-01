@@ -62,7 +62,7 @@ MCPB_CMD=()
 
 # ensure_mcpb_cli ensures the `mcpb` CLI is available and sets the global MCPB_CMD array to the command invocation to use.
 # Prefers a system `mcpb`, then a locally installed copy under "$PT_ROOT/.npm-global/bin", and falls back to `npx` if needed.
-# Exits with status 1 if `npm` is not available or no usable `mcpb` can be run.
+# ensure_mcpb_cli ensures a usable `mcpb` CLI is available (prefers system `mcpb`, then the local npm prefix, then `npx`); exits with status 1 if none can be run.
 ensure_mcpb_cli() {
   if command -v mcpb &>/dev/null; then
     MCPB_CMD=(mcpb)
@@ -102,7 +102,7 @@ run_mcpb() {
 }
 
 # build_extensions builds the upstream MCPB extension bundles by invoking the vendor submodule's build-extensions.sh and verifies the expected .mcpb artifacts exist in vendor/Claude-Desktop-LLM/dist/.
-# It also ensures the upstream script is executable and prepends the local npm-global bin to PATH before running the build.
+# build_extensions runs the upstream build-extensions.sh in the vendor submodule (making it executable and prepending the local npm-global bin to PATH) and verifies that the expected .mcpb artifacts exist.
 build_extensions() {
   log "Building MCPB extensions (upstream build-extensions.sh)..."
   chmod +x "$SUBMODULE_DIR/scripts/build-extensions.sh"
@@ -118,7 +118,7 @@ build_extensions() {
 }
 
 # validate_bundles runs `mcpb info` on the staged MCPB bundles and logs success or warnings for each.
-# If the `mcpb` CLI is not available, it logs a warning and skips validation.
+# validate_bundles validates the staged `.mcpb` bundles by running `mcpb info` and logs success or warnings; if no `mcpb` CLI is configured it logs a warning and returns.
 validate_bundles() {
   if [[ ${#MCPB_CMD[@]} -eq 0 ]]; then
     warn "mcpb not available — skip manifest validation"
@@ -142,7 +142,7 @@ stage_bundles() {
 }
 
 # write_stack_env_hint writes a documentation-only example file at "$STAGE_DIR/stack-env.example" containing common Claude Desktop extension `server_url` defaults and deployment hints.
-# It only emits user-facing guidance and does not modify any runtime configuration or extension settings.
+# write_stack_env_hint writes a documentation-only stack-env.example into "$STAGE_DIR" describing common Claude Desktop extension `user_config` defaults (Ollama and LM Studio endpoints) and does not modify runtime configuration.
 write_stack_env_hint() {
   local hint="$STAGE_DIR/stack-env.example"
   cat >"$hint" <<'EOF'
@@ -195,7 +195,7 @@ info_install_manual() {
 # probe_required_endpoints performs startup health checks for required model backends before installing extensions.
 # On macOS: verifies Ollama at localhost:11434 and checks for qwen3.5:9b-nvfp4 and bge-m3 models.
 # On Windows: checks LM_STUDIO_WIN_ENDPOINTS environment variable and verifies connectivity.
-# Exits with status 1 if probes fail. Skips probes on Linux, in CI, or when --skip-desktop is set.
+# probe_required_endpoints checks local model backends required for desktop integration and exits with status 1 if required probes fail; it skips probes on Linux, in CI, or when --skip-desktop is set.
 probe_required_endpoints() {
   if [[ "$SKIP_DESKTOP" -eq 1 ]]; then
     return 0
