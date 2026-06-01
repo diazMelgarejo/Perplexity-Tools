@@ -30,17 +30,21 @@ else
   ok "repo hooks installed (.githooks)"
 fi
 
-session_hook="${HOME}/.cursor/openclaw/hooks/session-apply-git-guards.sh"
-if [[ ! -x "$session_hook" ]]; then
-  fail "Cursor sessionStart hook missing (bash scripts/cursor/install-user-git-environment.sh)"
+if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+  ok "GitHub Actions — skip user-level Cursor session hook checks"
 else
-  ok "Cursor sessionStart hook installed"
-fi
+  session_hook="${HOME}/.cursor/openclaw/hooks/session-apply-git-guards.sh"
+  if [[ ! -x "$session_hook" ]]; then
+    fail "Cursor sessionStart hook missing (bash scripts/cursor/install-user-git-environment.sh)"
+  else
+    ok "Cursor sessionStart hook installed"
+  fi
 
-if [[ ! -f "${HOME}/.cursor/hooks.json" ]]; then
-  fail "missing ${HOME}/.cursor/hooks.json"
-else
-  ok "Cursor hooks.json present"
+  if [[ ! -f "${HOME}/.cursor/hooks.json" ]]; then
+    fail "missing ${HOME}/.cursor/hooks.json"
+  else
+    ok "Cursor hooks.json present"
+  fi
 fi
 
 email_lc="$(git config --local user.email 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
@@ -63,15 +67,17 @@ if [[ -f "$REPO_ROOT/scripts/git/cursor-hooks-id.sh" ]]; then
   # shellcheck disable=SC1091
   source "$REPO_ROOT/scripts/git/cursor-hooks-id.sh"
   ws_id="$(cursor_hooks_id "$REPO_ROOT")"
-  coauthor="${HOME}/.cursor/agent-hooks/${ws_id}/commit-msg.cursor.co-author"
-  if [[ ! -f "$coauthor" ]]; then
-    ok "Cursor co-author injection hook absent"
-  elif [[ -x "$coauthor" ]]; then
-    fail "Cursor co-author hook still executable: $coauthor"
-  elif ! grep -q 'Neutralized by Perpetua-Tools git guards' "$coauthor" 2>/dev/null; then
-    fail "Cursor co-author hook not neutralized (run neutralize-cursor-coauthor-hook.sh): $coauthor"
-  else
-    ok "Cursor co-author injection hook neutralized"
+  if [[ "${GITHUB_ACTIONS:-}" != "true" ]]; then
+    coauthor="${HOME}/.cursor/agent-hooks/${ws_id}/commit-msg.cursor.co-author"
+    if [[ ! -f "$coauthor" ]]; then
+      ok "Cursor co-author injection hook absent"
+    elif [[ -x "$coauthor" ]]; then
+      fail "Cursor co-author hook still executable: $coauthor"
+    elif ! grep -q 'Neutralized by Perpetua-Tools git guards' "$coauthor" 2>/dev/null; then
+      fail "Cursor co-author hook not neutralized (run neutralize-cursor-coauthor-hook.sh): $coauthor"
+    else
+      ok "Cursor co-author injection hook neutralized"
+    fi
   fi
 fi
 
