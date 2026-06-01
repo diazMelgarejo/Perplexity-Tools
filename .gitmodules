@@ -10,3 +10,4 @@
 [submodule "vendor/Claude-Desktop-LLM"]
 	path = vendor/Claude-Desktop-LLM
 	url = https://github.com/yayoboy/Claude-Desktop-LLM.git
+	ignore = dirty

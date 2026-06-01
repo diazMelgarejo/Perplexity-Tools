@@ -297,6 +297,10 @@ build_extensions
 stage_bundles
 write_stack_env_hint
 validate_bundles
+# probe_required_endpoints is intentionally called here even though this is a
+# build-only script. It is a no-op when SKIP_DESKTOP=1, when CI=true, or on
+# Linux, so build/CI paths are unaffected. The probe runs only on macOS/Windows
+# in a real installation context, which is the intended use.
 probe_required_endpoints
 open_in_claude_desktop
 
