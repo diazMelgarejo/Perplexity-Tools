@@ -244,6 +244,12 @@ def test_forbidden_identity_token_is_blocked(tmp_path):
 
 
 def test_forbidden_identity_exception_is_exempt(tmp_path):
+    """
+    Verify that the forbidden-identity scanner exempts `.mailmap` files.
+    
+    Creates a `.mailmap` containing a known forbidden identity token and asserts
+    that `scan_forbidden_identity` reports no errors for the `.mailmap` file.
+    """
     repo_hygiene = load_repo_hygiene()
     mailmap = tmp_path / ".mailmap"
     token = "Lawrence " + "Melgarejo"
@@ -301,11 +307,10 @@ def test_claude_md_git_hygiene_retains_env_rule():
 
 
 def test_claude_md_no_literal_workstation_path_in_git_hygiene():
-    """Regression: the portable-paths rule itself must not introduce a workstation leak.
-
-    The removed documentation bullet described the portable-paths rule. Regardless of
-    whether the bullet is present, CLAUDE.md must not contain a literal /Users/<real-name>/
-    or /home/<real-name>/ path — i.e., the doc must not violate the very rule it described.
+    """
+    Ensure CLAUDE.md contains no literal workstation paths like /Users/<name>/ or /home/<name>/ unless the username is an allowed placeholder.
+    
+    Scans CLAUDE.md line by line and fails the test on the first match whose username is not in the allowed placeholder set, reporting the file and line number and advising to use ~, $REPO_ROOT, or <workspace> instead.
     """
     text = CLAUDE_MD.read_text(encoding="utf-8")
     import re

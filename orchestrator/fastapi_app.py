@@ -348,7 +348,15 @@ def post_user_input(req: UserInputRequest) -> Dict[str, Any]:
 
 @app.get("/user-input/next", tags=["user-input"])
 def get_user_input_next() -> Dict[str, Any]:
-    """Pop and return the next queued user message. Returns null message when empty."""
+    """
+    Return and remove the next queued user message.
+    
+    Returns:
+        dict: Contains:
+            - `message` (str or None): the message text, or `None` if the queue was empty.
+            - `source` (str or None): the message source if present.
+            - `ts` (float or None): the message timestamp if present.
+    """
     try:
         entry = _USER_INPUT_QUEUE.pop()
     except IndexError:

@@ -52,7 +52,11 @@ def test_user_input_next_returns_task_string_not_nested_entry(monkeypatch):
 
 
 def test_user_input_next_concurrent_pop_does_not_crash(monkeypatch):
-    """Two researchers polling one task must not 500 from deque IndexError."""
+    """
+    Ensure concurrent consumers of the user-input "next" endpoint do not crash when only one task is available.
+    
+    Posts a single user-input entry, issues four concurrent GET requests to /user-input/next, and asserts all responses return HTTP 200, exactly one response contains the enqueued message, and the remaining responses have `message` set to `None`.
+    """
     monkeypatch.setenv("ORAMA_INSECURE_DEV", "1")
     monkeypatch.setattr(_fapp, "_USER_INPUT_QUEUE", collections.deque(maxlen=50))
 
