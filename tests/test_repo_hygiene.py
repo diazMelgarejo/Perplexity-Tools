@@ -255,6 +255,76 @@ def test_forbidden_identity_exception_is_exempt(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# CLAUDE.md content validation
+# (Covers the PR that removed the portable-paths documentation bullet from § 6.)
+# ---------------------------------------------------------------------------
+
+CLAUDE_MD = ROOT / "CLAUDE.md"
+
+
+def test_claude_md_exists():
+    """CLAUDE.md must be present — it is the primary navigation document."""
+    assert CLAUDE_MD.exists(), "CLAUDE.md not found in repo root"
+
+
+def test_claude_md_has_no_personal_paths():
+    """CLAUDE.md must not contain absolute workstation paths like /Users/<name>/."""
+    repo_hygiene = load_repo_hygiene()
+    errors = repo_hygiene.scan_personal_paths(ROOT, ["CLAUDE.md"])
+    assert errors == [], f"CLAUDE.md contains personal absolute paths: {errors}"
+
+
+def test_claude_md_has_no_bidi_controls():
+    """CLAUDE.md must not contain Unicode BiDi control characters."""
+    repo_hygiene = load_repo_hygiene()
+    errors = repo_hygiene.scan_bidi_controls(ROOT, ["CLAUDE.md"])
+    assert errors == [], f"CLAUDE.md contains BiDi control characters: {errors}"
+
+
+def test_claude_md_has_no_forbidden_identity_tokens():
+    """CLAUDE.md must not contain forbidden identity tokens."""
+    repo_hygiene = load_repo_hygiene()
+    errors = repo_hygiene.scan_forbidden_identity(ROOT, ["CLAUDE.md"])
+    assert errors == [], f"CLAUDE.md contains forbidden identity tokens: {errors}"
+
+
+def test_claude_md_git_hygiene_section_exists():
+    """§ 6 — Git Hygiene section must still be present after the PR change."""
+    text = CLAUDE_MD.read_text(encoding="utf-8")
+    assert "## § 6" in text, "Git Hygiene section (§ 6) was unexpectedly removed from CLAUDE.md"
+
+
+def test_claude_md_git_hygiene_retains_env_rule():
+    """The 'Never commit .env' rule must still be present in § 6 after the PR change."""
+    text = CLAUDE_MD.read_text(encoding="utf-8")
+    assert ".env" in text, "The .env commit prohibition is missing from CLAUDE.md § 6"
+
+
+def test_claude_md_no_literal_workstation_path_in_git_hygiene():
+    """Regression: the portable-paths rule itself must not introduce a workstation leak.
+
+    The removed documentation bullet described the portable-paths rule. Regardless of
+    whether the bullet is present, CLAUDE.md must not contain a literal /Users/<real-name>/
+    or /home/<real-name>/ path — i.e., the doc must not violate the very rule it described.
+    """
+    text = CLAUDE_MD.read_text(encoding="utf-8")
+    import re
+    # PERSONAL_PATH_PLACEHOLDERS from repo_hygiene — these are OK in docs
+    placeholders = frozenset({
+        "you", "user", "example", "username", "name", "youruser", "yourname",
+        "<user>", "<username>", "USERNAME", "USER",
+    })
+    pattern = re.compile(r"(/Users/|/home/)([A-Za-z][A-Za-z0-9._-]+)/")
+    for line_no, line in enumerate(text.splitlines(), 1):
+        m = pattern.search(line)
+        if m and m.group(2) not in placeholders:
+            raise AssertionError(
+                f"CLAUDE.md:{line_no} contains a personal workstation path: "
+                f"{m.group(0)!r} — use ~, $REPO_ROOT, or <workspace> instead"
+            )
+
+
+# ---------------------------------------------------------------------------
 # full script smoke test
 # ---------------------------------------------------------------------------
 
