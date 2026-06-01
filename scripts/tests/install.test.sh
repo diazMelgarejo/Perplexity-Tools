@@ -293,6 +293,183 @@ test_cdl_no_flags_defaults_zero() {
   fi
 }
 
+# ─── Additional arg-parsing edge-case tests ───────────────────────────────────
+
+test_install_skip_mcpb_not_forwarded_to_cdl() {
+  # --skip-mcpb is consumed by install.sh; it must NOT appear in the args
+  # forwarded to install-claude-desktop-llm.sh.
+  local stub_dir args_file
+  stub_dir="$(make_stub_dir)"
+  args_file="$(mktemp)"
+
+  local fake_scripts
+  fake_scripts="$(mktemp -d)"
+  cat >"$fake_scripts/install-claude-desktop-llm.sh" <<EOF
+#!/usr/bin/env bash
+echo "\$@" >"$args_file"
+EOF
+  chmod +x "$fake_scripts/install-claude-desktop-llm.sh"
+
+  local wrapper
+  wrapper="$(mktemp --suffix=.sh)"
+  cat >"$wrapper" <<'WEOF'
+#!/usr/bin/env bash
+SCRIPT_DIR="__FAKE_SCRIPTS__"
+SKIP_MCPB=0
+EXTRA_ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --skip-mcpb) SKIP_MCPB=1 ;;
+    --help|-h) echo "Usage: install.sh [--open] [--skip-mcpb] [--skip-desktop]"; exit 0 ;;
+    *) EXTRA_ARGS+=("$arg") ;;
+  esac
+done
+git -C "$SCRIPT_DIR" submodule update --init --recursive vendor/Claude-Desktop-LLM 2>/dev/null || true
+if [[ "$SKIP_MCPB" -eq 0 ]]; then
+  bash "$SCRIPT_DIR/install-claude-desktop-llm.sh" "${EXTRA_ARGS[@]}"
+fi
+WEOF
+  sed -i "s|__FAKE_SCRIPTS__|$fake_scripts|g" "$wrapper"
+  chmod +x "$wrapper"
+
+  # Pass both --open and --skip-mcpb; CDL script should see only --open
+  PATH="$stub_dir:$PATH" bash "$wrapper" --open >/dev/null 2>&1 || true
+
+  local forwarded
+  forwarded="$(cat "$args_file" 2>/dev/null || echo '')"
+  if echo "$forwarded" | grep -q "\-\-skip-mcpb"; then
+    fail "install.sh --skip-mcpb not forwarded" "--skip-mcpb appeared in args sent to CDL: '$forwarded'"
+  else
+    pass "install.sh --skip-mcpb is consumed, not forwarded to install-claude-desktop-llm.sh"
+  fi
+
+  rm -f "$wrapper" "$args_file"
+  rm -rf "$stub_dir" "$fake_scripts"
+}
+
+test_install_help_and_short_help_consistent() {
+  # --help and -h must produce identical output (same text, same exit code).
+  local out_long out_short
+  out_long="$(bash -c '
+    SKIP_MCPB=0
+    EXTRA_ARGS=()
+    for arg in "$@"; do
+      case "$arg" in
+        --skip-mcpb) SKIP_MCPB=1 ;;
+        --help|-h) echo "Usage: install.sh [--open] [--skip-mcpb] [--skip-desktop]"; exit 0 ;;
+        *) EXTRA_ARGS+=("$arg") ;;
+      esac
+    done
+  ' -- --help)"
+  out_short="$(bash -c '
+    SKIP_MCPB=0
+    EXTRA_ARGS=()
+    for arg in "$@"; do
+      case "$arg" in
+        --skip-mcpb) SKIP_MCPB=1 ;;
+        --help|-h) echo "Usage: install.sh [--open] [--skip-mcpb] [--skip-desktop]"; exit 0 ;;
+        *) EXTRA_ARGS+=("$arg") ;;
+      esac
+    done
+  ' -- -h)"
+  if [[ "$out_long" == "$out_short" ]]; then
+    pass "install.sh --help and -h produce identical output"
+  else
+    fail "install.sh --help vs -h consistency" "--help='$out_long' -h='$out_short'"
+  fi
+}
+
+test_install_skip_mcpb_with_extra_args_not_called() {
+  # --skip-mcpb together with extra args: CDL script must still NOT be invoked.
+  local stub_dir sentinel_file
+  stub_dir="$(make_stub_dir)"
+  sentinel_file="$(mktemp)"
+  rm -f "$sentinel_file"
+
+  local fake_scripts
+  fake_scripts="$(mktemp -d)"
+  cat >"$fake_scripts/install-claude-desktop-llm.sh" <<EOF
+#!/usr/bin/env bash
+touch "$sentinel_file"
+EOF
+  chmod +x "$fake_scripts/install-claude-desktop-llm.sh"
+
+  local wrapper
+  wrapper="$(mktemp --suffix=.sh)"
+  cat >"$wrapper" <<'WEOF'
+#!/usr/bin/env bash
+SCRIPT_DIR="__FAKE_SCRIPTS__"
+SKIP_MCPB=0
+EXTRA_ARGS=()
+for arg in "$@"; do
+  case "$arg" in
+    --skip-mcpb) SKIP_MCPB=1 ;;
+    --help|-h) echo "Usage: install.sh [--open] [--skip-mcpb] [--skip-desktop]"; exit 0 ;;
+    *) EXTRA_ARGS+=("$arg") ;;
+  esac
+done
+git -C "$SCRIPT_DIR" submodule update --init --recursive vendor/Claude-Desktop-LLM 2>/dev/null || true
+if [[ "$SKIP_MCPB" -eq 0 ]]; then
+  bash "$SCRIPT_DIR/install-claude-desktop-llm.sh" "${EXTRA_ARGS[@]}"
+fi
+WEOF
+  sed -i "s|__FAKE_SCRIPTS__|$fake_scripts|g" "$wrapper"
+  chmod +x "$wrapper"
+
+  PATH="$stub_dir:$PATH" bash "$wrapper" --open --skip-mcpb >/dev/null 2>&1 || true
+
+  if [[ -f "$sentinel_file" ]]; then
+    fail "install.sh --open --skip-mcpb" "CDL was called despite --skip-mcpb (sentinel exists)"
+  else
+    pass "install.sh --open --skip-mcpb: CDL not called even with extra args present"
+  fi
+
+  rm -f "$wrapper" "$sentinel_file"
+  rm -rf "$stub_dir" "$fake_scripts"
+}
+
+test_cdl_flags_order_independent() {
+  # Flag order must not matter: --skip-desktop --open should set both.
+  local result
+  result="$(bash -c '
+    OPEN_DESKTOP=0
+    SKIP_DESKTOP=0
+    for arg in "$@"; do
+      case "$arg" in
+        --open) OPEN_DESKTOP=1 ;;
+        --skip-desktop) SKIP_DESKTOP=1 ;;
+      esac
+    done
+    echo "OPEN=$OPEN_DESKTOP SKIP=$SKIP_DESKTOP"
+  ' -- --skip-desktop --open)"
+  if echo "$result" | grep -q "OPEN=1" && echo "$result" | grep -q "SKIP=1"; then
+    pass "install-claude-desktop-llm.sh flags are order-independent (--skip-desktop before --open)"
+  else
+    fail "install-claude-desktop-llm.sh flag order" "got: $result"
+  fi
+}
+
+test_cdl_unknown_flag_does_not_set_known_vars() {
+  # An unrecognised flag must not accidentally set OPEN_DESKTOP or SKIP_DESKTOP.
+  local result
+  result="$(bash -c '
+    OPEN_DESKTOP=0
+    SKIP_DESKTOP=0
+    for arg in "$@"; do
+      case "$arg" in
+        --open) OPEN_DESKTOP=1 ;;
+        --skip-desktop) SKIP_DESKTOP=1 ;;
+      esac
+    done
+    echo "OPEN=$OPEN_DESKTOP SKIP=$SKIP_DESKTOP"
+  ' -- --unknown-flag)"
+  if echo "$result" | grep -q "OPEN=0" && echo "$result" | grep -q "SKIP=0"; then
+    pass "install-claude-desktop-llm.sh unknown flag does not mutate OPEN_DESKTOP or SKIP_DESKTOP"
+  else
+    fail "install-claude-desktop-llm.sh unknown flag" "got: $result"
+  fi
+}
+
 # ─── Run all tests ────────────────────────────────────────────────────────────
 
 echo ""
@@ -309,10 +486,15 @@ test_cdl_open_flag_parsed
 test_cdl_skip_desktop_flag_parsed
 test_cdl_open_and_skip_together
 test_cdl_no_flags_defaults_zero
+test_install_skip_mcpb_not_forwarded_to_cdl
+test_install_help_and_short_help_consistent
+test_install_skip_mcpb_with_extra_args_not_called
+test_cdl_flags_order_independent
+test_cdl_unknown_flag_does_not_set_known_vars
 
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
-if [[ $FAIL -gt 0 ]]; then
+
   exit 1
 fi
 exit 0
