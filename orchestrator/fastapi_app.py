@@ -349,14 +349,15 @@ def post_user_input(req: UserInputRequest) -> Dict[str, Any]:
 @app.get("/user-input/next", tags=["user-input"])
 def get_user_input_next() -> Dict[str, Any]:
     """Pop and return the next queued user message. Returns null message when empty."""
-    if _USER_INPUT_QUEUE:
+    try:
         entry = _USER_INPUT_QUEUE.pop()
-        return {
-            "message": entry["message"],
-            "source": entry.get("source"),
-            "ts": entry.get("ts"),
-        }
-    return {"message": None}
+    except IndexError:
+        return {"message": None}
+    return {
+        "message": entry["message"],
+        "source": entry.get("source"),
+        "ts": entry.get("ts"),
+    }
 
 
 @app.get("/user-input/status", tags=["user-input"])
