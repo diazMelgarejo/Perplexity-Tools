@@ -92,7 +92,7 @@ EOF
   # Patch install.sh to use our fake scripts dir by overriding SCRIPT_DIR via env
   # We do this by creating a wrapper that replaces the SCRIPT_DIR var.
   local wrapper
-  wrapper="$(mktemp --suffix=.sh)"
+  wrapper="$(mktemp)"
   cat >"$wrapper" <<EOF
 #!/usr/bin/env bash
 # Wrap install.sh with a fake scripts subdir
@@ -142,7 +142,7 @@ EOF
   chmod +x "$fake_scripts/install-claude-desktop-llm.sh"
 
   local wrapper
-  wrapper="$(mktemp --suffix=.sh)"
+  wrapper="$(mktemp)"
   cat >"$wrapper" <<'WEOF'
 #!/usr/bin/env bash
 SCRIPT_DIR="__FAKE_SCRIPTS__"
@@ -311,7 +311,7 @@ EOF
   chmod +x "$fake_scripts/install-claude-desktop-llm.sh"
 
   local wrapper
-  wrapper="$(mktemp --suffix=.sh)"
+  wrapper="$(mktemp)"
   cat >"$wrapper" <<'WEOF'
 #!/usr/bin/env bash
 SCRIPT_DIR="__FAKE_SCRIPTS__"
@@ -333,7 +333,7 @@ WEOF
   chmod +x "$wrapper"
 
   # Pass both --open and --skip-mcpb; CDL script should see only --open
-  PATH="$stub_dir:$PATH" bash "$wrapper" --open >/dev/null 2>&1 || true
+  PATH="$stub_dir:$PATH" bash "$wrapper" --open --skip-mcpb >/dev/null 2>&1 || true
 
   local forwarded
   forwarded="$(cat "$args_file" 2>/dev/null || echo '')"
@@ -395,7 +395,7 @@ EOF
   chmod +x "$fake_scripts/install-claude-desktop-llm.sh"
 
   local wrapper
-  wrapper="$(mktemp --suffix=.sh)"
+  wrapper="$(mktemp)"
   cat >"$wrapper" <<'WEOF'
 #!/usr/bin/env bash
 SCRIPT_DIR="__FAKE_SCRIPTS__"
@@ -486,7 +486,7 @@ EOF
   chmod +x "$fake_scripts/install-claude-desktop-llm.sh"
 
   local wrapper
-  wrapper="$(mktemp --suffix=.sh)"
+  wrapper="$(mktemp)"
   cat >"$wrapper" <<'WEOF'
 #!/usr/bin/env bash
 SCRIPT_DIR="__FAKE_SCRIPTS__"
@@ -535,7 +535,7 @@ EOF
   chmod +x "$fake_scripts/install-claude-desktop-llm.sh"
 
   local wrapper
-  wrapper="$(mktemp --suffix=.sh)"
+  wrapper="$(mktemp)"
   cat >"$wrapper" <<'WEOF'
 #!/usr/bin/env bash
 SCRIPT_DIR="__FAKE_SCRIPTS__"
@@ -603,7 +603,7 @@ EOF
   chmod +x "$stub_dir/git"
 
   local wrapper
-  wrapper="$(mktemp --suffix=.sh)"
+  wrapper="$(mktemp)"
   cat >"$wrapper" <<'WEOF'
 #!/usr/bin/env bash
 SCRIPT_DIR="/nonexistent"
