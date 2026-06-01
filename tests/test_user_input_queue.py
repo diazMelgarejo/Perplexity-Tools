@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import collections
 import importlib.util
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -48,3 +49,20 @@ def test_user_input_next_returns_task_string_not_nested_entry(monkeypatch):
     assert body["source"] == "portal"
     assert isinstance(body["ts"], (int, float))
     assert empty.json()["message"] is None
+
+
+def test_user_input_next_concurrent_pop_does_not_crash(monkeypatch):
+    """Two researchers polling one task must not 500 from deque IndexError."""
+    monkeypatch.setenv("ORAMA_INSECURE_DEV", "1")
+    monkeypatch.setattr(_fapp, "_USER_INPUT_QUEUE", collections.deque(maxlen=50))
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        client.post("/user-input", json={"message": "only-one", "source": "portal"})
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures = [pool.submit(client.get, "/user-input/next") for _ in range(4)]
+            results = [f.result() for f in futures]
+
+    assert all(r.status_code == 200 for r in results)
+    messages = [r.json().get("message") for r in results]
+    assert messages.count("only-one") == 1
+    assert messages.count(None) == 3
