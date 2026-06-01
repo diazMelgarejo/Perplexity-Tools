@@ -81,7 +81,7 @@ ensure_mcpb_cli() {
   fi
   log "Installing @anthropic-ai/mcpb to $PT_ROOT/.npm-global ..."
   mkdir -p "$PT_ROOT/.npm-global"
-  npm install --prefix "$PT_ROOT/.npm-global" @anthropic-ai/mcpb
+  npm install -g --prefix "$PT_ROOT/.npm-global" @anthropic-ai/mcpb
   if [[ -x "$local_bin/mcpb" ]]; then
     MCPB_CMD=("$local_bin/mcpb")
     ok "mcpb CLI (local prefix)"
@@ -297,6 +297,10 @@ build_extensions
 stage_bundles
 write_stack_env_hint
 validate_bundles
+# probe_required_endpoints is intentionally called here even though this is a
+# build-only script. It is a no-op when SKIP_DESKTOP=1, when CI=true, or on
+# Linux, so build/CI paths are unaffected. The probe runs only on macOS/Windows
+# in a real installation context, which is the intended use.
 probe_required_endpoints
 open_in_claude_desktop
 

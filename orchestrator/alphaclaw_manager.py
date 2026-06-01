@@ -91,15 +91,30 @@ def _port_from_gateway_url(url: str) -> int:
 
 
 def _parse_bootstrap_json(stdout: str) -> dict:
-    """Parse alphaclaw_bootstrap --json stdout; return {} on failure."""
+    """Parse alphaclaw_bootstrap --json stdout; return {} on failure.
+
+    Handles mixed output where progress log lines precede the final JSON blob.
+    """
     text = (stdout or "").strip()
     if not text:
         return {}
+    # Fast path: pure JSON output
     try:
         data = json.loads(text)
         return data if isinstance(data, dict) else {}
     except json.JSONDecodeError:
-        return {}
+        pass
+    # Slow path: scan lines from the end to find the last JSON object blob
+    lines = text.splitlines()
+    for i in range(len(lines) - 1, -1, -1):
+        if lines[i].strip().startswith("{"):
+            candidate = "\n".join(lines[i:])
+            try:
+                data = json.loads(candidate)
+                return data if isinstance(data, dict) else {}
+            except json.JSONDecodeError:
+                continue
+    return {}
 
 
 @dataclass

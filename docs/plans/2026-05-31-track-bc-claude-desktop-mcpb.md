@@ -12,7 +12,7 @@
 
 | Area | Change |
 |------|--------|
-| Submodule | `vendor/Claude-Desktop-LLM` @ pinned commit |
+| Submodule | `vendor/Claude-Desktop-LLM` @ `01cadc68d64891293fa92275f918a157ea955f93` |
 | Build | `scripts/install-claude-desktop-llm.sh` → `@anthropic-ai/mcpb` + upstream `build-extensions.sh` |
 | Default install | `Perpetua-Tools/install.sh` |
 | Staging | `packages/mcpb-agents/built/*.mcpb` (gitignored) |
@@ -24,7 +24,7 @@
 cd /path/to/Perpetua-Tools
 bash install.sh --skip-desktop
 file packages/mcpb-agents/built/ollama-agent.mcpb   # Zip archive
-.nvm/... or .npm-global/bin/mcpb info packages/mcpb-agents/built/ollama-agent.mcpb
+npx @anthropic-ai/mcpb info packages/mcpb-agents/built/ollama-agent.mcpb
 unzip -l packages/mcpb-agents/built/ollama-agent.mcpb | rg manifest.json
 ```
 
