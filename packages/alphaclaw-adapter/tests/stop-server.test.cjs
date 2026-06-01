@@ -157,6 +157,96 @@ describe("stopServer PID file", () => {
     }
   });
 
+  it("startServer returns correct port when explicit port param supplied", async () => {
+    // Regression: the port value in the return must reflect the param, not a stale default.
+    const adapterPath = require.resolve("../src/index.js");
+    const origSpawn = cp.spawn;
+    cp.spawn = () => ({ pid: 55555, unref() {} });
+    delete require.cache[adapterPath];
+    const fresh = require("../src/index.js");
+    fresh.health = async () => ({ ok: false });
+    const EXPLICIT_PORT = 12345;
+    const prev = process.env.ALPHACLAW_PID_FILE;
+    process.env.ALPHACLAW_PID_FILE = pidFile;
+    try {
+      const result = await fresh.startServer({
+        alphaclawRoot: tmpDir,
+        port: EXPLICIT_PORT,
+      });
+      assert.equal(result.ok, true);
+      assert.equal(result.port, EXPLICIT_PORT, "returned port must match the explicit port param");
+    } finally {
+      if (prev === undefined) delete process.env.ALPHACLAW_PID_FILE;
+      else process.env.ALPHACLAW_PID_FILE = prev;
+      cp.spawn = origSpawn;
+      delete require.cache[adapterPath];
+      require("../src/index.js");
+    }
+  });
+
+  it("startServer result shape: ok+pid+port+pidFile on successful spawn", async () => {
+    // The return object from a successful spawn must include all four fields
+    // and no unexpected extras (no 'already', no 'error').
+    const adapterPath = require.resolve("../src/index.js");
+    const origSpawn = cp.spawn;
+    cp.spawn = () => ({ pid: 66666, unref() {} });
+    delete require.cache[adapterPath];
+    const fresh = require("../src/index.js");
+    fresh.health = async () => ({ ok: false });
+    const prev = process.env.ALPHACLAW_PID_FILE;
+    process.env.ALPHACLAW_PID_FILE = pidFile;
+    try {
+      const result = await fresh.startServer({ alphaclawRoot: tmpDir, port: 39995 });
+      assert.equal(result.ok, true);
+      assert.equal(result.pid, 66666);
+      assert.equal(typeof result.port, "number", "port must be a number");
+      assert.equal(typeof result.pidFile, "string", "pidFile must be a string path");
+      assert.equal(result.already, undefined, "already must be absent on fresh spawn result");
+      assert.equal(result.error, undefined, "error must be absent on successful spawn");
+    } finally {
+      if (prev === undefined) delete process.env.ALPHACLAW_PID_FILE;
+      else process.env.ALPHACLAW_PID_FILE = prev;
+      cp.spawn = origSpawn;
+      delete require.cache[adapterPath];
+      require("../src/index.js");
+    }
+  });
+
+  it("startServer error result includes port and no pidFile", async () => {
+    // On spawn failure, the returned shape must include port (for diagnostics)
+    // but must not include pidFile (no file was written).
+    const adapterPath = require.resolve("../src/index.js");
+    const origSpawn = cp.spawn;
+    cp.spawn = () => { throw new Error("EACCES: permission denied"); };
+    delete require.cache[adapterPath];
+    const fresh = require("../src/index.js");
+    fresh.health = async () => ({ ok: false });
+    try {
+      const result = await fresh.startServer({ pidFile, alphaclawRoot: tmpDir, port: 39994 });
+      assert.equal(result.ok, false);
+      assert.equal(result.port, 39994, "port must be present in error result for diagnostics");
+      assert.ok(result.error.includes("EACCES"), "error message must be propagated");
+      assert.equal(result.pidFile, undefined, "pidFile must not be in error result");
+    } finally {
+      cp.spawn = origSpawn;
+      delete require.cache[adapterPath];
+      require("../src/index.js");
+    }
+  });
+
+  it("defaultPidFile uses alphaclawRoot-relative path when env not set", () => {
+    // When ALPHACLAW_PID_FILE is not set, must construct path under alphaclawRoot.
+    const prev = process.env.ALPHACLAW_PID_FILE;
+    delete process.env.ALPHACLAW_PID_FILE;
+    try {
+      const result = adapter.defaultPidFile("/custom/ac/root");
+      assert.equal(result, path.join("/custom/ac/root", "alphaclaw-server.pid"));
+    } finally {
+      if (prev === undefined) delete process.env.ALPHACLAW_PID_FILE;
+      else process.env.ALPHACLAW_PID_FILE = prev;
+    }
+  });
+
   it("stopServer clears stale pid file when process is gone", async () => {
     fs.writeFileSync(pidFile, "999999999", "utf8");
     const origHealth = adapter.health;
