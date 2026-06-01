@@ -96,6 +96,108 @@ describe("stopServer PID file", () => {
       adapter.health = origHealth;
     }
   });
+
+  it("startServer returns already:true when server is already healthy (commandeer)", async () => {
+    const adapterPath = require.resolve("../src/index.js");
+    delete require.cache[adapterPath];
+    const fresh = require("../src/index.js");
+    fresh.health = async () => ({ ok: true });
+    try {
+      const result = await fresh.startServer({ pidFile, alphaclawRoot: tmpDir, port: 39998 });
+      assert.equal(result.ok, true);
+      assert.equal(result.already, true);
+      // pid file must NOT be written when commandeering
+      assert.equal(fs.existsSync(pidFile), false);
+    } finally {
+      delete require.cache[adapterPath];
+      require("../src/index.js");
+    }
+  });
+
+  it("startServer uses defaultPidFile when no pidFile param supplied", async () => {
+    const adapterPath = require.resolve("../src/index.js");
+    const origSpawn = cp.spawn;
+    cp.spawn = () => ({ pid: 555555, unref() {} });
+    delete require.cache[adapterPath];
+    const fresh = require("../src/index.js");
+    fresh.health = async () => ({ ok: false });
+    try {
+      const result = await fresh.startServer({ alphaclawRoot: tmpDir, port: 39997 });
+      assert.equal(result.ok, true);
+      // pidFile in result must match defaultPidFile(tmpDir)
+      const expectedPidFile = require("path").join(tmpDir, "alphaclaw-server.pid");
+      assert.equal(result.pidFile, expectedPidFile);
+      assert.equal(require("fs").readFileSync(expectedPidFile, "utf8"), "555555");
+    } finally {
+      cp.spawn = origSpawn;
+      delete require.cache[adapterPath];
+      require("../src/index.js");
+    }
+  });
+
+  it("startServer returns error object when spawn throws", async () => {
+    const adapterPath = require.resolve("../src/index.js");
+    const origSpawn = cp.spawn;
+    cp.spawn = () => { throw new Error("ENOENT: node not found"); };
+    delete require.cache[adapterPath];
+    const fresh = require("../src/index.js");
+    fresh.health = async () => ({ ok: false });
+    try {
+      const result = await fresh.startServer({ pidFile, alphaclawRoot: tmpDir, port: 39996 });
+      assert.equal(result.ok, false);
+      assert.ok(result.error, "error message must be present");
+      assert.ok(typeof result.port === "number");
+      // pid file must not be written on failure
+      assert.equal(fs.existsSync(pidFile), false);
+    } finally {
+      cp.spawn = origSpawn;
+      delete require.cache[adapterPath];
+      require("../src/index.js");
+    }
+  });
+
+  it("startServer returns port in result matching the port param", async () => {
+    const adapterPath = require.resolve("../src/index.js");
+    const origSpawn = cp.spawn;
+    cp.spawn = () => ({ pid: 777777, unref() {} });
+    delete require.cache[adapterPath];
+    const fresh = require("../src/index.js");
+    fresh.health = async () => ({ ok: false });
+    const testPort = 39995;
+    try {
+      const result = await fresh.startServer({ pidFile, alphaclawRoot: tmpDir, port: testPort });
+      assert.equal(result.ok, true);
+      assert.equal(result.port, testPort);
+    } finally {
+      cp.spawn = origSpawn;
+      delete require.cache[adapterPath];
+      require("../src/index.js");
+    }
+  });
+
+  it("startServer pidFile param takes precedence over ALPHACLAW_PID_FILE env", async () => {
+    const adapterPath = require.resolve("../src/index.js");
+    const origSpawn = cp.spawn;
+    cp.spawn = () => ({ pid: 888888, unref() {} });
+    delete require.cache[adapterPath];
+    const fresh = require("../src/index.js");
+    fresh.health = async () => ({ ok: false });
+    const envPidFile = path.join(tmpDir, "env-from-env.pid");
+    process.env.ALPHACLAW_PID_FILE = envPidFile;
+    try {
+      const result = await fresh.startServer({ pidFile, alphaclawRoot: tmpDir, port: 39994 });
+      assert.equal(result.ok, true);
+      assert.equal(result.pidFile, pidFile);
+      // The explicitly-passed pidFile was used, not envPidFile
+      assert.equal(fs.readFileSync(pidFile, "utf8"), "888888");
+      assert.equal(fs.existsSync(envPidFile), false);
+    } finally {
+      delete process.env.ALPHACLAW_PID_FILE;
+      cp.spawn = origSpawn;
+      delete require.cache[adapterPath];
+      require("../src/index.js");
+    }
+  });
 });
 
 describe("startServer — pidFile destructuring fix", () => {
