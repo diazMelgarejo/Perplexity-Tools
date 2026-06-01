@@ -8,9 +8,12 @@ alwaysApply: true
 When committing in this repository:
 
 1. **Never** add `Co-authored-by:`, `Made-with: Cursor`, or any Cursor/agent attribution trailer to commit messages.
-2. **Before** `git commit`, run `bash scripts/git/disable-cursor-commit-attribution.sh` if hooks may have been reset.
-3. **Prefer** `bash scripts/git/commit-clean.sh -m "type(scope): summary"` when Cursor keeps injecting trailers (uses `git commit-tree`, bypasses hooks).
-4. Use only approved author identity: `cyre <diazMelgarejo@gmail.com>` (or `Lawrence@cyre.me` / `Codex <codex@openai.com>` per `scripts/git/check_identity.sh`).
-5. Multi-repo stack: run `bash scripts/git/apply-attribution-guard-all-repos.sh` after clone or cloud VM boot.
+2. **Cursor cloud** installs guards automatically: `bash scripts/cursor/install-user-git-environment.sh` (also via `.cursor/environment.json` → `cloud-bootstrap.sh` on VM start).
+3. **Every clone** must run `bash scripts/git/install-local-hooks.sh` (enforced by pre-commit + CI).
+4. Use only approved **author** identity: `cyre <Lawrence@cyre.me>` or `cyre <diazMelgarejo@gmail.com>` (or `Codex <codex@openai.com>`). Never `Cursor Agent` as author.
+5. To publish a rewritten branch: `bash scripts/git/publish-clean-branch.sh <branch>`.
+6. **Banned identities:** read `.cursor/private/agent-lesson-git-attribution.md` (gitignored).
+   Do not echo banned tokens in tracked docs. Prefer `bash scripts/git/commit-clean.sh` if
+   Cursor keeps injecting Co-authored-by trailers.
 
 Desktop (optional): Cursor Settings → Agents → Attribution → OFF (IDE/CLI only; cloud may still inject until guards run).

@@ -3,6 +3,11 @@
 # unattributable random @gmail.com co-authors (see docs/wiki/08-git-hygiene-and-branching.md).
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=banned_attribution_lib.sh
+source "$SCRIPT_DIR/banned_attribution_lib.sh"
+
 msg_file="${1:?commit message file required}"
 [[ -f "$msg_file" ]] || { echo "ERROR: missing commit message file: $msg_file" >&2; exit 1; }
 
@@ -106,10 +111,21 @@ coauthor_line_ok() {
   return 1
 }
 
+if ! banned_patterns_ready "$REPO_ROOT"; then
+  echo "ERROR: missing .cursor/private/banned-attribution-patterns" >&2
+  echo "Run: bash scripts/cursor/install-user-git-environment.sh" >&2
+  exit 1
+fi
+
 while IFS= read -r line || [[ -n "$line" ]]; do
+  line_lc="$(printf '%s' "$line" | tr '[:upper:]' '[:lower:]')"
   case "$line" in
     [Cc]o-[Aa]uthor*)
-      line_lc="$(printf '%s' "$line" | tr '[:upper:]' '[:lower:]')"
+      if line_matches_banned_pattern "$line_lc" "$REPO_ROOT"; then
+        echo "ERROR: banned Co-authored-by trailer (see .cursor/private/):" >&2
+        echo "  $line" >&2
+        exit 1
+      fi
       if ! coauthor_line_ok "$line_lc"; then
         echo "ERROR: Co-authored-by not on approved co-author policy:" >&2
         echo "  $line" >&2
