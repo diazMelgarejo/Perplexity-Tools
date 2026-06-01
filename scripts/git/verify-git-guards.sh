@@ -81,7 +81,7 @@ if [[ -f "$REPO_ROOT/scripts/git/cursor-hooks-id.sh" ]]; then
   fi
 fi
 
-fixture_token="$(list_banned_pattern_tokens "$REPO_ROOT" | head -n1)"
+fixture_token="$(first_banned_pattern_token "$REPO_ROOT" || true)"
 if [[ -z "$fixture_token" ]]; then
   fail "banned pattern file empty"
 else
