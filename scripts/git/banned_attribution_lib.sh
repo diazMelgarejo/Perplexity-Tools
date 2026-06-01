@@ -7,7 +7,17 @@ banned_patterns_file() {
   if [[ -z "$root" ]]; then
     root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
   fi
-  printf '%s/.cursor/private/banned-attribution-patterns' "$root"
+  local private="${root}/.cursor/private/banned-attribution-patterns"
+  if [[ -f "$private" && -s "$private" ]]; then
+    printf '%s' "$private"
+    return 0
+  fi
+  local openclaw="${OPENCLAW_ATTRIBUTION_PATTERNS:-${HOME:-}/.cursor/openclaw/banned-attribution-patterns}"
+  if [[ -f "$openclaw" && -s "$openclaw" ]]; then
+    printf '%s' "$openclaw"
+    return 0
+  fi
+  printf '%s' "$private"
 }
 
 banned_patterns_ready() {

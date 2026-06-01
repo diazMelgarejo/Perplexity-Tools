@@ -19,6 +19,10 @@ if [[ -x scripts/git/neutralize-cursor-coauthor-hook.sh ]]; then
   bash scripts/git/neutralize-cursor-coauthor-hook.sh --all-agent-hooks
 fi
 
+if [[ -x scripts/git/daily-attribution-guard.sh ]]; then
+  bash scripts/git/daily-attribution-guard.sh
+fi
+
 git config --local user.name "cyre" 2>/dev/null || true
 git config --local user.email "Lawrence@cyre.me" 2>/dev/null || true
 

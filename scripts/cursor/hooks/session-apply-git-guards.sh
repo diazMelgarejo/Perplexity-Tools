@@ -81,4 +81,9 @@ for root in "${workspace_roots[@]}"; do
   apply_repo "$root"
 done
 
+if [[ -x "/agent/repos/Perpetua-Tools/scripts/git/daily-attribution-guard.sh" ]]; then
+  PERPETUA_TOOLS_GUARD=/agent/repos/Perpetua-Tools \
+    bash "/agent/repos/Perpetua-Tools/scripts/git/daily-attribution-guard.sh" >/dev/null 2>&1 || true
+fi
+
 exit 0

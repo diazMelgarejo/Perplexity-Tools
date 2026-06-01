@@ -3,7 +3,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+if [[ -n "${1:-}" && -d "${1}/.git" ]]; then
+  REPO_ROOT="$(cd "$1" && pwd)"
+else
+  REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+fi
 FILTER="$SCRIPT_DIR/filter-msg-strip-banned.sh"
 # shellcheck source=banned_attribution_lib.sh
 source "$SCRIPT_DIR/banned_attribution_lib.sh"
