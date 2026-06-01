@@ -91,15 +91,32 @@ def _port_from_gateway_url(url: str) -> int:
 
 
 def _parse_bootstrap_json(stdout: str) -> dict:
-    """Parse alphaclaw_bootstrap --json stdout; return {} on failure."""
+    """
+    Parse alphaclaw_bootstrap --json stdout; return {} on failure.
+
+    Progress lines are printed to stdout before the JSON blob, so captured
+    stdout is often ``[alphaclaw] ...\\n{...}``. Try the full buffer first,
+    then the trailing JSON object (last ``{`` … end).
+    """
     text = (stdout or "").strip()
     if not text:
         return {}
-    try:
-        data = json.loads(text)
+
+    def _as_dict(raw: str) -> dict:
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
         return data if isinstance(data, dict) else {}
-    except json.JSONDecodeError:
+
+    whole = _as_dict(text)
+    if whole:
+        return whole
+
+    start = text.rfind("{")
+    if start == -1:
         return {}
+    return _as_dict(text[start:])
 
 
 @dataclass
