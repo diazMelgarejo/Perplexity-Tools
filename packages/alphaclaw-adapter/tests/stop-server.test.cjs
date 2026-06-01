@@ -227,3 +227,157 @@ describe("startServer — pidFile destructuring fix", () => {
     }
   });
 });
+
+describe("startServer — return shape edge cases", () => {
+  let tmpDir;
+  let pidFile;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ac-shape-"));
+    pidFile = path.join(tmpDir, "alphaclaw-server.pid");
+  });
+
+  afterEach(() => {
+    try {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+  });
+
+  it("spawn-success path result has ok, pid, port, and pidFile — no already key", async () => {
+    // The refactored startServer must return all four fields on success.
+    // It must NOT accidentally include an 'already' key on the spawn path.
+    const adapterPath = require.resolve("../src/index.js");
+    const origSpawn = cp.spawn;
+    cp.spawn = () => ({ pid: 444444, unref() {} });
+    delete require.cache[adapterPath];
+    const fresh = require("../src/index.js");
+    fresh.health = async () => ({ ok: false });
+    try {
+      const result = await fresh.startServer({ pidFile, alphaclawRoot: tmpDir, port: 39992 });
+      assert.equal(result.ok, true);
+      assert.equal(result.pid, 444444);
+      assert.equal(typeof result.port, "number");
+      assert.equal(typeof result.pidFile, "string");
+      assert.equal(result.already, undefined, "spawn path must not set already key");
+    } finally {
+      cp.spawn = origSpawn;
+      delete require.cache[adapterPath];
+      require("../src/index.js");
+    }
+  });
+
+  it("error path does not include pidFile key in result", async () => {
+    // When spawn throws, the catch branch returns { ok: false, error, port }.
+    // No pidFile key should be present in that shape.
+    const adapterPath = require.resolve("../src/index.js");
+    const origSpawn = cp.spawn;
+    cp.spawn = () => { throw new Error("spawn EACCES"); };
+    delete require.cache[adapterPath];
+    const fresh = require("../src/index.js");
+    fresh.health = async () => ({ ok: false });
+    try {
+      const result = await fresh.startServer({ pidFile, alphaclawRoot: tmpDir, port: 39991 });
+      assert.equal(result.ok, false);
+      assert.equal(result.pidFile, undefined, "pidFile must not be set on error path");
+      assert.match(result.error, /spawn EACCES/);
+    } finally {
+      cp.spawn = origSpawn;
+      delete require.cache[adapterPath];
+      require("../src/index.js");
+    }
+  });
+
+  it("startServer writes PID as plain numeric string (no trailing newline)", async () => {
+    // Verifies pid file content format; the fix must write the pid as a bare number string.
+    const adapterPath = require.resolve("../src/index.js");
+    const origSpawn = cp.spawn;
+    cp.spawn = () => ({ pid: 567890, unref() {} });
+    delete require.cache[adapterPath];
+    const fresh = require("../src/index.js");
+    fresh.health = async () => ({ ok: false });
+    try {
+      await fresh.startServer({ pidFile, alphaclawRoot: tmpDir, port: 39990 });
+      const content = fs.readFileSync(pidFile, "utf8");
+      assert.equal(content, "567890", "pid file must contain only the numeric PID string");
+      // Strict: must be parseable as the same integer
+      assert.equal(parseInt(content, 10), 567890);
+    } finally {
+      cp.spawn = origSpawn;
+      delete require.cache[adapterPath];
+      require("../src/index.js");
+    }
+  });
+
+  it("startServer with explicit undefined pidFile falls back to defaultPidFile", async () => {
+    // Passing pidFile: undefined explicitly is the same as omitting the key —
+    // the || operator must fall through to defaultPidFile(root).
+    const adapterPath = require.resolve("../src/index.js");
+    const origSpawn = cp.spawn;
+    cp.spawn = () => ({ pid: 654321, unref() {} });
+    delete require.cache[adapterPath];
+    const fresh = require("../src/index.js");
+    fresh.health = async () => ({ ok: false });
+    try {
+      const result = await fresh.startServer({
+        pidFile: undefined,
+        alphaclawRoot: tmpDir,
+        port: 39989,
+      });
+      assert.equal(result.ok, true);
+      const expectedPidFile = path.join(tmpDir, "alphaclaw-server.pid");
+      assert.equal(result.pidFile, expectedPidFile);
+      assert.equal(fs.existsSync(expectedPidFile), true);
+    } finally {
+      cp.spawn = origSpawn;
+      delete require.cache[adapterPath];
+      require("../src/index.js");
+    }
+  });
+
+  it("ALPHACLAW_PID_FILE env var is honoured by defaultPidFile when no pidFile arg given", async () => {
+    // The env-var path should be used as the pid file when no explicit pidFile is passed.
+    const adapterPath = require.resolve("../src/index.js");
+    const origSpawn = cp.spawn;
+    cp.spawn = () => ({ pid: 112233, unref() {} });
+    const envPidFile = path.join(tmpDir, "env-override.pid");
+    const prev = process.env.ALPHACLAW_PID_FILE;
+    process.env.ALPHACLAW_PID_FILE = envPidFile;
+    delete require.cache[adapterPath];
+    const fresh = require("../src/index.js");
+    fresh.health = async () => ({ ok: false });
+    try {
+      const result = await fresh.startServer({ alphaclawRoot: tmpDir, port: 39988 });
+      assert.equal(result.ok, true);
+      assert.equal(result.pidFile, envPidFile, "env var pid file path must be used when no explicit pidFile arg");
+      assert.equal(fs.readFileSync(envPidFile, "utf8"), "112233");
+    } finally {
+      if (prev === undefined) delete process.env.ALPHACLAW_PID_FILE;
+      else process.env.ALPHACLAW_PID_FILE = prev;
+      cp.spawn = origSpawn;
+      delete require.cache[adapterPath];
+      require("../src/index.js");
+    }
+  });
+
+  it("startServer result pid matches child.pid returned by spawn", async () => {
+    // Regression: ensure the pid reported in the result is exactly what spawn returns,
+    // not an in-memory stale value from a prior run.
+    const adapterPath = require.resolve("../src/index.js");
+    const origSpawn = cp.spawn;
+    const testPid = 998877;
+    cp.spawn = () => ({ pid: testPid, unref() {} });
+    delete require.cache[adapterPath];
+    const fresh = require("../src/index.js");
+    fresh.health = async () => ({ ok: false });
+    try {
+      const result = await fresh.startServer({ pidFile, alphaclawRoot: tmpDir, port: 39987 });
+      assert.equal(result.pid, testPid, "result.pid must equal the pid returned by spawn()");
+    } finally {
+      cp.spawn = origSpawn;
+      delete require.cache[adapterPath];
+      require("../src/index.js");
+    }
+  });
+});
