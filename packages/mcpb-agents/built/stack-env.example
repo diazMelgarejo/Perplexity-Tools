@@ -1,0 +1,8 @@
+# Optional env for Claude Desktop extension user_config (set in Settings → Extensions → Configure)
+# PT does not write AlphaClaw config; these mirror common stack endpoints.
+#
+# Ollama Agent → server_url (default upstream: http://localhost:11434)
+# LM Studio Agent → server_url (default upstream: http://localhost:1234)
+#
+# Mac Ollama (orama hard req): http://localhost:11434
+# Win LM Studio LAN: set in Claude Desktop UI from your devices.yml / LMSTUDIO_BASE_URL

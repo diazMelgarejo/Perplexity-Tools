@@ -1214,6 +1214,7 @@ run once per major update). Now makes `gbrain search "HITL"` work cross-session.
 - **#7** `reconcile_gateway()` → `openclaw_config` + `role_routing` via `alphaclaw_bootstrap --json`
 - **#4** `packages/alphaclaw-adapter` `stopServer()` + PID file
 - **#6** `mcp-stdio.mjs`, canonical `mcpb-agents` paths, Vitest in `local-agents`
+- **Track B+C:** `vendor/Claude-Desktop-LLM` submodule + real MCPB (`install.sh`, `scripts/install-claude-desktop-llm.sh`); JSON knockoffs removed — see [`plans/2026-05-31-track-bc-claude-desktop-mcpb.md`](plans/2026-05-31-track-bc-claude-desktop-mcpb.md)
 - Plan: [`docs/plans/2026-05-31-gate2-implementation-plan.md`](plans/2026-05-31-gate2-implementation-plan.md)
 
 **Cross-repo:** [orama LESSONS](../../orama-system/docs/LESSONS.md) · [AlphaClaw Lessons](../../AlphaClaw/docs/Lessons.MD)

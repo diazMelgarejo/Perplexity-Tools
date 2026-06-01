@@ -157,7 +157,7 @@ Gate checklists below are summaries. For **acceptance tests, blockers, and execu
   - Branch: `2026-05-22-001-alphaclaw-mcp-gate2-14tools` → PR → target: `feat/openclaw-skills-spawn-helper`
 - [ ] Gate 2 TypeScript MCP smoke-tested against live AlphaClaw (verify all 14 tools respond)
 - [ ] `packages/local-agents/`: Ollama (127.0.0.1:11435, qwen3.5-local:latest) + LM Studio (Win GPU LAN IP, read from `~/.openclaw/openclaw.json`) integration tests pass on Mac
-- [ ] `packages/mcpb-agents/`: `ollama-agent.mcpb`, `lmstudio-agent.mcpb` scaffolded
+- [x] `packages/mcpb-agents/`: real MCPB from `vendor/Claude-Desktop-LLM` (`bash install.sh` → `built/*.mcpb`)
 - [ ] PT entrypoints documented + `openclaw_config` in runtime payload (**D5=C**, work item #7 in completion plan)
 - [ ] LM Studio multi-model + AlphaClaw role-routing config workflow implemented
 - [ ] `orchestrator/autoresearch_bridge.py` gets staged progress hooks
