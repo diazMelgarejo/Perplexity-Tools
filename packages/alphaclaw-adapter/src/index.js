@@ -511,6 +511,10 @@ async function startServer({ port, alphaclawRoot, logFile, pidFile } = {}) {
   const p = port || _port;
   const root = alphaclawRoot || ALPHACLAW_ROOT;
 
+  // Align module _port before the commandeer probe so health() and subsequent
+  // waitForReady() poll the same port we spawn on (explicit port param).
+  configure({ port: p });
+
   // Commandeer-first: if already responding, reuse — don't restart
   const h = await health();
   if (h.ok) {

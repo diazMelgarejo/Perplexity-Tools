@@ -12,7 +12,31 @@ const path = require("path");
 const os = require("os");
 
 const cp = require("child_process");
+const http = require("http");
 const adapter = require("../src/index.js");
+
+function listenHealthServer(port) {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer((req, res) => {
+      if (req.url === "/health") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end('{"ok":true}');
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    server.on("error", reject);
+    server.listen(port, "127.0.0.1", () => resolve(server));
+  });
+}
+
+function closeServer(server) {
+  return new Promise((resolve) => {
+    if (!server) return resolve();
+    server.close(() => resolve());
+  });
+}
 
 describe("stopServer PID file", () => {
   let tmpDir;
@@ -43,14 +67,17 @@ describe("stopServer PID file", () => {
   });
 
   it("stopServer returns already when pid file missing and health fails", async () => {
-    const origHealth = adapter.health;
-    adapter.health = async () => ({ ok: false });
+    const adapterPath = require.resolve("../src/index.js");
+    delete require.cache[adapterPath];
+    const fresh = require("../src/index.js");
+    fresh.configure({ port: 59999 });
     try {
-      const result = await adapter.stopServer({ pidFile });
+      const result = await fresh.stopServer({ pidFile });
       assert.equal(result.ok, true);
       assert.equal(result.already, true);
     } finally {
-      adapter.health = origHealth;
+      delete require.cache[adapterPath];
+      require("../src/index.js");
     }
   });
 
@@ -119,22 +146,30 @@ describe("stopServer PID file", () => {
   });
 
   it("startServer short-circuits when server already healthy (commandeer path)", async () => {
-    // If health() returns ok:true, startServer must NOT spawn and must return already:true.
+    const COMMANDEER_PORT = 39998;
+    const healthServer = await listenHealthServer(COMMANDEER_PORT);
     const adapterPath = require.resolve("../src/index.js");
     let spawnCalled = false;
     const origSpawn = cp.spawn;
-    cp.spawn = (...args) => { spawnCalled = true; return origSpawn(...args); };
+    cp.spawn = (...args) => {
+      spawnCalled = true;
+      return origSpawn(...args);
+    };
     delete require.cache[adapterPath];
     const fresh = require("../src/index.js");
-    fresh.health = async () => ({ ok: true });
     try {
-      const result = await fresh.startServer({ pidFile, alphaclawRoot: tmpDir, port: 39998 });
+      const result = await fresh.startServer({
+        pidFile,
+        alphaclawRoot: tmpDir,
+        port: COMMANDEER_PORT,
+      });
       assert.equal(result.ok, true);
       assert.equal(result.already, true);
       assert.equal(spawnCalled, false, "spawn must not be called when server already healthy");
       assert.equal(fs.existsSync(pidFile), false, "pid file must not be written on commandeer");
     } finally {
       cp.spawn = origSpawn;
+      await closeServer(healthServer);
       delete require.cache[adapterPath];
       require("../src/index.js");
     }
@@ -628,23 +663,30 @@ describe("startServer — boundary and regression cases", () => {
   });
 
   it("startServer already-running path does NOT write a pidFile", async () => {
-    // When health returns ok:true (already running), startServer returns early
-    // without spawning or writing a pidFile.
+    const COMMANDEER_PORT = 39982;
+    const healthServer = await listenHealthServer(COMMANDEER_PORT);
     const adapterPath = require.resolve("../src/index.js");
-    const origSpawn = cp.spawn;
     let spawnCalled = false;
-    cp.spawn = () => { spawnCalled = true; return { pid: 404040, unref() {} }; };
+    const origSpawn = cp.spawn;
+    cp.spawn = () => {
+      spawnCalled = true;
+      return { pid: 404040, unref() {} };
+    };
     delete require.cache[adapterPath];
     const fresh = require("../src/index.js");
-    fresh.health = async () => ({ ok: true });
     try {
-      const result = await fresh.startServer({ pidFile, alphaclawRoot: tmpDir, port: 39982 });
+      const result = await fresh.startServer({
+        pidFile,
+        alphaclawRoot: tmpDir,
+        port: COMMANDEER_PORT,
+      });
       assert.equal(result.ok, true);
       assert.equal(result.already, true);
       assert.equal(spawnCalled, false, "spawn must not be called when server is already running");
       assert.equal(fs.existsSync(pidFile), false, "pidFile must not be written on already-running path");
     } finally {
       cp.spawn = origSpawn;
+      await closeServer(healthServer);
       delete require.cache[adapterPath];
       require("../src/index.js");
     }
