@@ -113,6 +113,7 @@ As-built: [`../orama-system/docs/v2/`](../orama-system/docs/v2/)
 
 - Commit identity: `cyre <Lawrence@cyre.me>`, `cyre <diazMelgarejo@gmail.com>`, or `Codex <codex@openai.com>` — `bash scripts/git/check_identity.sh`
 - **Private banned-identity list (gitignored, not on GitHub):** `.cursor/private/agent-lesson-git-attribution.md` — sync via `bash scripts/cursor/install-user-git-environment.sh`; never copy tokens into tracked docs.
+- **Every session:** `bash scripts/git/daily-attribution-guard.sh` (all workspace repos). Re-adding forbidden `Co-authored-by` forces another `main` + all-branch rewrite — use `commit-clean.sh` and `publish-clean-branch.sh` only.
 - Official stack policy (co-author allowlist + hooks): [`../orama-system/docs/wiki/08-git-hygiene-and-branching.md`](../orama-system/docs/wiki/08-git-hygiene-and-branching.md#official-commit-identity-policy-2026-05-25); install: `bash scripts/git/install-local-hooks.sh`
 - Dated branches: `yyyy-mm-dd-NNN-brief-summary`
 - Lockstep commits: changes to shared schema fields, exception classes, or policy keys commit to **both repos in the same session**

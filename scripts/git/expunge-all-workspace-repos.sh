@@ -68,7 +68,17 @@ expunge_repo() {
   echo ">>> [$name] banned co-author hits before expunge: $before"
 
   echo ">>> [$name] filter-branch (all refs)"
+  if ! git -C "$repo" diff-index --quiet HEAD -- 2>/dev/null \
+    || ! git -C "$repo" diff-index --quiet --cached HEAD -- 2>/dev/null; then
+    git -C "$repo" stash push -u -m "attribution-expunge-autostash" >/dev/null 2>&1 || true
+    stashed=1
+  else
+    stashed=0
+  fi
   bash "$EXPUNGE" "$repo"
+  if [[ "${stashed:-0}" == "1" ]]; then
+    git -C "$repo" stash pop >/dev/null 2>&1 || true
+  fi
 
   after="$(scan_repo_hits "$repo")"
   echo ">>> [$name] banned co-author hits after expunge: $after"
