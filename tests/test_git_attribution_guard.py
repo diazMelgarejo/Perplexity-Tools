@@ -149,11 +149,11 @@ def test_first_banned_pattern_token_returns_first_token(tmp_path):
     private_dir = tmp_path / ".cursor/private"
     private_dir.mkdir(parents=True)
     (private_dir / "banned-attribution-patterns").write_text(
-        "# comment line\nalpha-token\nbeta-token\n", encoding="utf-8"
+        "# comment line\nut-fixture-first\nut-fixture-second\n", encoding="utf-8"
     )
     proc = _call_first_banned_pattern_token(tmp_path)
     assert proc.returncode == 0
-    assert proc.stdout == "alpha-token"
+    assert proc.stdout == "ut-fixture-first"
 
 
 def test_first_banned_pattern_token_skips_empty_lines(tmp_path):
@@ -161,11 +161,11 @@ def test_first_banned_pattern_token_skips_empty_lines(tmp_path):
     private_dir = tmp_path / ".cursor/private"
     private_dir.mkdir(parents=True)
     (private_dir / "banned-attribution-patterns").write_text(
-        "\n\n\nreal-token\nother-token\n", encoding="utf-8"
+        "\n\n\nut-fixture-first\nut-fixture-second\n", encoding="utf-8"
     )
     proc = _call_first_banned_pattern_token(tmp_path)
     assert proc.returncode == 0
-    assert proc.stdout == "real-token"
+    assert proc.stdout == "ut-fixture-first"
 
 
 def test_first_banned_pattern_token_skips_comment_only_file(tmp_path):
@@ -201,11 +201,11 @@ def test_first_banned_pattern_token_strips_inline_comments(tmp_path):
     private_dir.mkdir(parents=True)
     # Inline comment after token — list_banned_pattern_tokens strips it
     (private_dir / "banned-attribution-patterns").write_text(
-        "# header\nmytoken  # inline comment\n", encoding="utf-8"
+        "# header\nut-fixture-inline  # inline comment\n", encoding="utf-8"
     )
     proc = _call_first_banned_pattern_token(tmp_path)
     assert proc.returncode == 0
-    assert proc.stdout == "mytoken"
+    assert proc.stdout == "ut-fixture-inline"
 
 
 def test_first_banned_pattern_token_with_real_patterns():
