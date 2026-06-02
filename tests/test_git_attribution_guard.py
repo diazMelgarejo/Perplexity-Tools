@@ -3,13 +3,16 @@ from __future__ import annotations
 
 import base64
 import os
+import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 STRIP_HOOK = ROOT / "scripts/git/hooks/commit-msg.strip-coauthor"
 SYNC_PRIVATE = ROOT / "scripts/cursor/sync-private-attribution-from-home.sh"
 CI_BOOTSTRAP = ROOT / "scripts/cursor/ci-bootstrap-private-attribution.sh"
+ENSURE_HOOKS = ROOT / "scripts/git/ensure_hooks_installed.sh"
 ORAMA_WRITE = Path("/agent/repos/orama-system/scripts/cursor/write-openclaw-private-attribution.sh")
 
 
@@ -196,19 +199,21 @@ def _call_first_banned_pattern_token(root: Path) -> "subprocess.CompletedProcess
         subprocess.CompletedProcess[str]: Completed process where `stdout` contains the function's output; `returncode` is 0 on success and non-zero on failure. The process also carries `stderr` for error diagnostics.
     """
     script = f'source "{_BANNED_ATTR_LIB}" && first_banned_pattern_token "{root}"'
-    isolated_home = root / "isolated-home"
-    isolated_home.mkdir(parents=True, exist_ok=True)
-    env = {
-        **os.environ,
-        "HOME": str(isolated_home),
-        "OPENCLAW_ATTRIBUTION_PATTERNS": str(isolated_home / "missing-patterns"),
-    }
-    return subprocess.run(
-        ["bash", "-c", script],
-        capture_output=True,
-        text=True,
-        env=env,
-    )
+    isolated_home = Path(tempfile.mkdtemp(prefix="pt-banned-token-"))
+    try:
+        env = {
+            **os.environ,
+            "HOME": str(isolated_home),
+            "OPENCLAW_ATTRIBUTION_PATTERNS": str(isolated_home / "missing-patterns"),
+        }
+        return subprocess.run(
+            ["bash", "-c", script],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+    finally:
+        shutil.rmtree(isolated_home, ignore_errors=True)
 
 
 def test_first_banned_pattern_token_returns_first_token(tmp_path):
@@ -378,6 +383,81 @@ def test_verify_guards_github_actions_uses_first_banned_pattern_token():
     # the script reports "banned pattern file empty" — in either case no SIGPIPE crash.
     assert "Traceback" not in combined  # no Python crash
     assert "Broken pipe" not in combined  # no SIGPIPE leaked to output
+
+
+def _make_fake_git_repo(tmp_path: Path, hooks_path: str = ".githooks") -> Path:
+    """Initialize a minimal git repo in tmp_path with the given hooksPath config."""
+    subprocess.run(["git", "init", str(tmp_path)], check=True, capture_output=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "config", "--local", "core.hooksPath", hooks_path],
+        check=True,
+        capture_output=True,
+    )
+    return tmp_path
+
+
+def _run_ensure_hooks(repo_root: Path) -> subprocess.CompletedProcess[str]:
+    """Run the real ensure_hooks_installed.sh against a repo root (via REPO_ROOT)."""
+    return subprocess.run(
+        ["bash", str(ENSURE_HOOKS)],
+        capture_output=True,
+        text=True,
+        env={**os.environ, "REPO_ROOT": str(repo_root)},
+    )
+
+
+def test_ensure_hooks_installed_fails_when_hookspath_wrong(tmp_path):
+    """ensure_hooks_installed.sh fails when core.hooksPath is not .githooks."""
+    _make_fake_git_repo(tmp_path, hooks_path=".git/hooks")
+    proc = _run_ensure_hooks(tmp_path)
+    assert proc.returncode != 0
+    assert ".githooks" in proc.stderr
+
+
+def test_ensure_hooks_installed_fails_when_hook_missing(tmp_path):
+    """ensure_hooks_installed.sh fails if a required hook file is absent."""
+    _make_fake_git_repo(tmp_path, hooks_path=".githooks")
+    hooks_dir = tmp_path / ".githooks"
+    hooks_dir.mkdir()
+    for hook in ("pre-commit", "commit-msg"):
+        h = hooks_dir / hook
+        h.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+        h.chmod(0o755)
+
+    proc = _run_ensure_hooks(tmp_path)
+    assert proc.returncode != 0
+    assert "pre-push" in proc.stderr
+
+
+def test_ensure_hooks_installed_passes_when_all_hooks_present(tmp_path):
+    """ensure_hooks_installed.sh passes when all required hooks are present and executable."""
+    _make_fake_git_repo(tmp_path, hooks_path=".githooks")
+    hooks_dir = tmp_path / ".githooks"
+    hooks_dir.mkdir()
+    for hook in ("pre-commit", "commit-msg", "pre-push"):
+        h = hooks_dir / hook
+        h.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+        h.chmod(0o755)
+
+    proc = _run_ensure_hooks(tmp_path)
+    assert proc.returncode == 0
+    assert proc.stdout == ""
+    assert proc.stderr == ""
+
+
+def test_ensure_hooks_installed_fails_when_hook_not_executable(tmp_path):
+    """ensure_hooks_installed.sh fails if a hook exists but is not executable."""
+    _make_fake_git_repo(tmp_path, hooks_path=".githooks")
+    hooks_dir = tmp_path / ".githooks"
+    hooks_dir.mkdir()
+    for hook in ("pre-commit", "commit-msg", "pre-push"):
+        h = hooks_dir / hook
+        h.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+        h.chmod(0o644)
+
+    proc = _run_ensure_hooks(tmp_path)
+    assert proc.returncode != 0
+    assert "non-executable" in proc.stderr
 
 
 def test_ensure_banned_patterns_succeeds_when_patterns_present():

@@ -2,6 +2,7 @@
 """User-input queue behaviour (portal / researcher polling)."""
 from __future__ import annotations
 
+import asyncio
 import collections
 import importlib.util
 import threading
@@ -76,6 +77,34 @@ def test_parse_secs_env_poll_interval_boolean_true(monkeypatch):
 def test_parse_secs_env_input_poll_interval_boolean_true(monkeypatch):
     monkeypatch.setenv("RESEARCHER_INPUT_POLL_INTERVAL", "true")
     assert _launch._parse_secs_env("RESEARCHER_INPUT_POLL_INTERVAL", 5) == 5
+
+
+def test_wait_with_progress_zero_seconds_returns_immediately():
+    """Disabled crash recovery (0s) must not divide by zero in the progress bar."""
+    asyncio.run(_launch._wait_with_progress(0, "mac-researcher", "simulated error"))
+
+
+def test_backoff_after_error_disabled_uses_poll_interval(monkeypatch):
+    """RESEARCHER_CRASH_RECOVERY=0 must not tight-loop; use normal poll interval."""
+    calls: list[tuple[str, int]] = []
+
+    async def fake_sleep(seconds: int) -> None:
+        calls.append(("sleep", seconds))
+
+    async def fake_progress(seconds: int, role: str, reason: str) -> None:
+        calls.append(("progress", seconds))
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(_launch, "_wait_with_progress", fake_progress)
+
+    async def run_cases() -> None:
+        await _launch._backoff_after_error(0, 30, "mac-researcher", "HTTP 503")
+        assert calls == [("sleep", 30)]
+        calls.clear()
+        await _launch._backoff_after_error(45, 30, "mac-researcher", "HTTP 503")
+        assert calls == [("progress", 45)]
+
+    asyncio.run(run_cases())
 
 
 def test_extract_user_input_message_flat_string():

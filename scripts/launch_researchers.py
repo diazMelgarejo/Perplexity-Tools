@@ -17,9 +17,11 @@ Usage:
     python scripts/launch_researchers.py --interval 60  # seconds between rounds
 
 Environment:
-    STATE_DIR                  where to write activity log (default: .state)
-    RESEARCHER_POLL_INTERVAL   seconds between rounds (default: 30)
-    LM_STUDIO_API_TOKEN        passed through for secured LM Studio instances
+    STATE_DIR                      where to write activity log (default: .state)
+    RESEARCHER_POLL_INTERVAL       seconds between rounds (default: 30); true/false use default
+    RESEARCHER_CRASH_RECOVERY      crash-restart delay seconds (default: 30); false disables
+    RESEARCHER_INPUT_POLL_INTERVAL portal user-input poll seconds (default: 5); true/false use default
+    LM_STUDIO_API_TOKEN            passed through for secured LM Studio instances
 """
 from __future__ import annotations
 
@@ -155,6 +157,8 @@ async def _wait_with_progress(seconds: int, role: str, reason: str) -> None:
         [mac-researcher] GPU cooldown — 30s before next attempt
         [mac-researcher] [████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 20%  (24s remaining)
     """
+    if seconds <= 0:
+        return
     bar_width = 38
     print(f"\n  [{role}] ⚠  {reason}", flush=True)
     print(f"  [{role}] GPU cooldown — {seconds}s before next attempt", flush=True)
@@ -168,6 +172,23 @@ async def _wait_with_progress(seconds: int, role: str, reason: str) -> None:
         if elapsed < seconds:
             await asyncio.sleep(1)
     print(f"\r  [{role}] [{'█' * bar_width}] 100%  — resuming              ", flush=True)
+
+
+async def _backoff_after_error(
+    recovery_secs: int,
+    interval: int,
+    role: str,
+    reason: str,
+) -> None:
+    """Wait after an inference error.
+
+    Extended GPU cooldown when ``recovery_secs > 0``; otherwise use the normal
+    poll interval so disabling crash recovery does not tight-loop the backend.
+    """
+    if recovery_secs > 0:
+        await _wait_with_progress(recovery_secs, role, reason)
+    else:
+        await asyncio.sleep(interval)
 
 
 # ── model discovery ───────────────────────────────────────────────────────────
@@ -363,9 +384,11 @@ async def run_researcher(
             if loop_once:
                 break
 
-            # After a crash: GPU cooldown.
-            if error_reason is not None and CRASH_RECOVERY_SECS > 0:
-                await _wait_with_progress(CRASH_RECOVERY_SECS, role, error_reason)
+            # After a crash: GPU cooldown (or poll interval when recovery disabled).
+            if error_reason is not None:
+                await _backoff_after_error(
+                    CRASH_RECOVERY_SECS, interval, role, error_reason
+                )
                 continue
 
             # After N successful rounds: stop autonomous loop, wait for user input.
