@@ -48,12 +48,36 @@ log = logging.getLogger("researchers")
 
 # ── config ────────────────────────────────────────────────────────────────────
 
+_DISABLE_CRASH_RECOVERY = frozenset(
+    {"false", "0", "off", "disable", "disabled", "no"}
+)
+_ENABLE_CRASH_RECOVERY_DEFAULT = frozenset(
+    {"true", "enable", "enabled", "yes", "on", "1"}
+)
+
+
+def _parse_crash_recovery_secs() -> int:
+    """Parse RESEARCHER_CRASH_RECOVERY (seconds, 0=off, boolean aliases)."""
+    raw = os.getenv("RESEARCHER_CRASH_RECOVERY", "30").strip()
+    if not raw:
+        return 30
+    lowered = raw.lower()
+    if lowered in _DISABLE_CRASH_RECOVERY:
+        return 0
+    if lowered in _ENABLE_CRASH_RECOVERY_DEFAULT:
+        return 30
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return 30
+
+
 STATE_DIR = Path(os.getenv("STATE_DIR", ".state"))
 STATE_DIR.mkdir(parents=True, exist_ok=True)
 ACTIVITY_LOG = STATE_DIR / "researcher_activity.jsonl"
 
 POLL_INTERVAL        = int(os.getenv("RESEARCHER_POLL_INTERVAL", "30"))
-CRASH_RECOVERY_SECS  = int(os.getenv("RESEARCHER_CRASH_RECOVERY", "30"))
+CRASH_RECOVERY_SECS  = _parse_crash_recovery_secs()
 MAX_EVENTS           = 200
 REQUEST_TIMEOUT      = 90.0
 INPUT_POLL_INTERVAL  = int(os.getenv("RESEARCHER_INPUT_POLL_INTERVAL", "5"))
