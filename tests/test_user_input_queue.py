@@ -20,6 +20,31 @@ _spec.loader.exec_module(_launch)
 _extract = _launch._extract_user_input_message
 
 
+def test_parse_secs_env_crash_recovery_boolean_true(monkeypatch):
+    monkeypatch.setenv("RESEARCHER_CRASH_RECOVERY", "true")
+    assert _launch._parse_secs_env("RESEARCHER_CRASH_RECOVERY", 30, allow_disable=True) == 30
+
+
+def test_parse_secs_env_crash_recovery_numeric(monkeypatch):
+    monkeypatch.setenv("RESEARCHER_CRASH_RECOVERY", "45")
+    assert _launch._parse_secs_env("RESEARCHER_CRASH_RECOVERY", 30, allow_disable=True) == 45
+
+
+def test_parse_secs_env_crash_recovery_disabled(monkeypatch):
+    monkeypatch.setenv("RESEARCHER_CRASH_RECOVERY", "false")
+    assert _launch._parse_secs_env("RESEARCHER_CRASH_RECOVERY", 30, allow_disable=True) == 0
+
+
+def test_parse_secs_env_poll_interval_boolean_true(monkeypatch):
+    monkeypatch.setenv("RESEARCHER_POLL_INTERVAL", "true")
+    assert _launch._parse_secs_env("RESEARCHER_POLL_INTERVAL", 30) == 30
+
+
+def test_parse_secs_env_input_poll_interval_boolean_true(monkeypatch):
+    monkeypatch.setenv("RESEARCHER_INPUT_POLL_INTERVAL", "true")
+    assert _launch._parse_secs_env("RESEARCHER_INPUT_POLL_INTERVAL", 5) == 5
+
+
 def test_extract_user_input_message_flat_string():
     assert _extract("  run tests  ") == "run tests"
 
