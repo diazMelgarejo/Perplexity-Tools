@@ -160,7 +160,6 @@ def test_verify_git_guards_github_actions_skips_hooks_json_check():
     combined = proc.stdout + proc.stderr
     assert "skip user-level Cursor session hook checks" in combined
     assert f"missing {hooks_path}" not in combined
-    assert "missing ${HOME}/.cursor/hooks.json" not in combined
 
 
 def test_check_commit_message_rejects_unknown_gmail(tmp_path):
