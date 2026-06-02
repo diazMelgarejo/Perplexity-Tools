@@ -3,7 +3,11 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+if [[ -n "${REPO_ROOT:-}" ]] && [[ -d "$REPO_ROOT" ]]; then
+  REPO_ROOT="$(cd "$REPO_ROOT" && pwd)"
+else
+  REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+fi
 
 cd "$REPO_ROOT"
 
