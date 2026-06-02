@@ -52,30 +52,32 @@ STATE_DIR = Path(os.getenv("STATE_DIR", ".state"))
 STATE_DIR.mkdir(parents=True, exist_ok=True)
 ACTIVITY_LOG = STATE_DIR / "researcher_activity.jsonl"
 
-POLL_INTERVAL = int(os.getenv("RESEARCHER_POLL_INTERVAL", "30"))
+def _parse_secs_env(var_name: str, default: int, *, allow_disable: bool = False) -> int:
+    """Parse researcher timing env vars: seconds, or true/false enable flags.
 
-
-def _parse_crash_recovery_secs() -> int:
-    """Parse RESEARCHER_CRASH_RECOVERY: seconds, or true/false enable flags."""
-    raw = os.getenv("RESEARCHER_CRASH_RECOVERY", "30").strip()
+    When ``allow_disable`` is True, false/off values yield 0 (crash recovery off).
+    Otherwise false/off values fall back to ``default``.
+    """
+    raw = os.getenv(var_name, str(default)).strip()
     if not raw:
-        return 30
+        return default
     lower = raw.lower()
     if lower in ("0", "false", "no", "off", "disable", "disabled"):
-        return 0
+        return 0 if allow_disable else default
     if lower in ("1", "true", "yes", "on", "enable", "enabled"):
-        return 30
+        return default
     try:
         return max(0, int(raw))
     except ValueError:
-        log.warning("invalid RESEARCHER_CRASH_RECOVERY=%r — using 30", raw)
-        return 30
+        log.warning("invalid %s=%r — using %d", var_name, raw, default)
+        return default
 
 
-CRASH_RECOVERY_SECS = _parse_crash_recovery_secs()
+POLL_INTERVAL = _parse_secs_env("RESEARCHER_POLL_INTERVAL", 30)
+CRASH_RECOVERY_SECS = _parse_secs_env("RESEARCHER_CRASH_RECOVERY", 30, allow_disable=True)
 MAX_EVENTS           = 200
 REQUEST_TIMEOUT      = 90.0
-INPUT_POLL_INTERVAL  = int(os.getenv("RESEARCHER_INPUT_POLL_INTERVAL", "5"))
+INPUT_POLL_INTERVAL  = _parse_secs_env("RESEARCHER_INPUT_POLL_INTERVAL", 5)
 
 # PT orchestrator endpoint — researchers poll here for user tasks
 PT_ENDPOINT = os.getenv("ORCHESTRATOR_ENDPOINT", "http://localhost:8000")
