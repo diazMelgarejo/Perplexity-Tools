@@ -500,16 +500,29 @@ async function discoverPort(
  * Idempotency: probes /health first. If already running, returns
  * { ok: true, already: true, port } without spawning a new process.
  *
+ * Gate 2 / lifecycle: when ``opts.port`` is set, this function calls
+ * configure({ port }) before the health probe so commandeer + waitForReady()
+ * target the same port as the spawned child (see inline comment below).
+ *
  * @param {object} opts
- * @param {number} opts.port           — port to start on (default active _port)
- * @param {string} opts.alphaclawRoot  — override ALPHACLAW_ROOT
- * @param {string} opts.logFile        — if set, append stdout+stderr here
- * @param {string} opts.pidFile        — PID file path (default defaultPidFile(root))
+ * @param {number} opts.port - Port to start on (default active _port).
+ * @param {string} opts.alphaclawRoot - AlphaClaw project root; defaults to ALPHACLAW_ROOT.
+ * @param {string} opts.logFile - Append stdout/stderr here; if omitted, child IO is suppressed.
+ * @param {string} opts.pidFile - PID file path (default defaultPidFile(root)).
  * @returns {Promise<{ok: boolean, already?: boolean, pid?: number, port: number, pidFile?: string, error?: string}>}
+ *   Success: { ok: true, pid?, port, pidFile? }. Already running: { ok: true, already: true, port }.
+ *   Failure: { ok: false, error, port }.
  */
 async function startServer({ port, alphaclawRoot, logFile, pidFile } = {}) {
   const p = port || _port;
   const root = alphaclawRoot || ALPHACLAW_ROOT;
+
+  // Gate 2 / lifecycle: health() reads module-level _port (see configure()).
+  // Without this call, startServer({ port }) would spawn on PORT=p but probe the
+  // default port — ensureRunning() + waitForReady() would time out while the
+  // child is healthy on the intended port. Does not replace spawn env; it aligns
+  // the commandeer probe with the explicit port argument.
+  configure({ port: p });
 
   // Commandeer-first: if already responding, reuse — don't restart
   const h = await health();

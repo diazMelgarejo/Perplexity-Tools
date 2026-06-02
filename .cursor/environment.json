@@ -1,0 +1,11 @@
+{
+  "install": "bash scripts/cursor/cloud-bootstrap.sh",
+  "start": "bash scripts/cursor/cloud-bootstrap.sh",
+  "environment": {
+    "PERPETUA_TOOLS_PATH": "${workspaceFolder}",
+    "REPO_ROOT": "${workspaceFolder}",
+    "OPENCLAW_HOME": "$HOME/openclaw-v1",
+    "ORAMA_SYSTEM_PATH": "$HOME/openclaw-v1/orama-system",
+    "ALPHACLAW_INSTALL_DIR": "$HOME/openclaw-v1/AlphaClaw"
+  }
+}

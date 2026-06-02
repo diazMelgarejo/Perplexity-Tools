@@ -348,15 +348,36 @@ def post_user_input(req: UserInputRequest) -> Dict[str, Any]:
 
 @app.get("/user-input/next", tags=["user-input"])
 def get_user_input_next() -> Dict[str, Any]:
-    """Pop and return the next queued user message. Returns null message when empty."""
-    if _USER_INPUT_QUEUE:
+    """Return and remove the next queued user message.
+
+    Empty queue: ``{"message": null}`` only (no ``source`` / ``ts`` keys).
+    When a message is available, returns the enqueued ``message`` and, when
+    present on the queued entry, ``source`` and ``ts`` (via ``dict.get``).
+
+    Implementation uses two complementary guards (additive, not either/or):
+    - ``if not _USER_INPUT_QUEUE`` — fast path for idle queue; preserves the
+      historical empty response shape used by portal researchers and CLI pollers.
+    - ``try`` / ``except IndexError`` on ``pop()`` — covers concurrent
+      ``GET /user-input/next`` callers that race between the emptiness check
+      and the pop; treated as empty, not a server error.
+
+    Returns:
+        dict: ``{"message": None}`` if no entry is available (empty queue or
+        concurrent race); otherwise
+        ``{"message": str, "source": str | None, "ts": int | float | None}``.
+    """
+    if not _USER_INPUT_QUEUE:
+        return {"message": None}
+    try:
         entry = _USER_INPUT_QUEUE.pop()
-        return {
-            "message": entry["message"],
-            "source": entry.get("source"),
-            "ts": entry.get("ts"),
-        }
-    return {"message": None}
+    except IndexError:
+        # Another poller drained the queue after our check — same contract as empty.
+        return {"message": None}
+    return {
+        "message": entry["message"],
+        "source": entry.get("source"),
+        "ts": entry.get("ts"),
+    }
 
 
 @app.get("/user-input/status", tags=["user-input"])
