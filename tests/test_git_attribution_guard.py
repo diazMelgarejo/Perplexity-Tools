@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -199,17 +200,20 @@ def _call_first_banned_pattern_token(root: Path) -> "subprocess.CompletedProcess
     """
     script = f'source "{_BANNED_ATTR_LIB}" && first_banned_pattern_token "{root}"'
     isolated_home = Path(tempfile.mkdtemp(prefix="pt-banned-token-"))
-    env = {
-        **os.environ,
-        "HOME": str(isolated_home),
-        "OPENCLAW_ATTRIBUTION_PATTERNS": str(isolated_home / "missing-patterns"),
-    }
-    return subprocess.run(
-        ["bash", "-c", script],
-        capture_output=True,
-        text=True,
-        env=env,
-    )
+    try:
+        env = {
+            **os.environ,
+            "HOME": str(isolated_home),
+            "OPENCLAW_ATTRIBUTION_PATTERNS": str(isolated_home / "missing-patterns"),
+        }
+        return subprocess.run(
+            ["bash", "-c", script],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+    finally:
+        shutil.rmtree(isolated_home, ignore_errors=True)
 
 
 def test_first_banned_pattern_token_returns_first_token(tmp_path):
