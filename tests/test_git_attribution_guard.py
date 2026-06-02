@@ -146,8 +146,8 @@ def test_ensure_banned_patterns_prefers_ci_bootstrap(tmp_path, monkeypatch):
 
 
 def test_verify_git_guards_github_actions_skips_hooks_json_check():
-    """On GHA, verify-git-guards must not fail on missing ~/.cursor/hooks.json."""
-    subprocess.run(["bash", str(CI_BOOTSTRAP)], check=True, cwd=ROOT)
+    """On GHA, verify-git-guards skips Cursor session hooks and avoids SIGPIPE on fixtures."""
+    _ensure_banned_patterns()
     home = os.environ.get("HOME", "/home/ubuntu")
     hooks_path = os.path.join(home, ".cursor", "hooks.json")
     proc = subprocess.run(
@@ -160,6 +160,8 @@ def test_verify_git_guards_github_actions_skips_hooks_json_check():
     combined = proc.stdout + proc.stderr
     assert "skip user-level Cursor session hook checks" in combined
     assert f"missing {hooks_path}" not in combined
+    assert "Cursor sessionStart hook missing" not in combined
+    assert "Broken pipe" not in combined
 
 
 def test_check_commit_message_rejects_unknown_gmail(tmp_path):
@@ -176,3 +178,108 @@ def test_check_commit_message_rejects_unknown_gmail(tmp_path):
         text=True,
     )
     assert proc.returncode != 0
+
+
+_BANNED_ATTR_LIB = ROOT / "scripts/git/banned_attribution_lib.sh"
+
+
+def _call_first_banned_pattern_token(root: Path) -> subprocess.CompletedProcess[str]:
+    """Source banned_attribution_lib.sh and invoke first_banned_pattern_token with given root."""
+    script = f'source "{_BANNED_ATTR_LIB}" && first_banned_pattern_token "{root}"'
+    isolated_home = root / "isolated-home"
+    isolated_home.mkdir(parents=True, exist_ok=True)
+    env = {
+        **os.environ,
+        "HOME": str(isolated_home),
+        "OPENCLAW_ATTRIBUTION_PATTERNS": str(isolated_home / "missing-patterns"),
+    }
+    return subprocess.run(
+        ["bash", "-c", script],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+
+
+def test_first_banned_pattern_token_returns_first_token(tmp_path):
+    """first_banned_pattern_token must return the first non-empty, non-comment token."""
+    private_dir = tmp_path / ".cursor/private"
+    private_dir.mkdir(parents=True)
+    (private_dir / "banned-attribution-patterns").write_text(
+        "# comment line\nut-fixture-first\nut-fixture-second\n", encoding="utf-8"
+    )
+    proc = _call_first_banned_pattern_token(tmp_path)
+    assert proc.returncode == 0
+    assert proc.stdout == "ut-fixture-first"
+
+
+def test_first_banned_pattern_token_skips_empty_lines(tmp_path):
+    """first_banned_pattern_token skips blank lines before returning the first real token."""
+    private_dir = tmp_path / ".cursor/private"
+    private_dir.mkdir(parents=True)
+    (private_dir / "banned-attribution-patterns").write_text(
+        "\n\n\nut-fixture-first\nut-fixture-second\n", encoding="utf-8"
+    )
+    proc = _call_first_banned_pattern_token(tmp_path)
+    assert proc.returncode == 0
+    assert proc.stdout == "ut-fixture-first"
+
+
+def test_first_banned_pattern_token_skips_comment_only_file(tmp_path):
+    """first_banned_pattern_token returns non-zero exit when only comments exist."""
+    private_dir = tmp_path / ".cursor/private"
+    private_dir.mkdir(parents=True)
+    (private_dir / "banned-attribution-patterns").write_text(
+        "# this is a comment\n# another comment\n", encoding="utf-8"
+    )
+    proc = _call_first_banned_pattern_token(tmp_path)
+    assert proc.returncode != 0
+
+
+def test_first_banned_pattern_token_fails_on_missing_file(tmp_path):
+    """first_banned_pattern_token exits non-zero when pattern file does not exist."""
+    proc = _call_first_banned_pattern_token(tmp_path)
+    assert proc.returncode != 0
+
+
+def test_first_banned_pattern_token_fails_on_empty_file(tmp_path):
+    """first_banned_pattern_token exits non-zero when pattern file is empty."""
+    private_dir = tmp_path / ".cursor/private"
+    private_dir.mkdir(parents=True)
+    (private_dir / "banned-attribution-patterns").write_text("", encoding="utf-8")
+    proc = _call_first_banned_pattern_token(tmp_path)
+    assert proc.returncode != 0
+
+
+def test_first_banned_pattern_token_strips_inline_comments(tmp_path):
+    """first_banned_pattern_token strips inline comments and trailing whitespace."""
+    private_dir = tmp_path / ".cursor/private"
+    private_dir.mkdir(parents=True)
+    (private_dir / "banned-attribution-patterns").write_text(
+        "# header\nut-fixture-inline  # inline comment\n", encoding="utf-8"
+    )
+    proc = _call_first_banned_pattern_token(tmp_path)
+    assert proc.returncode == 0
+    assert proc.stdout == "ut-fixture-inline"
+
+
+def test_first_banned_pattern_token_with_real_patterns():
+    """first_banned_pattern_token works against repo private patterns."""
+    _ensure_banned_patterns()
+    proc = _call_first_banned_pattern_token(ROOT)
+    assert proc.returncode == 0
+    assert len(proc.stdout.strip()) > 0
+
+
+def test_daily_attribution_guard_requires_opt_in_for_auto_expunge():
+    """Session/cloud bootstrap must not rewrite git history unless explicitly opted in."""
+    text = (ROOT / "scripts/git/daily-attribution-guard.sh").read_text(encoding="utf-8")
+    assert "ATTRIBUTION_EXPUNGE_AUTO" in text
+    assert "expunge-all-workspace-repos.sh" in text
+    assert 'ATTRIBUTION_EXPUNGE_AUTO:-}" == "1"' in text
+
+
+def test_cloud_bootstrap_does_not_invoke_daily_attribution_guard():
+    """Cloud VM bootstrap must not run full-history attribution scans."""
+    text = (ROOT / "scripts/cursor/cloud-bootstrap.sh").read_text(encoding="utf-8")
+    assert "daily-attribution-guard.sh" not in text

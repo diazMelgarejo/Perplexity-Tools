@@ -26,15 +26,21 @@ banned_patterns_ready() {
   [[ -f "$f" && -s "$f" ]]
 }
 
-# First token only (avoids SIGPIPE from `... | head -n1` under pipefail).
+# First token only — reads the pattern file directly (no pipe to head; avoids SIGPIPE).
 # Usage: fixture_token="$(first_banned_pattern_token "$REPO_ROOT" || true)"
 first_banned_pattern_token() {
-  local token
-  while IFS= read -r token; do
+  local f token
+  f="$(banned_patterns_file "${1:-}")"
+  if [[ ! -f "$f" ]]; then
+    return 1
+  fi
+  while IFS= read -r token || [[ -n "$token" ]]; do
+    token="${token%%#*}"
+    token="$(printf '%s' "$token" | tr -d '[:space:]')"
     [[ -n "$token" ]] || continue
     printf '%s' "$token"
     return 0
-  done < <(list_banned_pattern_tokens "${1:-}")
+  done <"$f"
   return 1
 }
 

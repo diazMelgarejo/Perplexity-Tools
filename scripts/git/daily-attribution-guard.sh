@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Run at session start (and optionally cron): neutralize injection, scan, expunge if needed, verify hooks.
-# Idempotent: expunge runs only when banned co-author hits > 0.
+# Run at session start (and optionally cron): neutralize injection, scan, verify hooks.
+# History rewrite + force-push never run unless ATTRIBUTION_EXPUNGE_AUTO=1 (explicit opt-in).
+# Idempotent: expunge-all-workspace-repos.sh skips repos with zero hits.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -51,8 +52,13 @@ for repo in "$WORKSPACE_ROOT"/*; do
 done
 
 if [[ "$total_hits" -gt 0 ]]; then
-  echo "ALERT: banned co-author hits=$total_hits — running workspace expunge" >>"$LOG"
-  bash "$SCRIPT_DIR/expunge-all-workspace-repos.sh" >>"$LOG" 2>&1
+  echo "ALERT: banned co-author hits=$total_hits — run: bash $SCRIPT_DIR/expunge-all-workspace-repos.sh" >>"$LOG"
+  if [[ "${ATTRIBUTION_EXPUNGE_AUTO:-}" == "1" ]]; then
+    echo "ATTRIBUTION_EXPUNGE_AUTO=1 — running workspace expunge" >>"$LOG"
+    bash "$SCRIPT_DIR/expunge-all-workspace-repos.sh" >>"$LOG" 2>&1
+  else
+    echo "expunge skipped (set ATTRIBUTION_EXPUNGE_AUTO=1 to enable automatic rewrite)" >>"$LOG"
+  fi
 else
   echo "scan clean — no expunge required" >>"$LOG"
 fi
