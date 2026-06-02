@@ -30,17 +30,22 @@ else
   ok "repo hooks installed (.githooks)"
 fi
 
-session_hook="${HOME}/.cursor/openclaw/hooks/session-apply-git-guards.sh"
-if [[ ! -x "$session_hook" ]]; then
-  fail "Cursor sessionStart hook missing (bash scripts/cursor/install-user-git-environment.sh)"
+if [[ "${GITHUB_ACTIONS:-}" == "true" ]]; then
+  ok "GitHub Actions: skip Cursor sessionStart hook check"
+  ok "GitHub Actions: skip ${HOME}/.cursor/hooks.json check"
 else
-  ok "Cursor sessionStart hook installed"
-fi
+  session_hook="${HOME}/.cursor/openclaw/hooks/session-apply-git-guards.sh"
+  if [[ ! -x "$session_hook" ]]; then
+    fail "Cursor sessionStart hook missing (bash scripts/cursor/install-user-git-environment.sh)"
+  else
+    ok "Cursor sessionStart hook installed"
+  fi
 
-if [[ ! -f "${HOME}/.cursor/hooks.json" ]]; then
-  fail "missing ${HOME}/.cursor/hooks.json"
-else
-  ok "Cursor hooks.json present"
+  if [[ ! -f "${HOME}/.cursor/hooks.json" ]]; then
+    fail "missing ${HOME}/.cursor/hooks.json"
+  else
+    ok "Cursor hooks.json present"
+  fi
 fi
 
 email_lc="$(git config --local user.email 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
@@ -75,7 +80,7 @@ if [[ -f "$REPO_ROOT/scripts/git/cursor-hooks-id.sh" ]]; then
   fi
 fi
 
-fixture_token="$(list_banned_pattern_tokens "$REPO_ROOT" | head -n1)"
+fixture_token="$(first_banned_pattern_token "$REPO_ROOT" || true)"
 if [[ -z "$fixture_token" ]]; then
   fail "banned pattern file empty"
 else

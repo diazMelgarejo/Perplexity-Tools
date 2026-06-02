@@ -41,6 +41,23 @@ list_banned_pattern_tokens() {
   done <"$f"
 }
 
+# First token only — avoids SIGPIPE from `list_* | head -n1` under pipefail.
+first_banned_pattern_token() {
+  local f token
+  f="$(banned_patterns_file "${1:-}")"
+  if [[ ! -f "$f" ]]; then
+    return 1
+  fi
+  while IFS= read -r token || [[ -n "$token" ]]; do
+    token="${token%%#*}"
+    token="$(printf '%s' "$token" | tr -d '[:space:]')"
+    [[ -n "$token" ]] || continue
+    printf '%s' "$token"
+    return 0
+  done <"$f"
+  return 1
+}
+
 line_matches_banned_pattern() {
   local line_lc="$1"
   local root="${2:-}"
