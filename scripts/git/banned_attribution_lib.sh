@@ -56,7 +56,7 @@ list_banned_pattern_tokens() {
 line_matches_banned_pattern() {
   local line_lc="$1"
   local root="${2:-}"
-  local token
+  local token token_lc
   while IFS= read -r token; do
     token_lc="$(printf '%s' "$token" | tr '[:upper:]' '[:lower:]')"
     if [[ "$line_lc" == *"$token_lc"* ]]; then

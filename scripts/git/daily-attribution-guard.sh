@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Run at session start (and optionally cron): neutralize injection, scan, expunge if needed, verify hooks.
+# Idempotent: expunge runs only when banned co-author hits > 0.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

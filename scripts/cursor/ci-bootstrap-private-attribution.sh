@@ -19,6 +19,11 @@ mkdir -p "$OPENCLAW/private-lessons" "$PRIVATE"
 chmod 700 "$OPENCLAW" "$PRIVATE" 2>/dev/null || true
 
 PATTERNS_OPENCLAW="${OPENCLAW}/banned-attribution-patterns"
+if [[ -s "$PATTERNS_OPENCLAW" && -s "${PRIVATE}/banned-attribution-patterns" ]]; then
+  printf 'OK: CI bootstrap already present → %s\n' "$PATTERNS_OPENCLAW"
+  exit 0
+fi
+
 {
   echo "# Banned attribution tokens (one per line, case-insensitive substring match)"
   decode_b64_line "ZGFydGguc2VyaW91cw=="
