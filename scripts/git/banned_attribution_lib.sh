@@ -20,25 +20,21 @@ banned_patterns_file() {
   printf '%s' "$private"
 }
 
+# banned_patterns_ready reports whether a valid banned-attribution patterns file exists and is non-empty.
+# banned_patterns_ready accepts an optional root directory argument used to resolve the patterns file; it exits with status 0 if the resolved file exists and has size > 0, non-zero otherwise.
 banned_patterns_ready() {
   local f
   f="$(banned_patterns_file "${1:-}")"
   [[ -f "$f" && -s "$f" ]]
 }
 
-# First token only (avoids SIGPIPE from `... | head -n1` under pipefail).
-# Usage: fixture_token="$(first_banned_pattern_token "$REPO_ROOT" || true)"
-first_banned_pattern_token() {
-  local token
-  while IFS= read -r token; do
-    [[ -n "$token" ]] || continue
-    printf '%s' "$token"
-    return 0
-  done < <(list_banned_pattern_tokens "${1:-}")
-  return 1
-}
-
+# list_banned_pattern_tokens streams banned-attribution pattern tokens (one per line) from the repository or user patterns file.
+# It resolves the patterns file (optional `root` argument), reads it line-by-line, removes inline comments (`#`) and all whitespace, skips empty tokens, and writes each remaining token to stdout on its own line.
 # Usage: while read -r token; do ...; done < <(list_banned_pattern_tokens "$root")
+# Parameters:
+#   root (optional) — repository root directory to use when resolving the patterns file; if omitted, the script determines the root automatically.
+# Exit:
+#   Returns non-zero if the resolved patterns file does not exist or cannot be read.
 list_banned_pattern_tokens() {
   local f token
   f="$(banned_patterns_file "${1:-}")"
@@ -53,6 +49,25 @@ list_banned_pattern_tokens() {
   done <"$f"
 }
 
+# first_banned_pattern_token outputs the first non-empty, non-comment banned-attribution pattern token from the resolved patterns file (takes an optional root directory argument).
+# It prints the token to stdout and returns success; if no file or no token is found it returns a non-zero status.
+first_banned_pattern_token() {
+  local f token
+  f="$(banned_patterns_file "${1:-}")"
+  if [[ ! -f "$f" ]]; then
+    return 1
+  fi
+  while IFS= read -r token || [[ -n "$token" ]]; do
+    token="${token%%#*}"
+    token="$(printf '%s' "$token" | tr -d '[:space:]')"
+    [[ -n "$token" ]] || continue
+    printf '%s' "$token"
+    return 0
+  done <"$f"
+  return 1
+}
+
+# line_matches_banned_pattern checks whether a lowercased line contains any banned-attribution pattern token; tokens are lowercased before matching and are read from the resolved patterns file.
 line_matches_banned_pattern() {
   local line_lc="$1"
   local root="${2:-}"
