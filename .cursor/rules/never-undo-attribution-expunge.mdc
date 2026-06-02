@@ -1,0 +1,33 @@
+---
+description: Re-introducing expunged commit attribution forces destructive main rewrites — never do it
+alwaysApply: true
+---
+
+# Attribution expunge is fragile — do not undo it
+
+## The loop you must break
+
+Every time an agent adds **forbidden** `Co-authored-by` trailers (listed in `.cursor/private/banned-attribution-patterns`, never on GitHub), the owner must:
+
+1. Rewrite history (`bash scripts/git/expunge-all-workspace-repos.sh` or per-repo expunge)
+2. Force-push **`main` and every branch** again
+
+That is destructive for all collaborators. **Do not cause another rewrite.**
+
+## Non-negotiable agent behavior
+
+| Do | Do not |
+|----|--------|
+| Read `.cursor/private/agent-lesson-git-attribution.md` before any git write | Copy forbidden tokens into tracked files, commits, PRs, or LESSONS |
+| Commit with `bash scripts/git/commit-clean.sh -m "..."` after `git add` | Raw `git commit` in Cursor cloud |
+| Push with `bash scripts/git/publish-clean-branch.sh <branch> main origin` | Raw `git push` without audit |
+| Run `bash scripts/git/daily-attribution-guard.sh` at session start | "Document" forbidden emails in repo docs so you remember |
+
+## Session checklist (every day)
+
+```bash
+bash scripts/git/daily-attribution-guard.sh
+bash scripts/git/install-local-hooks.sh
+```
+
+If CI or scan fails: fix before any new commits. Never patch by echoing forbidden identities in commit messages.

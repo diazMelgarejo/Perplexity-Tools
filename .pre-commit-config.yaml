@@ -60,3 +60,17 @@ repos:
         language: system
         pass_filenames: false
         types: [text]
+
+      - id: git-hooks-mandatory
+        name: "Mandatory repo git hooks (.githooks)"
+        entry: bash scripts/git/ensure_hooks_installed.sh
+        language: system
+        pass_filenames: false
+        always_run: true
+
+      - id: repo-hygiene
+        name: "Repo hygiene — identity, paths, secrets (CI parity)"
+        entry: python scripts/review/repo_hygiene.py .
+        language: system
+        pass_filenames: false
+        always_run: true

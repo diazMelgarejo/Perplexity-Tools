@@ -1,4 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
+
+"$ROOT/scripts/git/ensure_hooks_installed.sh"
+
+# Full hygiene gate — same checks as CI (identity, forbidden tokens, paths, etc.).
+if [[ -f "$ROOT/scripts/review/repo_hygiene.py" ]] && command -v python3 >/dev/null 2>&1; then
+  exec python3 "$ROOT/scripts/review/repo_hygiene.py" "$ROOT"
+fi
+
 exec "$ROOT/scripts/git/check_identity.sh"
