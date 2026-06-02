@@ -175,6 +175,23 @@ async def _wait_with_progress(seconds: int, role: str, reason: str) -> None:
     print(f"\r  [{role}] [{'█' * bar_width}] 100%  — resuming              ", flush=True)
 
 
+async def _backoff_after_error(
+    recovery_secs: int,
+    interval: int,
+    role: str,
+    reason: str,
+) -> None:
+    """Wait after an inference error.
+
+    Extended GPU cooldown when ``recovery_secs > 0``; otherwise use the normal
+    poll interval so disabling crash recovery does not tight-loop the backend.
+    """
+    if recovery_secs > 0:
+        await _wait_with_progress(recovery_secs, role, reason)
+    else:
+        await asyncio.sleep(interval)
+
+
 # ── model discovery ───────────────────────────────────────────────────────────
 
 async def _resolve_ollama_model(endpoint: str, preferred: str) -> str | None:
@@ -368,9 +385,11 @@ async def run_researcher(
             if loop_once:
                 break
 
-            # After a crash: GPU cooldown.
+            # After a crash: GPU cooldown (or poll interval when recovery disabled).
             if error_reason is not None:
-                await _wait_with_progress(CRASH_RECOVERY_SECS, role, error_reason)
+                await _backoff_after_error(
+                    CRASH_RECOVERY_SECS, interval, role, error_reason
+                )
                 continue
 
             # After N successful rounds: stop autonomous loop, wait for user input.

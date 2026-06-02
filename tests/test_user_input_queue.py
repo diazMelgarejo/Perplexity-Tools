@@ -2,6 +2,7 @@
 """User-input queue behaviour (portal / researcher polling)."""
 from __future__ import annotations
 
+import asyncio
 import collections
 import importlib.util
 import threading
@@ -174,6 +175,28 @@ def test_parse_crash_recovery_secs_whitespace_around_value(monkeypatch):
 async def test_wait_with_progress_zero_seconds_returns_immediately():
     """Disabled crash recovery (0s) must not divide by zero in the progress bar."""
     await _launch._wait_with_progress(0, "mac-researcher", "simulated error")
+
+
+@pytest.mark.asyncio
+async def test_backoff_after_error_disabled_uses_poll_interval(monkeypatch):
+    """RESEARCHER_CRASH_RECOVERY=0 must not tight-loop; use normal poll interval."""
+    calls: list[tuple[str, int]] = []
+
+    async def fake_sleep(seconds: int) -> None:
+        calls.append(("sleep", seconds))
+
+    async def fake_progress(seconds: int, role: str, reason: str) -> None:
+        calls.append(("progress", seconds))
+
+    monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(_launch, "_wait_with_progress", fake_progress)
+
+    await _launch._backoff_after_error(0, 30, "mac-researcher", "HTTP 503")
+    assert calls == [("sleep", 30)]
+
+    calls.clear()
+    await _launch._backoff_after_error(45, 30, "mac-researcher", "HTTP 503")
+    assert calls == [("progress", 45)]
 
 
 def test_extract_user_input_message_flat_string():
