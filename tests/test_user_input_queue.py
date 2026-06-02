@@ -2,6 +2,7 @@
 """User-input queue behaviour (portal / researcher polling)."""
 from __future__ import annotations
 
+import asyncio
 import collections
 import importlib.util
 import threading
@@ -76,6 +77,11 @@ def test_parse_secs_env_poll_interval_boolean_true(monkeypatch):
 def test_parse_secs_env_input_poll_interval_boolean_true(monkeypatch):
     monkeypatch.setenv("RESEARCHER_INPUT_POLL_INTERVAL", "true")
     assert _launch._parse_secs_env("RESEARCHER_INPUT_POLL_INTERVAL", 5) == 5
+
+
+def test_wait_with_progress_zero_seconds_returns_immediately():
+    """Disabled crash recovery (0s) must not divide by zero in the progress bar."""
+    asyncio.run(_launch._wait_with_progress(0, "mac-researcher", "simulated error"))
 
 
 def test_extract_user_input_message_flat_string():
