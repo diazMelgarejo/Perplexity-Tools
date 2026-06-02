@@ -52,8 +52,27 @@ STATE_DIR = Path(os.getenv("STATE_DIR", ".state"))
 STATE_DIR.mkdir(parents=True, exist_ok=True)
 ACTIVITY_LOG = STATE_DIR / "researcher_activity.jsonl"
 
-POLL_INTERVAL        = int(os.getenv("RESEARCHER_POLL_INTERVAL", "30"))
-CRASH_RECOVERY_SECS  = int(os.getenv("RESEARCHER_CRASH_RECOVERY", "30"))
+POLL_INTERVAL = int(os.getenv("RESEARCHER_POLL_INTERVAL", "30"))
+
+
+def _parse_crash_recovery_secs() -> int:
+    """Parse RESEARCHER_CRASH_RECOVERY: seconds, or true/false enable flags."""
+    raw = os.getenv("RESEARCHER_CRASH_RECOVERY", "30").strip()
+    if not raw:
+        return 30
+    lower = raw.lower()
+    if lower in ("0", "false", "no", "off", "disable", "disabled"):
+        return 0
+    if lower in ("1", "true", "yes", "on", "enable", "enabled"):
+        return 30
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        log.warning("invalid RESEARCHER_CRASH_RECOVERY=%r — using 30", raw)
+        return 30
+
+
+CRASH_RECOVERY_SECS = _parse_crash_recovery_secs()
 MAX_EVENTS           = 200
 REQUEST_TIMEOUT      = 90.0
 INPUT_POLL_INTERVAL  = int(os.getenv("RESEARCHER_INPUT_POLL_INTERVAL", "5"))
@@ -343,7 +362,7 @@ async def run_researcher(
                 break
 
             # After a crash: GPU cooldown.
-            if error_reason is not None:
+            if error_reason is not None and CRASH_RECOVERY_SECS > 0:
                 await _wait_with_progress(CRASH_RECOVERY_SECS, role, error_reason)
                 continue
 

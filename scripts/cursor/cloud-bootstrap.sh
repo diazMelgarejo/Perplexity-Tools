@@ -11,6 +11,10 @@ export PERPETUA_TOOLS_PATH="${PERPETUA_TOOLS_PATH:-$REPO_ROOT}"
 export REPO_ROOT="$REPO_ROOT"
 export ORAMA_SYSTEM_PATH="${ORAMA_SYSTEM_PATH:-$REPO_ROOT/../orama-system}"
 
+if [[ -x scripts/cursor/ci-bootstrap-private-attribution.sh ]]; then
+  bash scripts/cursor/ci-bootstrap-private-attribution.sh
+fi
+
 if [[ -x scripts/cursor/install-user-git-environment.sh ]]; then
   bash scripts/cursor/install-user-git-environment.sh
 fi

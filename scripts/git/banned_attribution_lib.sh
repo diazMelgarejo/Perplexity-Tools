@@ -26,6 +26,18 @@ banned_patterns_ready() {
   [[ -f "$f" && -s "$f" ]]
 }
 
+# First token only (avoids SIGPIPE from `... | head -n1` under pipefail).
+# Usage: fixture_token="$(first_banned_pattern_token "$REPO_ROOT" || true)"
+first_banned_pattern_token() {
+  local token
+  while IFS= read -r token; do
+    [[ -n "$token" ]] || continue
+    printf '%s' "$token"
+    return 0
+  done < <(list_banned_pattern_tokens "${1:-}")
+  return 1
+}
+
 # Usage: while read -r token; do ...; done < <(list_banned_pattern_tokens "$root")
 list_banned_pattern_tokens() {
   local f token
@@ -61,7 +73,7 @@ first_banned_pattern_token() {
 line_matches_banned_pattern() {
   local line_lc="$1"
   local root="${2:-}"
-  local token
+  local token token_lc
   while IFS= read -r token; do
     token_lc="$(printf '%s' "$token" | tr '[:upper:]' '[:lower:]')"
     if [[ "$line_lc" == *"$token_lc"* ]]; then

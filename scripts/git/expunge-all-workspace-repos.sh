@@ -66,6 +66,10 @@ expunge_repo() {
   local before after
   before="$(scan_repo_hits "$repo")"
   echo ">>> [$name] banned co-author hits before expunge: $before"
+  if [[ "$before" -eq 0 ]]; then
+    echo ">>> [$name] clean — skip history rewrite and force-push"
+    return 0
+  fi
 
   echo ">>> [$name] filter-branch (all refs)"
   if ! git -C "$repo" diff-index --quiet HEAD -- 2>/dev/null \

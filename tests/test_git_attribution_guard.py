@@ -2,22 +2,30 @@
 from __future__ import annotations
 
 import base64
+import os
 import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 STRIP_HOOK = ROOT / "scripts/git/hooks/commit-msg.strip-coauthor"
 SYNC_PRIVATE = ROOT / "scripts/cursor/sync-private-attribution-from-home.sh"
+CI_BOOTSTRAP = ROOT / "scripts/cursor/ci-bootstrap-private-attribution.sh"
 ORAMA_WRITE = Path("/agent/repos/orama-system/scripts/cursor/write-openclaw-private-attribution.sh")
 
 
 def _ensure_banned_patterns() -> None:
+    """Load gitignored banned patterns; prefer self-contained CI bootstrap when present."""
     patterns = ROOT / ".cursor/private/banned-attribution-patterns"
-    if not patterns.is_file():
-        if ORAMA_WRITE.is_file():
-            subprocess.run(["bash", str(ORAMA_WRITE)], check=True, cwd=ROOT)
-        if SYNC_PRIVATE.is_file():
-            subprocess.run(["bash", str(SYNC_PRIVATE)], check=True, cwd=ROOT)
+    if patterns.is_file():
+        return
+    if CI_BOOTSTRAP.is_file():
+        subprocess.run(["bash", str(CI_BOOTSTRAP)], check=True, cwd=ROOT)
+        if patterns.is_file():
+            return
+    if ORAMA_WRITE.is_file():
+        subprocess.run(["bash", str(ORAMA_WRITE)], check=True, cwd=ROOT)
+    if SYNC_PRIVATE.is_file():
+        subprocess.run(["bash", str(SYNC_PRIVATE)], check=True, cwd=ROOT)
     assert patterns.is_file(), "banned-attribution-patterns missing"
 
 
@@ -109,6 +117,50 @@ def test_check_identity_rejects_cursor_agent_as_author():
     )
     assert proc.returncode != 0
     assert "must not be the git author" in proc.stderr + proc.stdout
+
+
+def test_ensure_banned_patterns_prefers_ci_bootstrap(tmp_path, monkeypatch):
+    """CI bootstrap must satisfy the fixture without calling legacy orama/home sync."""
+    import tests.test_git_attribution_guard as module
+
+    fake_root = tmp_path / "repo"
+    fake_private = fake_root / ".cursor/private"
+    fake_private.mkdir(parents=True)
+    patterns_path = fake_private / "banned-attribution-patterns"
+    ran: list[list[str]] = []
+
+    monkeypatch.setattr(module, "ROOT", fake_root)
+    monkeypatch.setattr(module, "ORAMA_WRITE", fake_root / "missing/orama-write.sh")
+
+    def mock_run(args, **kwargs):
+        ran.append(list(args))
+        if "ci-bootstrap-private-attribution" in str(args[1]):
+            patterns_path.write_text("fixture-token\n", encoding="utf-8")
+        return subprocess.CompletedProcess(args, 0)
+
+    monkeypatch.setattr(subprocess, "run", mock_run)
+    module._ensure_banned_patterns()
+    assert patterns_path.is_file()
+    assert any("ci-bootstrap-private-attribution" in " ".join(cmd) for cmd in ran)
+    assert not any("orama" in " ".join(cmd).lower() for cmd in ran)
+
+
+def test_verify_git_guards_github_actions_skips_hooks_json_check():
+    """On GHA, verify-git-guards must not fail on missing ~/.cursor/hooks.json."""
+    subprocess.run(["bash", str(CI_BOOTSTRAP)], check=True, cwd=ROOT)
+    home = os.environ.get("HOME", "/home/ubuntu")
+    hooks_path = os.path.join(home, ".cursor", "hooks.json")
+    proc = subprocess.run(
+        ["bash", str(ROOT / "scripts/git/verify-git-guards.sh")],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "GITHUB_ACTIONS": "true"},
+    )
+    combined = proc.stdout + proc.stderr
+    assert "skip user-level Cursor session hook checks" in combined
+    assert f"missing {hooks_path}" not in combined
+    assert "missing ${HOME}/.cursor/hooks.json" not in combined
 
 
 def test_check_commit_message_rejects_unknown_gmail(tmp_path):
