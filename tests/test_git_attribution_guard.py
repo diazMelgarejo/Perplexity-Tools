@@ -8,12 +8,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 STRIP_HOOK = ROOT / "scripts/git/hooks/commit-msg.strip-coauthor"
 SYNC_PRIVATE = ROOT / "scripts/cursor/sync-private-attribution-from-home.sh"
+CI_BOOTSTRAP = ROOT / "scripts/cursor/ci-bootstrap-private-attribution.sh"
 ORAMA_WRITE = Path("/agent/repos/orama-system/scripts/cursor/write-openclaw-private-attribution.sh")
 
 
 def _ensure_banned_patterns() -> None:
     patterns = ROOT / ".cursor/private/banned-attribution-patterns"
     if not patterns.is_file():
+        if CI_BOOTSTRAP.is_file():
+            subprocess.run(["bash", str(CI_BOOTSTRAP)], check=True, cwd=ROOT)
         if ORAMA_WRITE.is_file():
             subprocess.run(["bash", str(ORAMA_WRITE)], check=True, cwd=ROOT)
         if SYNC_PRIVATE.is_file():

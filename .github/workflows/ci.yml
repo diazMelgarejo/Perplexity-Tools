@@ -69,6 +69,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Bootstrap private attribution patterns (self-contained)
+        run: bash scripts/cursor/ci-bootstrap-private-attribution.sh
+
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
