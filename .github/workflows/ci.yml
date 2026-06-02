@@ -27,7 +27,7 @@ jobs:
         run: bash scripts/cursor/ci-bootstrap-private-attribution.sh
 
       - name: Checkout orama-system (optional parity)
-        uses: actions/checkout@11bd71901bbe5b16344cea899f6dab8a86fb1b9 # v4.2.2
+        uses: actions/checkout@v4
         with:
           repository: diazMelgarejo/orama-system
           ref: main
