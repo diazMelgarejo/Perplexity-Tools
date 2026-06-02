@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import os
 import subprocess
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -196,8 +197,7 @@ def _call_first_banned_pattern_token(root: Path) -> "subprocess.CompletedProcess
         subprocess.CompletedProcess[str]: Completed process where `stdout` contains the function's output; `returncode` is 0 on success and non-zero on failure. The process also carries `stderr` for error diagnostics.
     """
     script = f'source "{_BANNED_ATTR_LIB}" && first_banned_pattern_token "{root}"'
-    isolated_home = root / "isolated-home"
-    isolated_home.mkdir(parents=True, exist_ok=True)
+    isolated_home = Path(tempfile.mkdtemp(prefix="pt-banned-token-"))
     env = {
         **os.environ,
         "HOME": str(isolated_home),

@@ -17,9 +17,11 @@ Usage:
     python scripts/launch_researchers.py --interval 60  # seconds between rounds
 
 Environment:
-    STATE_DIR                  where to write activity log (default: .state)
-    RESEARCHER_POLL_INTERVAL   seconds between rounds (default: 30)
-    LM_STUDIO_API_TOKEN        passed through for secured LM Studio instances
+    STATE_DIR                      where to write activity log (default: .state)
+    RESEARCHER_POLL_INTERVAL       seconds between rounds (default: 30); true/false use default
+    RESEARCHER_CRASH_RECOVERY      crash-restart delay seconds (default: 30); false disables
+    RESEARCHER_INPUT_POLL_INTERVAL portal user-input poll seconds (default: 5); true/false use default
+    LM_STUDIO_API_TOKEN            passed through for secured LM Studio instances
 """
 from __future__ import annotations
 
