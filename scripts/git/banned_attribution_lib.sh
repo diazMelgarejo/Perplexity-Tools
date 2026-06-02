@@ -27,6 +27,7 @@ banned_patterns_ready() {
 }
 
 # First token only (avoids SIGPIPE from `... | head -n1` under pipefail).
+# Usage: fixture_token="$(first_banned_pattern_token "$REPO_ROOT" || true)"
 first_banned_pattern_token() {
   local token
   while IFS= read -r token; do
