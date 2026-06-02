@@ -189,10 +189,18 @@ _BANNED_ATTR_LIB = ROOT / "scripts/git/banned_attribution_lib.sh"
 def _call_first_banned_pattern_token(root: Path) -> "subprocess.CompletedProcess[str]":
     """Source banned_attribution_lib.sh and invoke first_banned_pattern_token with given root."""
     script = f'source "{_BANNED_ATTR_LIB}" && first_banned_pattern_token "{root}"'
+    isolated_home = root / "isolated-home"
+    isolated_home.mkdir(parents=True, exist_ok=True)
+    env = {
+        **os.environ,
+        "HOME": str(isolated_home),
+        "OPENCLAW_ATTRIBUTION_PATTERNS": str(isolated_home / "missing-patterns"),
+    }
     return subprocess.run(
         ["bash", "-c", script],
         capture_output=True,
         text=True,
+        env=env,
     )
 
 
@@ -266,6 +274,21 @@ def test_first_banned_pattern_token_with_real_patterns():
     proc = _call_first_banned_pattern_token(ROOT)
     assert proc.returncode == 0
     assert len(proc.stdout.strip()) > 0
+
+
+def test_daily_attribution_guard_requires_opt_in_for_auto_expunge():
+    """Session/cloud bootstrap must not rewrite git history unless explicitly opted in."""
+    text = (ROOT / "scripts/git/daily-attribution-guard.sh").read_text(encoding="utf-8")
+    assert "ATTRIBUTION_EXPUNGE_AUTO" in text
+    assert "expunge-all-workspace-repos.sh" in text
+    # expunge invocation must be guarded (not unconditional on hits > 0)
+    assert 'ATTRIBUTION_EXPUNGE_AUTO:-}" == "1"' in text
+
+
+def test_cloud_bootstrap_does_not_invoke_daily_attribution_guard():
+    """Cloud VM bootstrap must not run full-history attribution scans."""
+    text = (ROOT / "scripts/cursor/cloud-bootstrap.sh").read_text(encoding="utf-8")
+    assert "daily-attribution-guard.sh" not in text
 
 
 # ---------------------------------------------------------------------------

@@ -23,9 +23,8 @@ if [[ -x scripts/git/neutralize-cursor-coauthor-hook.sh ]]; then
   bash scripts/git/neutralize-cursor-coauthor-hook.sh --all-agent-hooks
 fi
 
-if [[ -x scripts/git/daily-attribution-guard.sh ]]; then
-  bash scripts/git/daily-attribution-guard.sh
-fi
+# Do not run daily-attribution-guard here: it scans full history and may rewrite repos.
+# verify-git-guards + neutralize hooks are sufficient for cloud VM bootstrap.
 
 git config --local user.name "cyre" 2>/dev/null || true
 git config --local user.email "Lawrence@cyre.me" 2>/dev/null || true
