@@ -20,14 +20,30 @@ for rel in \
   disable-cursor-commit-attribution.sh \
   commit-clean.sh \
   apply-attribution-guard-all-repos.sh \
-  sync-attribution-guard-scripts.sh; do
+  sync-attribution-guard-scripts.sh \
+  sync-banned-patterns-to-repo.sh \
+  banned_attribution_lib.sh \
+  audit_attribution.sh \
+  scan-tracked-banned-tokens.sh; do
+  [[ -f "$SCRIPT_DIR/$rel" ]] || continue
   install -m 0755 "$SCRIPT_DIR/$rel" "$target/scripts/git/$rel"
 done
 
-# Repo-local agent rule (Cursor Cloud).
+# Thin wrapper — full implementation lives in Perpetua-Tools (canonical).
+cat >"$target/scripts/git/daily-attribution-guard.sh" <<'WRAP'
+#!/usr/bin/env bash
+set -euo pipefail
+PT="${PERPETUA_TOOLS_PATH:-/agent/repos/Perpetua-Tools}"
+exec bash "$PT/scripts/git/daily-attribution-guard.sh"
+WRAP
+chmod +x "$target/scripts/git/daily-attribution-guard.sh"
+
+# Repo-local agent rules (Cursor Cloud) — no forbidden tokens in these files.
 mkdir -p "$target/.cursor/rules"
-install -m 0644 "$source_root/.cursor/rules/no-commit-attribution.mdc" \
-  "$target/.cursor/rules/no-commit-attribution.mdc" 2>/dev/null || true
+for rule in no-commit-attribution.mdc never-undo-attribution-expunge.mdc banned-attribution-local.mdc zero-banned-attribution-everywhere.mdc; do
+  [[ -f "$source_root/.cursor/rules/$rule" ]] || continue
+  install -m 0644 "$source_root/.cursor/rules/$rule" "$target/.cursor/rules/$rule"
+done
 
 echo "synced guard scripts → $target"
 
