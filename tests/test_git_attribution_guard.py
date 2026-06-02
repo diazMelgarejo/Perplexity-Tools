@@ -187,7 +187,15 @@ _BANNED_ATTR_LIB = ROOT / "scripts/git/banned_attribution_lib.sh"
 
 
 def _call_first_banned_pattern_token(root: Path) -> "subprocess.CompletedProcess[str]":
-    """Source banned_attribution_lib.sh and invoke first_banned_pattern_token with given root."""
+    """
+    Invoke the `first_banned_pattern_token` shell function from the banned-attribution library using an isolated HOME.
+    
+    Parameters:
+        root (Path): Repository root passed as the argument to `first_banned_pattern_token`.
+    
+    Returns:
+        subprocess.CompletedProcess[str]: Completed process where `stdout` contains the function's output; `returncode` is 0 on success and non-zero on failure. The process also carries `stderr` for error diagnostics.
+    """
     script = f'source "{_BANNED_ATTR_LIB}" && first_banned_pattern_token "{root}"'
     isolated_home = root / "isolated-home"
     isolated_home.mkdir(parents=True, exist_ok=True)
