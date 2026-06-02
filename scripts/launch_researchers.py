@@ -157,6 +157,8 @@ async def _wait_with_progress(seconds: int, role: str, reason: str) -> None:
         [mac-researcher] GPU cooldown — 30s before next attempt
         [mac-researcher] [████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] 20%  (24s remaining)
     """
+    if seconds <= 0:
+        return
     bar_width = 38
     print(f"\n  [{role}] ⚠  {reason}", flush=True)
     print(f"  [{role}] GPU cooldown — {seconds}s before next attempt", flush=True)
