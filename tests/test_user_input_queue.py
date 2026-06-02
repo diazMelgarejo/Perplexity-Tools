@@ -170,6 +170,12 @@ def test_parse_crash_recovery_secs_whitespace_around_value(monkeypatch):
     assert _launch._parse_crash_recovery_secs() == 60
 
 
+@pytest.mark.asyncio
+async def test_wait_with_progress_zero_seconds_returns_immediately():
+    """Disabled crash recovery (0s) must not divide by zero in the progress bar."""
+    await _launch._wait_with_progress(0, "mac-researcher", "simulated error")
+
+
 def test_extract_user_input_message_flat_string():
     assert _extract("  run tests  ") == "run tests"
 
